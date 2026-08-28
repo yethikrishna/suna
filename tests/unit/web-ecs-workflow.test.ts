@@ -161,7 +161,11 @@ describe('web ECS migration', () => {
     expect(buildJobs.match(/platforms: linux\/amd64/g)).toHaveLength(3);
     expect(workflow).toContain("github.event.action == 'labeled'");
     expect(workflow).toContain("github.event.action == 'synchronize'");
-    expect(workflow).toContain('labels/preview');
+    // The label used to be STRIPPED on every push; a labelled preview now stays
+    // online until the label is removed or the pull request closes, so nothing
+    // in this workflow may delete it any more.
+    expect(workflow).not.toContain('labels/preview');
+    expect(workflow).toContain('PREVIEW_BRANCH_ENV');
     expect(workflow).toContain('bun tests/bin/sandbox-preview.ts deploy');
     expect(workflow).toContain('bun tests/bin/sandbox-preview.ts teardown');
     expect(workflow).toContain('bun tests/bin/sandbox-preview.ts reconcile');
@@ -235,6 +239,33 @@ describe('web ECS migration', () => {
     expect(existsSync(resolve(root, 'tests/visual/playwright.config.ts'))).toBe(false);
     expect(existsSync(resolve(root, 'tests/accessibility/playwright.config.ts'))).toBe(false);
     expect(existsSync(resolve(root, 'tests/e2e/examples/playwright.config.ts'))).toBe(false);
+  });
+
+  it('the deployment-bypass storage state is never written under an uploaded artifact path', () => {
+    // tests/test-results/** is uploaded verbatim on a public repo; the state
+    // file holds the live _vercel_jwt cookie. Both guards must hold: the file
+    // lives outside test-results, AND every upload of test-results excludes
+    // it by name (belt and braces — see deployment-bypass.ts).
+    const helper = read('tests/e2e/helpers/deployment-bypass.ts');
+    expect(helper).not.toMatch(/'test-results',\s*\n\s*'deployment-bypass-state\.json'/);
+    expect(helper).toContain("'.state',");
+    expect(read('tests/.gitignore')).toContain('.state/');
+    for (const wf of [
+      '.github/workflows/tests-release.yml',
+      '.github/workflows/tests-browser-nightly.yml',
+      '.github/workflows/tests.yml',
+      '.github/workflows/deploy-preview.yml',
+    ]) {
+      const uploads = read(wf).split('upload-artifact@').slice(1);
+      let seen = 0;
+      for (const block of uploads) {
+        const head = block.slice(0, 600);
+        if (!head.includes('tests/test-results/**')) continue;
+        seen += 1;
+        expect(head, wf).toContain('!tests/test-results/deployment-bypass-state.json');
+      }
+      expect(seen, wf).toBeGreaterThan(0);
+    }
   });
 
   /**

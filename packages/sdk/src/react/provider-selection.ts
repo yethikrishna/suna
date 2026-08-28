@@ -1,8 +1,11 @@
 import {
   CATALOG,
   type ProviderAuthRequirement,
+  autoSeedDefaultModel,
+  bedrockInferenceProfileRank,
   isProviderAuthSatisfied,
   providerAuthRequirement,
+  generationControlCapabilities,
 } from '@kortix/llm-catalog';
 import type { ProviderListResponse as SdkProviderListResponse } from '@opencode-ai/sdk/v2/client';
 
@@ -321,13 +324,22 @@ export function nativeProviderListFromCatalog(
     .sort((a, b) => providerRank(a.id) - providerRank(b.id))
     .map((provider) => {
       // Newest first: the picker's visual order and the "first model" fallback
-      // both read insertion order.
-      const models = [...provider.models].sort((a, b) =>
-        (b.released ?? '').localeCompare(a.released ?? ''),
+      // both read insertion order. On a release-date tie a Bedrock inference
+      // profile sorts ahead of its bare in-region twin — the bare id is the
+      // one Bedrock refuses with "on-demand throughput isn't supported".
+      const models = [...provider.models].sort(
+        (a, b) =>
+          (b.released ?? '').localeCompare(a.released ?? '') ||
+          bedrockInferenceProfileRank(b.id) - bedrockInferenceProfileRank(a.id),
       );
       const ids = new Set(models.map((model) => model.id));
+      // `autoSeedDefaultModel` (not `models[0]`) is the data-driven fallback:
+      // it drops the bare Bedrock ids whenever the provider serves inference
+      // profiles, so a fresh Bedrock-BYOK workspace can never be auto-seeded
+      // with an id Bedrock rejects. See its doc comment for the live incident.
       const flagship =
         (NATIVE_FLAGSHIP_CANDIDATES[provider.id] ?? []).find((candidate) => ids.has(candidate)) ??
+        autoSeedDefaultModel(models)?.id ??
         models[0]?.id;
       if (flagship) defaults[provider.id] = flagship;
       return {
@@ -483,9 +495,27 @@ export function projectLlmCatalogToProviderList(
   catalog: ProjectLlmCatalogResponse,
 ): ProviderListResponse {
   const models = Object.fromEntries(
-    Object.entries(catalog.models ?? {}).filter(
-      ([modelId]) => modelId !== 'auto' && modelId !== 'kortix/auto',
-    ),
+    Object.entries(catalog.models ?? {})
+      .filter(([modelId]) => modelId !== 'auto' && modelId !== 'kortix/auto')
+      .map(([modelId, model]) => {
+        // The gateway picker never carried `variants`, so the composer's
+        // Thinking control (which lists `Object.keys(model.variants)`) had
+        // nothing to offer on-gateway — the ONLY effort path there was a
+        // project-level routing-policy write. Derive the ids from the same
+        // `reasoning_options` the API already serves, through the same
+        // `generationControlCapabilities` the gateway's own clamp uses, so
+        // the picker offers exactly the tiers a request may carry. An
+        // explicit `variants` map from the API (runtime truth) is kept as-is.
+        if (model.variants && Object.keys(model.variants).length > 0) return [modelId, model];
+        const ids = generationControlCapabilities({
+          id: modelId,
+          name: model.name,
+          reasoning: model.reasoning,
+          reasoning_options: model.reasoning_options,
+        }).reasoningEffort?.values;
+        if (!ids?.length) return [modelId, model];
+        return [modelId, { ...model, variants: Object.fromEntries(ids.map((id) => [id, {}])) }];
+      }),
   );
   const firstModelId = Object.keys(models)[0];
   return {

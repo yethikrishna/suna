@@ -21,6 +21,525 @@ linked, not inlined.
 
 ## Register
 
+### `deploy-preview.yml` runs from the DEFAULT BRANCH, so everything it references must be on main (2026-08-28)
+
+**When:** adding anything the preview deploy touches — a file under `tests/`, a
+Cloudflare worker under `infra/cloudflare/workers/`, a script it shells out to —
+while developing on a feature branch. The workflow is `pull_request_target`, and
+its deploy and teardown jobs check out
+`${{ github.event.repository.default_branch }}`, NOT the pull request head. The
+PR's own code is only ever built into the images; the ORCHESTRATION is main's.
+
+Hit twice in one afternoon. First the branch-environment machinery
+(`previewSandboxIdentity`, sandbox reuse, the Caddy reload) lived only on the
+feature branch, so the label flow could not have used it. Then the `pi-router`
+worker did, and the deploy failed with
+`infra/cloudflare/workers/pi-router/wrangler.toml does not exist` — the file was
+right there in the branch being deployed, and irrelevant.
+
+**The rule: if the preview WORKFLOW reads it, it ships to main first** — as its
+own PR, ahead of the feature that needs it. A feature branch may only contribute
+images.
+
+**Diagnostic:** a preview step that cannot find a file which plainly exists on
+your branch is this, every time. `git ls-tree -r --name-only origin/main -- <path>`
+settles it in one command.
+*Near-miss:* PR #7019. The guard failed loudly with the exact path rather than
+proceeding, which is why it cost one run and not an afternoon.
+*Enforcer:* none for the general case. Each referenced path needs its own
+existence check in the step that uses it, the way the worker step now has one.
+
+### `compose up -d` does not restart a container because a bind-mounted FILE changed (2026-08-28)
+
+**When:** a redeploy rewrites a config file that a container reads through a
+bind mount — a Caddyfile, an nginx conf, a prometheus.yml. Compose recreates a
+container for a new image, env var, port or volume DEFINITION; new bytes inside
+an already-mounted file are not part of that comparison. If the process does not
+watch its config either (Caddy does not), the container keeps serving what it
+loaded when it first booted, for as long as the box lives.
+
+A per-PR preview never showed this because it is deleted and recreated on every
+push. It appeared the first time a REUSED environment's config actually changed:
+moving the branch environment to `pi.kortix.com` rewrote the Caddyfile's pinned
+`X-Forwarded-Host`, the file said the new host both on disk and inside the
+container, and the running Caddy still pinned the old one — so every Server
+Action died with React #441 again (see the entry below).
+
+**The rule: after writing a mounted config, reload the process that reads it**
+(`compose exec -T <svc> caddy reload --config …`), or recreate that service
+explicitly. Never infer from "compose up succeeded" that a mounted config took
+effect.
+
+**Diagnostic:** compare the file with the process's LIVE configuration, not with
+the file inside the container — those two agree even when the bug is present.
+For Caddy, `curl localhost:2019/config/` from inside the container; the same
+shape of check applies to any config-reloading daemon.
+*Near-miss:* the pi branch environment, 2026-08-28. Caught within minutes by
+driving the real sign-in page; nothing deployed was affected.
+*Enforcer:* `tests/unit/sandbox-preview.test.ts` asserts the bootstrap issues
+the reload. Nothing detects a NEW mounted config file that lacks one.
+
+### An environment that shares ONE origin between frontend and API must enumerate every path the API serves outside the common prefix (2026-08-27)
+
+**When:** editing the preview edge (`buildPreviewCaddyfile`), or mounting a
+route in `apps/api/src/index.ts` anywhere other than under `/v1`.
+Deployed environments give the API a host of its own, so every path it serves
+reaches it and prefix questions never arise. A preview shares one origin with
+the frontend and splits by prefix, and the `@api` matcher listed only `/v1*`.
+So `/health`, `/health/live`, `/health/ready`, `/metrics`, `/scim/v2/*`,
+`/internal/*` and `/.well-known/oauth-authorization-server` went to
+`frontend:3000`, which answered `307 -> /auth?redirect=…`. 13 flows failed on
+it (SYS-1/8/9, SCIM-1..5, GW-1/8/10/12, SEC-J), each reading as an auth or
+availability bug rather than a routing one.
+
+**The rule: a new non-`/v1` mount is TWO edits** — the route and the preview
+matcher — and the matcher carries a comment saying so. More generally, an
+environment whose topology differs from dev (one origin instead of two hosts)
+does not inherit dev's routing for free; enumerate what the difference hides.
+
+**Diagnostic:** a `307` to `/auth` on a path that needs no auth is the frontend
+answering, not the API. `curl -o /dev/null -w '%{http_code} %{redirect_url}'`
+tells them apart in one call — the API returns the endpoint's own status
+(`200`/`401`), never a redirect to a login page.
+*Near-miss:* PR #7012, found while verifying preview↔dev parity. Preview only;
+no deployed environment is affected, because none of them share an origin.
+*Enforcer:* `tests/unit/preview-stack.test.ts` asserts each of the six paths is
+present in the `@api` line. Nothing yet fails when a NEW non-`/v1` mount is
+added to the API without updating the matcher — that check is the TODO.
+
+### A reverse proxy in front of Next.js owns `x-forwarded-host`, or every Server Action dies (2026-08-27)
+
+**When:** putting any proxy/ingress in front of a Next.js app — a preview edge,
+a sandbox ingress, a tunnel. Next's Server Action CSRF guard compares
+`x-forwarded-host` against `origin` and aborts when they differ:
+`Invalid Server Actions request`, HTTP 500, surfaced in the browser only as
+**minified React error #441**. It kills EVERY Server Action, not just the one
+in front of you — on the preview stack that meant nobody could sign in at all,
+because the whole auth flow is Server Actions.
+
+The mismatch is easy to create and invisible from the client: the sandbox
+ingress set `x-forwarded-host` to the INTERNAL host (`*.aec.local`) while the
+browser's `origin` was the public `*.sbx.platinum.dev`. Nothing in the app is
+wrong, and no application log says so — the error text lives in the **Next
+server's** own stdout, reachable only from the container
+(`docker logs <frontend>`), never from the response, which carries an opaque
+`digest`.
+
+**Rules.** (1) A proxy that terminates the public hostname must pin
+`X-Forwarded-Host` (and `X-Forwarded-Proto`) to the PUBLIC host on the Next
+upstream — the API/Supabase/static handles neither need it nor should get it.
+(2) A minified React error with no stack is a SERVER error: read the server's
+own log before reading any client code. (3) `digest` is a hash, not a message —
+grep the container for it.
+
+*Incident:* every `preview`-labelled PR was impossible to sign into; the whole
+environment read as "the app is broken". Fixed by pinning the host in
+`buildPreviewCaddyfile`.
+*Enforcer:* `tests/unit/preview-stack.test.ts` — "pins the PUBLIC host on the
+Next upstream for Server Actions".
+
+### An experiment flag that deploy-dev pins to an explicit `false` can never double as a kill switch (2026-08-27)
+
+**When:** reusing an existing feature/experiment flag to gate a new default-on
+behaviour with "unset = on, explicit `false` = off" semantics.
+`deploy-dev.yml` injects `KORTIX_FAST_COLD_BOOT_ENABLED=false` into the API
+task on EVERY push deploy (`.github/workflows/deploy-dev.yml`, the
+`enable_fast_cold_boot` dispatch input), so on dev that flag is always
+"explicitly false" even though `apps/api/.env*` leave it unset. PR #6964 gated
+the fresh-session git hint (`KORTIX_BASE_SHA` + scaffold delta + OpenCode
+config-dir hint) on that reading; dev sessions got `KORTIX_SESSION_FRESH=1`
+only and still fetched `main` through the proxy (3.0–3.4 s instead of 0.2 s).
+`provision-core.ts` had the same gate on its seed-time hint for weeks.
+
+**The rule: a new default-on path gets its OWN flag** (#6973:
+`KORTIX_FAST_GIT_BOOT_ENABLED`, `optBoolTrue`), and before choosing
+"explicit false = off" semantics on any flag, grep the deploy workflows and
+`infra/scripts/ecs-deploy.sh` for who sets it — `.env` files are not the only
+source of the task environment.
+
+**Diagnostic:** the daemon env inside a box (`env | grep KORTIX_` via
+`POST <sandbox_url>/kortix/pty`) and `projects.metadata->'git'->'fast_boot'`
+staying `null` after a session: the API never even attempted the hint.
+*Near-miss:* #6964 → #6973, one wasted deploy cycle.
+*Enforcer:* none. A config test that asserts every `optBoolUnset`-style
+"configured?" gate is not also set by `deploy-*.yml` would catch it.
+
+### A new import edge into a widely-mocked graph breaks hand-written module mocks all over the suite — and the failure names no test (2026-08-27)
+
+**When:** adding an import to code that many suites exercise (a middleware, a
+proxy, a gate). `mock.module` replaces a module **WHOLESALE**, so every suite
+that stubs a module by listing its exports silently deletes the ones it did not
+name. Pull that module into a new part of the graph and those missing names
+become `SyntaxError: Export named 'X' not found in module …`, printed as
+`# Unhandled error between tests` — attributed to NO test, and it takes an
+unrelated parallel worker down with it, so the visible symptom is a stranger's
+suite failing.
+
+Fix them one at a time and it cascades: `loadTokenBinding` →
+`ensureAgentServiceAccount` → `createAccountToken` →
+`resolveInheritedSessionSharing`, each spread pulling the next real module in.
+
+**The rule: fix the import, not the mocks.** Ask what the new code actually
+needs. Here the Apps gate wanted one email lookup and reached it through
+`projects/lib/access`, which re-exports it from behind the whole
+project/session/IAM read graph; `accounts/core/owner-emails` is the same
+function with `drizzle` + `db` as its entire import list. One line, cascade
+gone, zero test churn. Spread the real module (the 2026-08-18 rule) when you
+own the mock and the dependency is genuinely needed — not as the way out of a
+cascade you created.
+
+**Diagnostic:** a suite that fails with `1 fail / 1 error` where the failing
+test is in a file your branch never touched, and the run prints `1 tests
+failed:` followed by nothing, is this. Read the `Unhandled error` block, not the
+failing test name.
+*Near-miss:* PR #6963 (the Apps viewer token). Cost two CI rounds and a wrong
+"it's a pre-existing flake" call before the real cause was read.
+*Recurrence, same day:* `d990e122aa` added `ensurePiWorkerImage` to the static
+import from `snapshots/builder` in `platform/services/session-sandbox.ts`. The
+module edge already existed — only the NAME was new — and that was enough: all
+eleven suites that stub `snapshots/builder` by listing its exports died at
+import. It reddened the packages lane on two unrelated PRs (#6978, and #6957 on
+different tests) before anyone read the cause. Fixed in #6982 by deferring that
+one name to a dynamic import at its single call site: zero mock churn.
+**It does not reproduce locally** — the full `apps/api` suite passes 8745/0 both
+with and without the fix. Only CI's worker count and interleaving surface it, so
+"it passes on my machine" proves nothing about this class. Read the CI
+`Unhandled error` block.
+*Enforcer:* none. A lint that flags `mock.module` factories which do not spread
+the real module would catch the mocks; nothing catches the import edge. Worth
+building — this rule has now been paid for twice in one day.
+
+### Two migrations generated from the same parent fork the drizzle chain, and main then cannot generate ANY migration (2026-08-27)
+
+**When:** two PRs are open at once and each runs `pnpm migrate:generate`. Each
+snapshot records `prevId` = whatever the tail was when it was cut. Merge both
+and `drizzle/meta/` has two snapshots claiming the same parent; the next
+generate anywhere on main dies with
+`[a_snapshot.json, b_snapshot.json] are pointing to a parent snapshot: … which
+is a collision` — and the wrapper still prints the reassuring
+`No schema changes detected` line (same lie as the 2026-08-19 TTY entry), so it
+reads as "nothing to do" rather than "the repo is wedged".
+
+The second snapshot is also WRONG on content, not just on lineage: it was
+diffed against the older parent, so it is missing whatever the other PR added
+(here `accounts.branding`, from #6947, absent from #6953's snapshot).
+
+**The repair** (metadata only — no applied migration file is touched, so
+immutability holds): in the LATER snapshot set `prevId` to the earlier
+snapshot's `id`, and copy in the objects the earlier one added. Then generate
+and READ THE SQL: it must contain only your own change. If it re-proposes the
+other PR's DDL, the content merge was incomplete.
+
+**The prevention:** regenerate your migration against the current tail
+immediately before merging (rebase → delete your snapshot + journal entry →
+`migrate:generate` again), the same way a lockfile is refreshed.
+*Incident:* main was un-generatable between #6947/#6953 merging (2026-08-26
+21:26Z) and the repair on the `app-viewer-token` branch. No deploy was affected
+— both migrations applied fine; only generation was blocked.
+*Enforcer:* none — a CI check that asserts one linear `prevId` chain over
+`drizzle/meta/*_snapshot.json` is the TODO.
+
+### A web API the middleware needs must exist in the IMAGE's runtime, not the laptop's (2026-08-27)
+
+**When:** adding any global middleware or hot-path code that uses a Web/Bun
+API (`CompressionStream`, `DecompressionStream`, `ReadableStream.from`,
+`Response.json`, …), or bumping/pinning Bun anywhere. `apps/api/Dockerfile`
+pins `ARG BUN_VERSION=1.2` (1.2.23 today) while every developer laptop and
+every CI lane runs Bun 1.3.x. `CompressionStream` does not exist in Bun 1.2.
+The compress middleware from #6946 peeked the body of every eligible response
+and then threw `ReferenceError: CompressionStream is not defined`, so on dev
+**every API response ≥ 1 KiB answered 500** (`GET /accounts`, `account-state`,
+`iam/permissions`, `iam/roles` — the whole account hub) while sub-KiB routes
+and `/health` stayed green. 8,545 green unit tests, a green typecheck and a green
+deploy proved nothing, because none of them ran on the image's Bun. Cloudflare
+sends `Accept-Encoding: gzip` to the origin regardless of the client, so no
+request could dodge the path.
+**Rules:** (1) feature-detect any Web API a middleware uses at module load and
+fail OPEN (skip the feature, never touch the body) when it is absent; (2) treat
+`BUN_VERSION` in the Dockerfile as the runtime contract — either pin the
+laptop/CI to it or add a test that runs the middleware under
+`oven/bun:<BUN_VERSION>`; (3) a green `/health` after deploy is not a smoke
+test — hit one route whose response exceeds 1 KiB.
+*Incident:* dev broken 2026-08-26 22:41 → 2026-08-27 (fix in progress) — first
+noticed only because the branding rollout verification hit `GET /accounts`.
+*Enforcer:* `compress.test.ts` pins the fail-open path with `CompressionStream`
+deleted from `globalThis`; nothing yet runs the suite under the image's Bun.
+
+### A React effect keyed on a provider-issued object must cache its work by id, never bail — and only the deployed page proves it (2026-08-26)
+
+**When:** an effect does one-shot async work (a consent read + approve, an
+exchange, anything consumed server-side) and its deps include an object the
+auth/data provider re-issues (`user`, `session`). The re-run cancels run #1
+via cleanup; a "started already" guard then makes run #2 bail, and the page
+holds its loading state forever. Cache the PROMISE per id and let whichever
+run is current apply it; a redirect after a consumed request fires
+unconditionally.
+*Incident:* Sign in with Kortix consent page (#6945) spun forever on
+dev.kortix.com for a fresh client while `/v1/oauth/authorize/consent/:id`
+answered 200; local Chromium never re-issued `user` in that window, so the
+local run passed. Fixed in #6949 the same evening; dev only.
+*Enforcer:* none — the rule is: drive the deployed page for any auth flow.
+
+### The dev edge WAF 403s any query string carrying a bare `localhost` / `127.0.0.1` host (2026-08-26)
+
+**When:** pointing a locally-running app at `dev-api.kortix.com` with a
+`redirect_uri`, `callback`, or `return_to` on `localhost`. Cloudflare answers
+403 before the API sees the request (cf-ray, no `x-kortix-*` headers). Use a
+`*.localhost` name (`demo.localhost:8792` — browsers resolve it to loopback
+and the OAuth registry accepts the suffix).
+*Near-miss:* the dev sign-in demo hit 403 on `/v1/oauth/authorize`; read as an
+API regression until curl with `app.example.test` returned the API's own 400.
+*Enforcer:* none — docs note in `/docs/sdk/sign-in` is the TODO.
+
+### `github-release` needs the npm publishes, so an npm-publish failure silently strips the tag, Release, changelog, and VERSION sync from a shipped prod deploy (2026-08-26)
+
+**When:** touching `scripts/publish-npm-package.sh`, the deploy-prod publish
+jobs, or diagnosing a deploy-prod run that went `failure` while
+`api.kortix.com` correctly serves the new version.
+`deploy-prod.yml`'s `github-release` job `needs: […, publish-sdk,
+publish-agent-tunnel, …]` with the default `if: success()`. `deploy-ecs` does
+NOT depend on the publishes, so the SERVICE rolls fine — but if any npm
+publish fails, `github-release` (tag + GitHub Release + release notes) and the
+`sync-main-version` / `sync-staging-version` / `announce` / `attach-desktop`
+jobs are all SKIPPED. The result: prod serves the release, and there is no
+tag, no Release, no changelog, no VERSION bump — an invisibly half-finished
+release. v0.13.6 hit this: `publish-npm-package.sh` ran `npm install -g
+npm@latest`, which is now `npm@12.0.2` requiring node `>=22.22.2`, while
+`actions/setup-node@22` provisions `22.22.0` → `EBADENGINE`, failing
+`publish-llm-catalog` + `publish-agent-tunnel` (and skipping `publish-sdk`,
+which needs `publish-llm-catalog`). Same node-floor class as the
+`pnpm/action-setup@v6` gate breaker the same day.
+Rules: (1) after any deploy-prod that reports `failure`, verify BY HAND that
+the tag, GitHub Release, and main/staging VERSION advanced — a green
+`/health` is not proof the release finished; recover a skipped `github-release`
+manually (`gh release create <tag> --target <prod-sha> --title … --notes-file
+RELEASE_NOTES.md`, attach the run's `cli-binaries`, then bump VERSION on both
+branches). (2) Pin publish tooling to a floor the runner's node satisfies
+(`npm@^11.5.1`, not `@latest`). (3) Better structurally: `github-release`
+should not hard-depend on the npm publishes — an npm outage should not erase
+the release record; make the publish jobs `continue-on-error` or drop them
+from `github-release.needs`.
+*Incident:* v0.13.6 deploy-prod run 33009428048 — service live on 0.13.6, but
+tag/Release/changelog/VERSION-sync skipped; recovered by hand. Script fix in
+#6940; the `needs`-decoupling is still a TODO.
+*Enforcer:* none — the decoupling and a post-deploy "release artifacts exist"
+check are the TODOs.
+
+### A guard that has never fired has never been tested; and an artifact upload path is a publish path (2026-08-26)
+
+**When:** writing any secret guard in CI (`if grep …; then exit 1`), or
+uploading a directory as a workflow artifact on a public repository.
+Two facts, one incident. (1) The "Guard test artifacts against secrets" step
+in `tests-release.yml` invoked `rg` under `2>/dev/null`; GitHub's ubuntu
+images do not ship `rg`, so from its first run (2026-08-19) until the
+Blacksmith move (2026-08-25, `grep`) it passed on nothing, every time. A
+guard is only evidence after it has been SEEN to fail on a planted value —
+plant one in a dry run before trusting it. (2) The moment it ran for real it
+found `tests/test-results/deployment-bypass-state.json`: the Playwright
+storage state from #6632's bypass exchange, holding the live `_vercel_jwt`
+cookie for `staging.kortix.com` (HS256, `aud: staging.kortix.com`, 7-day
+expiry). `tests/test-results/**` is uploaded verbatim by every deployed
+browser job, and `kortix-ai/suna` is public — so every release-gate run from
+2026-08-20 to 2026-08-26 published a valid deployment-protection bypass
+cookie; 78 unexpired `tests-release-browser-shard-*` artifacts held one.
+Rules: never write a credential-bearing file under a directory that any
+workflow uploads (`tests/.state/` now; `web-ecs-workflow.test.ts` pins the
+helper path AND a by-name exclusion on all four `tests/test-results/**`
+uploads); treat `path: <dir>/**` as "publish everything here"; and when a
+new guard first goes red, assume it is telling the truth before assuming it
+is noise. Fixed in #6933/#6934; artifacts deleted by hand the same day.
+*Incident:* v0.13.6 gate run 32998656515 — all 3 browser shards failed on
+the guard after their journeys had passed. No known exploitation; the
+cookies themselves cannot be revoked by us — rotating the Vercel
+"Protection Bypass for Automation" secret is the operator follow-up.
+*Enforcer:* the unit pin above + the (now real) artifact guard.
+
+### A release-gate flow is added or un-quarantined only in the PR that carries its green deployed run (2026-08-26)
+
+**When:** adding a flow with `requires: ['daytona']` (it never runs in local
+CI), or deleting a `quarantine:` field. Local lanes skip these flows, so a
+green PR proves nothing about them; the first time they execute is the next
+production release gate. Two did exactly that in v0.13.6 (gate run
+32992496089): SESS-23, un-quarantined in `09aa887a55` with a comment saying
+the wake path "must prove the contract on every run", failed on the first run
+with the SAME stop→wake 503 its old quarantine text described; CONN-26, a
+new real-LLM flow (`gpt-5.6-luna` must call `add_connector` within 300 s),
+added in `5b070ebb18` by direct push, timed out at 392 s and left no
+transcript. Each cost a staging hotfix + rebuild + redeploy (~25 min) inside
+the release, on top of a GitHub Actions outage.
+Rules: (1) the PR that adds or un-quarantines a deployed-only flow links a
+green `tests-release.yml` dry run (`gh workflow run tests-release.yml --ref
+staging -f expected_sha=<sha>`) — no link, no merge; (2) an LLM-behaviour
+flow captures the transcript on timeout, or it cannot be diagnosed from CI;
+(3) a `quarantine:` text is a claim about the product — re-quarantine with the
+new evidence rather than arguing with the old text. Re-quarantined in
+#6927/#6928 (SESS-23) and #6929/#6930 (CONN-26).
+*Enforcer:* none — a check that a PR touching `quarantine:` or a
+`requires: [... 'daytona']` flow links a tests-release run is the TODO.
+
+### A runner migration re-tests every setup action; one job on a different major is a latent break (2026-08-26)
+
+**When:** moving a workflow to a different runner image (Blacksmith), or
+bumping a setup action (`pnpm/action-setup`, `setup-node`) in ONE job of a
+multi-job workflow. `tests-release.yml` ran `pnpm/action-setup@v4` in three
+jobs and `@v6` in the `deployed browser shard` only (dependabot #6343 bumped
+one). On GitHub's `ubuntu-latest` no pnpm is preinstalled, so both majors
+behaved the same and the v0.13.5 gate was green. The Blacksmith image ships
+pnpm v11.19.0 at `PNPM_HOME`; `@v6`'s self-installer took its "Switching pnpm
+from v11.19.0 to v8.11.0" path, warned `Failed to create bin ... @pnpm/exe ...
+ENOENT`, and left a standalone `@pnpm/exe` on PATH. That binary runs on its
+own bundled Node (18.5.0), so `pnpm install --frozen-lockfile` failed
+`engine-strict` against `eslint@9.39.4` (`Got: v18.5.0`) although
+`setup-node` had put 22.22.0 on PATH one step earlier. All three browser
+shards of the v0.13.6 gate died in ~60 s; the api shards on the SAME runner
+label passed on `@v4`.
+Rules: (1) every job in a workflow uses one major of each setup action — a
+dependabot bump that touches one `uses:` line of four is a review reject;
+(2) after a runner-image migration, run the release gate as a dry run
+(`gh workflow run tests-release.yml --ref staging -f expected_sha=<sha>`)
+BEFORE the next promote — Blacksmith (#6906) moved the gate on 2026-08-25 and
+the first real run was the release; (3) a whole-shard failure in well under
+the usual runtime is a setup failure — read the install step, not the tests
+(same class as the 2026-08-18 lockfile entry).
+*Incident:* v0.13.6 release PR #6923, gate run 32992496089; fixed by #6925 /
+#6926 (pin `@v4`); ~1 h of release delay on top of the GitHub Actions outage.
+*Enforcer:* none — a lint that every `pnpm/action-setup@` in a workflow file
+shares one major is the TODO.
+
+
+### A row lock held to COMMIT makes batch size a blast radius, and a 500 turns backpressure into a livelock (2026-08-26)
+
+**When:** writing anything that inserts into `kortix.audit_events`, sizing an
+audit batch, or triaging `insert into "kortix"."audit_events"` blocking another
+one in `pg_stat_activity`.
+`kortix.audit_prepare_event` allocates the per-session sequence and hash-chain
+head from `kortix.audit_session_sequences`; PostgreSQL holds that row lock until
+the inserting transaction COMMITs. So the lock is held for the WHOLE statement,
+not the allocation: one 200-row ingest pinned a session for its full duration and
+one 100-row queue flush built in arrival order pinned up to 100 sessions at once.
+Rules: (1) one statement never spans two sessions; (2) chunk a batch so the lock
+is held per chunk and committed chunks survive a later failure; (3) give the
+audit pool a `lock_timeout` far below its `statement_timeout` — a lock wait is
+not work; (4) report contention (57014/55P03/40001/40P01) as a retryable 503 with
+`Retry-After`, never a 500, and back the client off exponentially.
+*Incident:* Essentia self-host 2026-08-26 — `POST …/audit/events` returned
+500 [57014] 445 times in 3h, each at ~10s, while the sandbox relay's flat 1s
+retry re-entered the same lock queue and kept the convoy alive. Predecessor:
+PR #6702's dedicated audit pool isolated the damage but did not remove it.
+*Enforcer:* `statementBatches` + its tests (`apps/api/src/shared/audit-queue.ts`),
+`isAuditContentionError` tests (`apps/api/src/shared/audit-db.test.ts`), the
+per-session lock-scope integration test in
+`packages/db/scripts/centralized-audit-v2.integration.test.ts`.
+
+### A CI lane that runs inside a third-party sandbox inherits that provider's availability, and a fallback nobody exercises is not a fallback (2026-08-26)
+
+**When:** deciding where a test lane executes, or adding a provider fallback
+to any CI path. The PR gate ran each lane inside a Platinum sandbox with
+`auto` fallback to Daytona. On 2026-08-25 Platinum restores timed out for ~an
+hour; every lane that fell back landed on a Daytona guest whose kernel
+(6.18.15) could not mount overlay2, so `dockerd` never started and the lane
+exited 3 — on runs 32905168237, 32906337979, 32908378870 and all three
+attempts of 32909110032. The fallback had never been exercised under load;
+it added a second provider's failure modes instead of removing the first's.
+The runner (8 vCPU / 32 GB, Docker, cached pnpm store and Docker images)
+could run the lane itself: core 2m16s and browser 4m30s natively versus ~5 min
+each through the sandbox. Rule: **run a lane on the runner unless the lane
+needs something the runner cannot provide (a public origin, a specific
+kernel, GPU); if a lane must use a provider, rehearse the fallback path
+weekly or delete it.** PR #6906 removed the sandbox-worker path for the PR
+gate; `deploy-preview.yml` keeps a sandbox only because a preview needs a
+public HTTPS origin.
+*Enforcer:* `tests/unit/sandbox-workflow.test.ts` "has no cloud-sandbox
+worker path left" fails if `tests.yml` or `tests-pr.yml` names a provider
+again.
+
+### A guard that tolerates its own tool being absent guards nothing (2026-08-25)
+
+**When:** writing any CI step of the form `if <tool> <pattern> … 2>/dev/null; then fail`.
+If the tool is missing, the command fails, `2>/dev/null` hides why, the `if` reads
+false, and the step prints its success line. Use a tool every runner image ships
+(`grep`), or probe for it (`command -v rg || exit 2`) BEFORE the check; and pin
+the pattern in one place the producer also uses (`GUARD_PATTERN_SOURCE` in
+`tests/src/core/scrub.ts`), so the writer scrubs exactly what the guard greps.
+*Incident:* `Guard test artifacts against secrets` in tests.yml / tests-release.yml /
+tests-browser-nightly.yml called `rg`, which GitHub's ubuntu-24.04 image does not
+ship. It reported "No secret-shaped values found." on every run since it was
+written. The first Blacksmith run (image ships rg) failed it: 32 secret-shaped
+values — 8 `kortix_pat_*`, `kortix_sa_*`, setup-link `{accountId,nonce,exp}`
+tokens — inside the 73 MB `results.json` + `report.html` uploaded as PUBLIC
+workflow artifacts on every PR (tokens of an ephemeral local stack; the
+release gate would have uploaded STAGING tokens the same way). Fixed in the
+Blacksmith follow-up PR: write-time shape scrub in `report.ts` (proven 32 → 0
+on the real artifact) + grep-based guard.
+*Enforcer:* `tests/unit/scrub-secret-shapes.test.ts` — scrubber vs guard
+pattern parity, `writeResults` output passes the guard, and every guard step
+uses `grep -rEIl "$pattern"` with the shared pattern, never `rg`.
+
+### A runner label is a tested contract, and a third-party runner pool is a deploy dependency (2026-08-25)
+
+**When:** changing any `runs-on` / matrix `runner:` in `.github/workflows/`,
+including an auto-generated PR (Blacksmith's Migration Wizard, Dependabot).
+Two rules. (1) Run the workflow-pinning unit lane before merging —
+`pnpm --dir tests test:unit` — because `tests/unit/*-workflow.test.ts` pin
+runner labels, cache directives and step order as source text; a label
+rewrite that touches nothing else still turns `main` red. (2) Never commit a
+bare runner label. Every Linux `runs-on` is
+`${{ vars.CI_RUNNER_<tier> || '<blacksmith label>' }}` so a repository
+variable can move a tier back to GitHub-hosted without a PR — a PR cannot fix a
+runner outage, its checks need runners. Off-Blacksmith the Docker actions
+fall back (cold) instead of failing. Runbook: `docs/runbooks/ci-runners.md`.
+*Incident:* PR #6901 (wizard, 125 label rewrites) merged at 22:00 UTC with its
+`warm core worker` check red on 3 `image-build-speed-workflow.test.ts`
+assertions (`ubuntu-24.04-arm` pinned) and three amd64 matrix legs left on
+`ubuntu-latest`; in the following hour Deploy Dev jobs waited 14 s – 6 min in
+`queued` for a Blacksmith runner while ≤3 ran. No prod impact.
+*Enforcer:* `image-build-speed-workflow.test.ts` "every Linux job keeps the
+Blacksmith runner kill switch" rejects any bare label in any workflow.
+*Addendum (same day):* a vendor's cache claim is not a measurement. Five
+consecutive builds of one `cache-key` on Blacksmith's sticky-disk builder
+reused 0 layers (`WORKDIR /app` re-executed) while the registry cache reused
+34–45 on the same Dockerfile; `grep -c ' CACHED'` on the build log is the only
+proof of a warm build. Keep `cache-from`/`cache-to: type=registry` until a
+re-measurement shows the sticky disk hitting (PR #6905).
+### A provider handed to the provisioner is a PREFERENCE, not a lock (2026-08-26)
+
+**When:** passing a sandbox provider into `provisionSessionSandbox`, or reading
+one back to decide whether failover may run. Only an explicit `body.provider`,
+an enabled per-project pin, or a restart on an existing box locks the runtime.
+The weighted balancer's pick must stay unlocked, or admin-gated failover is dead
+code for every session that never asked for a provider by name. *Incident:*
+`platform_settings.provider_fallback` was ON in prod, yet 654 sessions died on a
+provider at capacity in one hour with ZERO handoffs recorded in
+`session_sandboxes` — `createProjectSession` forwarded the balancer's pick and
+the provisioner read any provider as explicit. *Enforcer:*
+`apps/api/src/projects/lib/sessions.provider-failover-wiring.test.ts` fails if
+either end stops honoring `providerLocked`.
+
+### Jitter every fleet cron; identical manifests share an expression (2026-08-26)
+
+**When:** scheduling any cron a project starter, template, or marketplace clone
+ships. Every project that copied the manifest inherits the same expression and
+fires on the same millisecond. Offset each trigger deterministically by
+`(project_id, slug)` — deterministic because the catalog writes `next_fire_at`
+and the claim sweep recomputes it, and a random offset makes them disagree.
+*Incident:* 756 projects inherited `0 0 3 * * *`; the 03:00 hour took 779
+provisions and failed 654 (346 `capacity`) while every other hour that day ran
+100% healthy at 6-28 provisions. *Enforcer:*
+`apps/api/src/projects/trigger-schedule.jitter.test.ts` asserts 766 keys spread
+across the window instead of stacking.
+
+### Disabling a starter default does not disarm the fleet already built from it (2026-08-26)
+
+**When:** fixing runaway automation by editing `packages/starter/templates/`.
+That edit only changes what NEW projects receive. Trigger rows are reconciled
+from each project's OWN repo manifest, so every project created while the
+default was enabled keeps firing. Ship the template fix AND a remediation for
+the existing population in the same change, and say which one you verified.
+*Incident:* PR #6806 disabled the 03:00 harness reflector on 2026-08-23 and
+reached prod in v0.13.5; three nights later 766 projects still fired it and 654
+sessions failed. Growth stopped at the fix; the standing population did not.
+*Enforcer:* none — this is a review question, not a lint.
+
 ### Size sandbox memory from measured peak RSS, not nominal workload size (2026-08-24)
 
 **When:** assigning a sandbox template to image-heavy, document-heavy, or long-context agents.
@@ -673,7 +1192,10 @@ rendered under the turn that failed, or the user sees nothing at all.
 2026-08-12/13) returned no reply in every session on templates built before
 then; 0 gateway log rows ever. PR #6576.
 *Enforcer:* `managed-fallback-sync.test.ts` (bundled table vs `MANAGED_MODELS`
-drift), `managed-model-overlay.test.ts` (stale file + live overlay; failed
+drift — cited here since 2026-08-19 but ABSENT on `main` until 2026-08-27, when
+adding `glm-5.3-flash` found the gap; it now lives in
+`apps/kortix-sandbox-agent-server/src/__tests__/` and fails on a missing,
+misnamed, mis-sized, or mis-priced bundled entry), `managed-model-overlay.test.ts` (stale file + live overlay; failed
 fetch → bundled floor; await cap), `managed-scope.test.ts`; web: sync-store
 per-turn `session.error` tests. Not enforced: a live "picker ⊆ guest provider
 map" assertion after deploy — run the dev sweep by hand until it exists.
@@ -2427,3 +2949,757 @@ guards the lockstep pins; the shared sandbox goldens fail on a pin drift.
 *Incident:* no outage. Essentia's Bedrock model was unusable in native mode
 until PR #6873 (1.18.23) deployed and the box updated with
 `kortix self-host update --version dev`.
+
+## A provider's 204 is not a renewal; read the deadline back
+
+*Incident (2026-08-25, Essentia self-host):* four agent turns died mid-work,
+each exactly one hour after the sandbox was created or resumed. The last
+assistant message of each was `tokens 0/0/0, parts: []` — an LLM call that was
+in flight when the VM froze. Kortix had renewed every box every 20 s
+(`[active-turn-renewal]`, `errors:0`; E2B API log: 375 × `POST
+/sandboxes/<id>/timeout → 204`). E2B's `KeepAliveFor` clamps every renewal to
+the team's `max_length_hours`; the Essentia team sat on tier `base_v1`
+(`max_length_hours = 1`, the upstream migration default) with a matching
+`project_limits` row, so `endAt` never moved past `startedAt + 1h` and E2B
+paused the box (`sandbox_pause_initiated pause_reason=timeout`).
+
+**Rules.**
+1. `renewLifecycle` (`apps/api/src/platform/providers/e2b.ts`) reads `endAt`
+   back after `setTimeout` and throws `E2BLifecycleRenewalIgnoredError` when the
+   deadline did not advance to within `KORTIX_E2B_RENEWAL_TOLERANCE_MS` of the
+   backstop. The reaper and the active-turn renewal loop count it as an error
+   and the log names `max_length_hours`.
+2. A self-hosted E2B cluster must run its Kortix team at
+   `max_length_hours ≥ 24` (`tiers` and `project_limits`; the `team_limits`
+   view prefers `project_limits`). The cap is a ceiling on continuous running
+   time, not a lifetime: Kortix's own `deadline_at` still stops idle boxes.
+3. Existing sandboxes keep the cap they were created with. After raising it,
+   pause+resume (or restart) the live boxes; a fresh `POST /timeout` must move
+   `endAt`.
+4. The fingerprint of this class of failure: an assistant message with
+   `tokens 0/0/0` and no parts, created seconds before a provider pause; the
+   OpenCode log ends at `llm runtime selected` with no stream line after it.
+
+*Automation:* `apps/api/src/platform/providers/e2b.test.ts` — "refuses to
+report a renewal the provider clamped".
+
+## The runtime's body limit is the one that logs, never the one that is silent
+
+*Incident (2026-08-25, Essentia):* three empty assistant messages in two
+sessions were `413 Request Entity Too Large` on image-heavy turns (381k input
+tokens, 118 inline screenshots). Nothing in the gateway log explained them:
+Bun's own `maxRequestBodySize` default (128 MiB) equals
+`DEFAULT_MAX_REQUEST_BYTES`, so Bun refused the body before `fetch()` ran —
+plain-text 413, no `request_too_large` step, and a mid-upload socket close on
+the first attempt (`Cannot connect to API: The socket…`).
+
+**Rules.**
+1. `Bun.serve` in `apps/llm-gateway/src/main.ts` sets `maxRequestBodySize`
+   strictly above the pipeline's per-request cap
+   (`bunRequestBodyCeilingBytes`), so an over-limit body is refused by the
+   pipeline with its logged, digit-free 413.
+2. Any host runtime that enforces a body limit of its own (Bun, Caddy, an
+   ALB) must be configured above the application's cap, or the application's
+   limit is decoration.
+3. Raise a self-host gateway's cap through `GATEWAY_MAX_REQUEST_BYTES`; the
+   in-flight memory budget clamps it to what the process can hold.
+
+*Automation:* `apps/llm-gateway/src/request-body-ceiling.test.ts`.
+
+## The daemon owns the OpenCode binary; OpenCode must never upgrade itself
+
+*Incident (2026-08-22 and again 2026-08-25, Essentia):* a human ran `opencode`
+in the Session terminal. OpenCode's autoupdate (`autoupdate` unset = on)
+installed the newer version with plain `pnpm add -g` — no postinstall — leaving
+a 479-byte launcher stub, deleting the old global dir and dangling
+`/opt/kortix/opencode.current`. The running server survived on a deleted
+inode; the next restart booted the stub ("Still waking this session up").
+
+**Rules.**
+1. `buildOpencodeConfigContent` always emits `autoupdate: false`; a base
+   config cannot turn it back on. The composed Kortix config is never
+   `undefined` any more.
+2. Version changes reach a box only through the runtime-assets manifest and
+   `installOpencodeVersion` (`pnpm add -g --allow-build=opencode-ai`).
+
+*Automation:* `connector-mcp-config.test.ts` — "always disables OpenCode
+autoupdate".
+
+## A boot budget measures lack of progress, not wall-clock
+
+*Incident (2026-08-25 17:23–17:25, Essentia):* both reopened sessions failed
+to wake. The resume converged OpenCode 1.18.19 → 1.18.23 (manifest bump live
+since the updater restarted the API) and then sat through the new version's
+53 s first init. `/start` polled `starting` for 83 s and the fixed
+`STALE_OPENCODE_NOT_READY_MS = 90 s` budget parked both boxes as
+`runtime_boot_failed`; the automatic restart then booted in 20 s because the
+install had already landed.
+
+**Rules.**
+1. Every not-ready 503 from the daemon carries `X-Kortix-Boot-Phase`
+   (`boot-phase.ts`: last boot mark, OpenCode state, runtime-assets activity
+   such as `installing-opencode@<v>`, and the not-ready reason).
+2. The API restarts the per-reason clock whenever that phase changes
+   (`opencodeReadyWaitPatch`); `STALE_OPENCODE_NOT_READY_MS` now bounds time
+   without progress. `STALE_OPENCODE_BOOT_HARD_MS` (10 min from first
+   observation) bounds a boot that changes phase forever. A stub launcher
+   respawning in a loop never changes phase and is still caught at 90 s.
+3. Do not "fix" a slow legitimate boot by raising the fixed budget; expose the
+   progress and budget that.
+
+*Automation:* `unit-session-restart-url-contract.test.ts` ("progress-aware
+OpenCode boot budget"), `boot-phase.test.ts`, `proxy-auth.test.ts` ("names the
+boot phase").
+
+## A runtime started from `stopped` owns no turn; settle and redeliver on the wake
+
+*Incident (2026-08-25, Essentia):* the provider paused two boxes mid-turn. One
+was woken by the UI through the proxy before the reaper confirmed the stop:
+the fresh runtime answered `idle`, the open turn closed `completed`, and the
+user saw the agent "just stop" with nothing to resume. The other closed
+`runtime_gone` but its accepted prompt was never redelivered (only
+never-accepted deliveries were), so the user typed "go on".
+
+**Rules.**
+1. Every path that starts a provider-`stopped` box (`wakeSandbox` in the
+   preview proxy, the `/start` wake finalize) calls
+   `recoverTurnsAfterRuntimeRestart`: open ledger rows → `runtime_gone`,
+   turn authority dropped, each prompt redelivered DUE (`hold:false`).
+2. A stop the PROVIDER originated (`stopReason: provider_reconcile`) requeues
+   accepted prompts too (held); a stop Kortix chose keeps the old rule.
+3. A turn's verdict is never derived from a runtime that did not run it.
+
+*Automation:* `runtime-restart-recovery.test.ts`.
+
+## A refresh never converges a booting runtime; a stub launcher is never spawned
+
+*Incident (2026-08-25, Essentia):* the session-open refresh (env-sync) ran the
+runtime-assets pass during a resume, installing OpenCode 1.18.23 and
+restarting it under the boot; and the PATH launcher on two boxes was the
+479-byte pnpm postinstall stub, one restart away from a dead session.
+
+**Rules.**
+1. `refreshMayConvergeRuntime`: the refresh route schedules a reconcile only
+   when OpenCode is serving (`ok`); main.ts owns the post-boot pass.
+2. `isStubOpencodeLauncher`: the PATH launcher is skipped when it is (or shims
+   to) the postinstall stub; resolution falls through to the managed links.
+   Conservative: anything unreadable is not a stub.
+
+*Automation:* `refresh-converge-guard.test.ts`, `opencode-binary.test.ts`.
+
+## Window inline images inside the sandbox; the edge is too late
+
+*Incident (2026-08-25, Essentia):* vision-heavy turns accumulated 118 inline
+screenshots (>128 MiB per request). The gateway's image window keeps 12, but
+only after the body has crossed the wire; the runtime's body ceiling refused it
+first and the turn died with an empty assistant message.
+
+**Rules.**
+1. Every gateway session routes OpenCode through the daemon's localhost LLM
+   proxy (`main.ts`, not only warm hot-swap forks). The proxy applies the same
+   window (`llm-image-window.ts`, default keep 12 of ≤20) to `chat/completions`,
+   `messages` and `responses` bodies BEFORE they leave the box, and lifts its
+   own body ceiling so a large body can be shrunk rather than refused.
+2. Kill switch `KORTIX_LLM_PROXY_DISABLE=1` (direct provider config);
+   `KORTIX_LLM_MAX_INLINE_IMAGES=0` disables the window only.
+3. A live gateway enable/disable (`/kortix/env`) keeps the proxy's upstream +
+   token in step (`applyLlmGatewayMode`).
+
+*Automation:* `llm-image-window.test.ts`, `llm-proxy.test.ts` ("in-sandbox
+inline image window").
+
+## A gateway may not refuse a request parameter the client sends by default
+
+Found 2026-08-25 on dev, one hour after #6887 deployed. The bedrock adapter
+answered `400 unsupported_param` for a `reasoning_effort` it could not map
+(Nova, Grok, DeepSeek on Bedrock). The first turn of a fresh project — the
+auto-seeded `amazon-bedrock/xai.grok-4.6`, no tier picked — failed with that
+400. opencode attaches a default reasoning effort to every reasoning-capable
+model, so refusing the parameter refused the model, managed Grok included.
+Reverted in #6893 to a documented drop.
+
+**Rules.**
+1. Before a gateway refuses a request field, capture what opencode sends for a
+   turn where the user set nothing. A field present by default is part of the
+   model contract, not a user choice.
+2. Verify a provider wire shape against the real provider before mapping it.
+   The AI SDK's mapping is a hint: `@ai-sdk/amazon-bedrock` 5.0.59 emits
+   `reasoning_effort` for OpenAI ids; Bedrock GPT-5.6 rejects it with
+   `unknown_parameter` and accepts `reasoning: { effort }` (verified with the
+   Essentia account, us-west-2, every published tier).
+3. Prefer "drop and document" over "refuse" for a field with no verified
+   mapping; log the drop so the gap is visible.
+4. A dev verification with a fake provider key proves routing only. Use a real
+   key (a short-lived Bedrock bearer token from `aws-bedrock-token-generator`
+   on the provider account's profile) before calling a wire mapping verified.
+
+*Automation:* `packages/llm-gateway/src/transports/ai-sdk/ai-sdk.test.ts`
+pins the drop for Nova/Grok and the `reasoning.effort` shape for OpenAI ids.
+
+*Incident:* dev only; every Grok-on-Bedrock turn 400'd between the #6887
+deploy (`2635791cf1`) and the #6893 deploy (`77ec6b2307`), about 70 minutes.
+Prod was not promoted in that window. No data loss.
+
+## A 400 that names one parameter is never the turn's final answer
+
+*Incident (2026-08-25 19:40Z, Essentia session 58da74d4):* the gateway
+forwarded a reasoning field in a shape Bedrock's GPT-5.6 profile rejects
+(`400 unknown_parameter: reasoning_effort`); every turn on the model died with
+an empty assistant message until the wire shape was verified and corrected
+(#6893). The project's configured default was the trigger; the live mitigation
+was stripping it from `project_llm_routing_policies.model_generation_config`.
+
+**Rules.**
+1. `isUnknownParameterRejection(err, param)` (errors.ts) recognises an
+   upstream refusing ONE field. The chat handler re-dispatches a Bedrock
+   candidate once without `reasoning_effort` and remembers the model
+   (`noteBedrockOpenAiRejectsReasoningEffort`); the adapter never attaches the
+   field for a remembered model again. One retry, never the turn.
+2. The verified wire (#6893) stays the primary path; this is the backstop for
+   the next unverified claim, not a substitute for verifying.
+
+*Automation:* `errors.test.ts`, `simple-handler.test.ts`, `ai-sdk.test.ts`
+("never receives it again").
+
+## Regenerating a CA on every listener restart breaks trust and the CI clock
+
+*Incident (2026-08-25):* the daemon egress shim minted a fresh RSA CA on every
+rule change (`syncEgressShim` restart). Shells that had sourced the previous
+trust bundle would fail TLS until re-sourced, and node-forge's keygen (1-4 s)
+made the packages CI lane time out on the restart tests.
+
+**Rules.** One CA per daemon process (`sessionCa` in `egress-shim/index.ts`),
+reused across restarts; tests reset it via `__resetEgressShimForTests`.
+Timing tests keep at least a 5× margin between the paced event and the budget
+they assert (relay-transport "measures SILENCE").
+
+## Every blocking OpenCode endpoint must be exempted in BOTH proxy timeout layers
+
+Found 2026-08-26. `POST /session/:id/summarize` (the /compact flow) failed
+100% of the time with `503 {"error":"upstream unreachable","details":"The
+operation was aborted."}`. OpenCode holds the summarize response open until
+the whole summary turn completes (30s+ on a large model), but both proxy
+layers only exempted `message|command` from their short response timeouts:
+the in-sandbox daemon (`apps/kortix-sandbox-agent-server/src/proxy.ts`,
+`isBlockingTurnRequest`, 10s generic bound — the layer that actually emitted
+the error) and apps/api (`sandbox-proxy/preview-retry-budget.ts`,
+`isLongTurnCompletionRequest`, 15s bound). Because summarize was also absent
+from `isNonIdempotentSessionWrite` (`prompt-dedupe.ts`), the apps/api retry
+loop re-POSTed the non-idempotent summarize on each abort, stacking failed
+summary-attempt turns into the transcript. This is the THIRD instance of the
+same shape: `/message` (original), `/command` (2026-08-11, 4x duplicate
+sends), now `/summarize`.
+
+**Rules.**
+1. Any OpenCode endpoint that withholds response headers until a model turn
+   finishes must be listed in BOTH predicates (`isBlockingTurnRequest` in the
+   daemon, `isLongTurnCompletionRequest` in apps/api) AND in
+   `isNonIdempotentSessionWrite` so the retry loop never re-sends it.
+2. If the endpoint's request body is byte-identical between two deliberate
+   user retries (command: `{command,arguments}`, summarize:
+   `{providerID,modelID}`), it must be key-gated in
+   `shouldClaimPromptDelivery` — a keyless content-hash claim silently
+   swallows the user's own retry as `{"deduplicated":true}`.
+3. The daemon fix reaches only NEW sandboxes (the daemon is baked into the
+   snapshot); apps/api fixes apply on API restart. Verify on a session
+   created AFTER the snapshot rebuild, not on the box that reproduced it.
+
+*Automation:* the cross-layer drift test
+(`apps/kortix-sandbox-agent-server/src/__tests__/blocking-turn-timeout.test.ts`,
+"the two proxy layers agree on which calls block") drives both predicates
+with the same paths and fails on any drift, and now covers `summarize`;
+`preview-retry-budget.test.ts` + `prompt-dedupe.test.ts` pin the apps/api
+side.
+
+*Incident:* no prod outage — caught on local dev, but the identical code
+paths ship to prod, where every /compact would have 503'd the same way.
+
+## A turn probe never lists the whole root — the list is unbounded, the budget is not
+
+*Incident (2026-08-25, Essentia sessions 9c8749ac and 9df2a873):* the reaper
+asks the daemon `GET /kortix/health?turn=1&turn_session_id&turn_message_id`
+and acts on `turn_in_flight`. The daemon answered it by fetching the root's
+ENTIRE OpenCode message list inside a 5 s budget. On 9c8749ac that list was
+276.7 MB (inline base64 image parts; `?limit=20` alone was 26 MB). The read
+never fit, the daemon answered `turn_in_flight: null` ("could not tell") on
+every visit, the reaper drip-extended the box on that non-answer for 2.5 h
+after OpenCode had finished the turn (`exiting loop` 21:00:18Z, probe still
+null at 22:10Z), and the session rendered "working" until the ledger row was
+settled by hand.
+
+**Rules.**
+1. `observeOpencodeDelivery` / `inspectOpencodeRoot` read the newest
+   `TURN_PROBE_WINDOW` (12) messages via `?limit=` — the newest N in
+   chronological order (verified on OpenCode 1.18.23) — with a 20 s budget.
+   A prompt older than the window is proved by `GET /session/:id/message/:id`
+   (~400 bytes; 404 `NotFoundError` when absent). Only a proven absence is
+   `abandoned`; a failed by-id read stays `null`.
+2. Any new daemon read of a session transcript states its bound in the
+   request. Roots grow for hours; "the list" is never small.
+3. The live opencode port is a property of the PROCESS (`childPorts`,
+   `livePort()` in opencode.ts), never a variable beside it. Same box, same
+   day: the daemon reported `starting` on 4096 for 2 h while its own child
+   (pid 2423) served on 4097 — every prompt 503'd and no turn end was ever
+   observed. The verified reload (two opencodes, promote the proven one) is
+   by design; a bookkeeping variable that can drift from the process is not.
+   The verifier also declines when the candidate half already answers: the
+   incumbent would otherwise "prove" a candidate that died on EADDRINUSE and
+   promotion would kill the only opencode the box has.
+4. The daemon log is on the box: every logger line also lands in
+   `KORTIX_DAEMON_LOG_FILE` (default `/opt/kortix/logs/daemon.log`, rotated at
+   32 MiB to `.1`), readable with `GET /kortix/logs?source=daemon|opencode|all&tail=N`
+   through the sandbox proxy (`/v1/p/<external_id>/8000/kortix/logs`). A
+   daemon whose only log is a stream nobody keeps cannot be debugged after
+   the fact — that is why this entry says "unproven".
+5. Box telemetry is on record: `[resources]` every 60 s and on every OpenCode
+   state change (memory, cgroup limit + oom_kill counter, load, disk on
+   /workspace + /opt/kortix + /tmp, daemon + opencode RSS, duplicate
+   `opencode serve` pids), `[resources] pressure` when a threshold is
+   crossed, and `GET /kortix/diag` returns state + resources + runtime
+   report + both log tails in one document. Ask the box before guessing.
+
+*Cost of the old probe, measured (2026-08-25 23:12Z, session 9df2a873):* the
+reaper visited that box 345 times in one hour; every visit made OpenCode
+JSON-serialise its 140 MB root (~48 GB of serialisation per hour) for an
+answer that never fit the budget. OpenCode reached 6.48 GB RSS on an 8 GB
+box and the kernel OOM-killed it mid-turn (`dmesg`: `Killed process 1506
+(opencode.exe) anon-rss:6484532kB`). An unbounded probe is not only blind,
+it is a memory attack on the process it probes.
+
+*Automation:* `orphaned-turn-finalize.test.ts` ("turn probes read a bounded
+window, never the whole root"); the stub fetch there serves `?limit=` and
+`/message/:id` the way 1.18.23 does.
+
+## Bun's fetch has a hidden 300 s idle timeout — every model hop opts out
+
+*Incident (2026-08-25 22:04Z, Essentia session 9c27242e):* a turn on
+`codex/gpt-5.6-sol` at reasoning effort `max` died after 273.8 s with
+`{"message":"The operation timed out.","code":"upstream_timeout"}`. Nothing in
+this repo sets a 300 s timer; the gateway's own budgets are 90 s / 5 min for
+response headers and 90 min for body inactivity. Measured on Bun 1.3.14 the
+same night: `fetch` throws `TimeoutError: The operation timed out.` at 300.0 s
+when the socket is idle (no headers, or headers then silence); a stream that
+drips a byte every 60 s lives past 420 s; a caller `signal` does NOT disable
+it; `timeout: false` (or `0`) does. The provider was still thinking.
+
+**Rules.**
+1. Every fetch on the model path passes `timeout: false`: gateway → provider
+   (`upstreamFetch`, `packages/llm-gateway/src/upstream-fetch.ts`, used by
+   both `callUpstream` and the AI-SDK transport), API relay → gateway
+   (`apps/api/src/llm-gateway/wire.ts`), box llm-proxy → API
+   (`kortix-sandbox-agent-server/src/llm-proxy.ts`). The gateway's explicit
+   timeouts are the only ones on that path.
+2. A timeout you did not write is still yours to know about. When an error
+   message is not in the repo, measure the runtime before blaming the
+   provider: `bun-idle.ts` (headers-then-silence, no-headers, drip, option
+   variants) took 12 minutes and settled it.
+
+*Automation:* `packages/llm-gateway/src/upstream-fetch.test.ts` (option is
+forwarded; Bun accepts it on a real request).
+
+## Image bytes never live in the transcript; memory is guarded before the kernel; an unknown probe backs off
+
+*Incident (2026-08-25 23:12Z, Essentia session 9df2a873):* the kernel OOM-killed
+OpenCode at 6.48 GB RSS on an 8 GB box (`dmesg`: `Killed process 1506
+(opencode.exe) anon-rss:6484532kB`), mid-turn, leaving an empty assistant
+husk. Two forces met: the transcript held 275 MB of base64 tool screenshots in
+`part.state.attachments[].url` (352 of 538 tool parts) which every LLM step
+and every list re-serialised, and the reaper re-probed the box 345 times in
+one hour after `unknown` (two replicas, 20 s cadence), each probe forcing a
+full-transcript serialisation. OpenCode's own compaction clears old tool
+output text and stops SENDING old attachments, but never removes bytes from
+storage (`session/compaction.ts`, `message-v2.ts`); there is no native
+"store a path instead" for tool attachments (`tool/read.ts` writes `data:`).
+
+**Rules.**
+1. `attachment-offload.ts` (daemon): when idle, attachments older than the
+   newest 12 per session (and every one OpenCode marked `compacted`) move
+   to `~/.local/share/kortix/attachments/<id>`; the row keeps a 1×1 PNG
+   `data:` placeholder (valid for OpenCode's model conversion, the AI SDK,
+   the media-extraction path) plus `kortix:{offloaded,sidecar,bytes,mime}`.
+   Optimistic UPDATE on `time_updated`; never the newest message; never
+   during a turn. Verified on 1.18.23: OpenCode serves the rewritten row on
+   the next read (7 ms UPDATE, no restart). `/kortix/part` serves sidecar
+   bytes and searches nested `state.attachments` (tool screenshots 404'd
+   before).
+2. Memory guard (`resources.ts`): ≥80 % box/cgroup memory → 10 s sampling;
+   ≥92 % with a turn in flight → `POST /session/:id/abort`, turn-stream
+   `kind:end status:error error_name:SandboxMemoryGuard` with the numbers,
+   then an offload pass. One action per crossing; re-armed below 80 %.
+   `KORTIX_MEMORY_GUARD_PCT` overrides.
+3. Reaper (`box-reaper.ts`): an `unknown` observation backs the PROBE off
+   per sandbox (20 s → 5 min, per replica); the drip still extends.
+   `probeBackoff` clears on the first readable answer.
+
+*Automation:* `attachment-offload.test.ts` (real bun:sqlite fixture in the
+1.18.23 row shape, optimistic-skip race), `part-route-attachments.test.ts`,
+`resources.test.ts` ("memory guard"), `sandbox-reaper.test.ts` ("not
+re-probed until its back-off elapses").
+
+## A non-prod secrets profile must never hold a production-reaching credential
+
+Found 2026-08-26 while scoping Dotenvx Armor access. `apps/api/.env` — the
+local profile every Armor member decrypts daily — carried 22 secrets
+byte-identical to `apps/api/.env.prod`. One of them, `SUPABASE_MGMT_TOKEN`,
+was a personal Supabase management token that executed SQL on the Kortix
+PROD project (`POST /v1/projects/<ref>/database/query` → 201) and was used
+nowhere in the repository. Restricting the PROD keypair to the owner had
+protected nothing, because the same credentials lived in the file everyone
+had.
+
+**Rules.**
+1. Classify a profile by what its credentials can reach, not by which
+   database URL it names. A local DB with production vendor keys is a
+   production profile.
+2. A secret-classed key in `.env`, `.env.dev`, or `.env.staging` must not
+   equal its `.env.prod` value. Every exception is a listed debt with the
+   rotation that removes it.
+3. Delete a credential the code never reads. A dead key is pure exposure.
+4. Personal tokens never belong in a shared profile. Use a service credential
+   scoped to one environment.
+5. A per-key access control (Armor FGAC) only works after the split above.
+   Do the split first, then restrict the prod keypair.
+6. Classify each environment's data explicitly. The dev Supabase project
+   holds 2.7k signups that the owner classifies as synthetic; that decision
+   is recorded, not assumed. Until the shared vendor keys are split, only
+   `.env` qualifies for people without production clearance.
+
+*Automation:* `pnpm test:envs` runs `scripts/secrets-envs-separation.py`,
+which fails on any unlisted non-prod secret that equals its prod value;
+`scripts/secrets-shared-with-prod.allowlist` is the tracked exception list.
+
+*Incident:* no known misuse. The Armor audit log shows the PROD keypairs were
+decrypted by 4 members and 1 former member before the restriction; the shared
+vendor credentials remain to be rotated per the allowlist (PR #6910).
+
+## A stamped failure is a cooldown, never a gravestone — and a negative is a claim
+
+*Incident (2026-08-26, Essentia).* Two sessions could only be recovered by a
+human pressing Restart.
+
+- Session `e06ad0c4` answered `POST …/start` with `stage:"failed"` in **47 ms**,
+  making **no provider call**. A wake had exceeded the FIXED
+  `RUNTIME_WAKE_LEASE_MS = 240_000`, and maintenance stamped
+  `stopReason:"runtime_wake_failed"`. The box was startable: the manual restart
+  reached ready in **10 s**.
+- Session `9c8749ac` (box `i67m4fhw2t3nesssgl4yf`) replayed
+  `{"stage":"failed","retriable":false,…"stopReason":"runtime_boot_failed",
+  "healthStatus":"unknown","lastInitError":null}` on **every open for 10+
+  hours** from a stamp written at 03:37Z. Four fields from four different
+  writes; none described the call, which touched nothing.
+
+Both stamps were written by a budget that measured wall clock, and both were
+consumed by a `/start` branch that returned before any provider call. Only
+`POST …/restart` cleared them, which is why the human's one click always worked.
+
+**The rules.**
+
+1. **A stamped runtime failure suppresses re-attempts for a COOLDOWN, and for
+   nothing longer.** After it lapses the next `/start` re-attempts by itself.
+   The cooldown escalates with consecutive failures (2 / 5 / 10 min) so a broken
+   provider is not hammered, and the verdict expires 30 min after the last
+   failure: no verdict outlives its evidence.
+2. **Cover every stamp that short-circuits the path**, not the one in the
+   report. `runtime_wake_failed` AND `runtime_boot_failed` produced the same
+   dead end from two different writers.
+3. **`retriable` is derived on every call, never persisted.** Anything the
+   server can still re-attempt must not answer `retriable:false` — that flag
+   tells the client's escalation ladder to stop.
+4. **A negative is a claim: carry its evidence.** Every `/start` failure now
+   ships `failure.evidence` = which check, when it ran, the provider text, the
+   attempt count, and `next_retry_at`. A `failed` payload with
+   `lastInitError:null` tells a user nothing.
+5. **The answer states what THIS call did and observed.** `action`,
+   `observation` (with `known:false` meaning NOT CHECKED, never "checked and
+   unknown"), `boot.actively_starting`, and one `observed_at`. A payload no live
+   check supports is not a state worth naming.
+6. **The wake budget measures lack of progress** — the same rule as
+   "A boot budget measures lack of progress, not wall-clock". A provider-state
+   change restarts the 90 s no-progress budget and refreshes the durable lease;
+   `RUNTIME_WAKE_HARD_MS = 10 min` bounds the whole wake and never restarts, so
+   the reconcile/billing exemption that lease grants can never be held open by a
+   flapping provider.
+7. **The observer that DEFERS a park owns the confirmation.** A mid-turn
+   `stopped` read that waits for a second observation must schedule that second
+   read itself, not assume someone polls again. Session `29861dfa` /
+   `inqwpv4a1cc1kynlg46k8` read `running` for 5+ minutes while the provider said
+   `not running (status: stopped)`, and the queued prompt burned against it.
+
+*Automation:* `apps/api/src/projects/routes/stopped-wake-result.test.ts` (the
+10-hour replay, both stamps, the ladder, the evidence),
+`session-lifecycle/runtime-wake-fence.test.ts` (progress-aware budget, hard cap,
+cooldown ladder), `session-lifecycle/runtime-wake-billing-invariant.test.ts`
+(the 2026-08-17 mid-turn park and the compute-close exemption stay intact),
+`session-lifecycle/stopped-observation-followup.test.ts` (bounded confirmation),
+`session-lifecycle/start-envelope.test.ts` (one envelope per open state).
+
+### A retry class is a claim about the FAILURE, not about the call that returned it (2026-08-26)
+
+**When:** writing or reviewing any `retryable = <outcome> === …` line on a
+delivery/queue path. `executeQueuedContinue` derived retryability from one
+outcome value, and every producer of that value — a stopped box, a parked
+session, a dead resolved target — was a DOWN RUNTIME, not a bad message. A
+queued prompt delivered while its box was unreachable went `dead_lettered` on
+attempt 1 (`state:failed, attempts:1, last_error:"delivery outcome: failed"`)
+and was never re-tried when the box returned minutes later. Rule: **name the
+unreachable-runtime class separately from the refusal class, keep the work
+queued with a runtime-scaled backoff, spend no dead-letter budget on it, and
+re-arm it on the event you are actually waiting for.** *Enforcer:*
+`deliver.test.ts` (stopped/parked → `unreachable`, missing → `no-session`) and
+`runtime-unreachable-park.test.ts` (bounded budget, backoff ladder, fresh
+idempotency key, Stop survives as a hold).
+
+### A provider's "resume" is not a promise that your processes come back (2026-08-26)
+
+**When:** using any pause/resume sandbox lifecycle that persists the filesystem
+only. E2B's `lifecycle.autoResume` requires a MEMORY snapshot; with
+`keepMemory:false` the SDK documents the box as cold-booting and needing an
+explicit `connect()`, and Kortix sets no template `startCmd` — so apps/api is
+the only thing that starts the runtime. Resumes that came back with a dead
+process tree burned the full 190 s health wait and handed back an unreachable
+box; only a human restart (a NEW sandbox) healed it. Rule: **after a resume,
+prove the daemon answers on a short bound; if it does not AND no supervisor
+process is alive, clear the stale lock, relaunch once, re-verify, and log the
+workaround under one greppable string so its rate is countable.** Never `rm` a
+flock'd lock while a live holder exists — that does not free the lock, it lets a
+second daemon win a different inode. *Enforcer:* `e2b.test.ts` — dead resume is
+revived and re-verified, a healthy resume touches nothing, a merely-slow resume
+is never double-started.
+
+### An image is a cache; a boot that blocks on building one has confused it for the truth (2026-08-26)
+
+**When:** touching `ensureSandboxImage` or any boot-path call that can reach a
+provider build. Every `self-host update` bumps the runtime fingerprint and
+starts a template rebuild (14 m 11 s measured); session starts inside that
+window sat in `provisioning` for 10–34 minutes, polling the in-flight build for
+up to 12 minutes or building inline. The daemon converges on the deploy's
+runtime assets at boot and on every resume, so a box booted from the previous
+ready image serves the same CLI, skills and OpenCode pin. Rule: **a session boot
+serves the last image its template lineage actually shipped and lets the new one
+bake behind it; only a genuinely FIRST build may block.** Bound the fallback to
+the same lineage, same provider, recent — convergence does not rebuild the base
+rootfs. *Enforcer:* `last-ready-image.test.ts` (predecessor served while the new
+identity builds; first build still blocks) and `e2b.test.ts` (a resume never
+consults a template at all).
+
+## A retry that inherits the previous attempt's budget is not a retry
+
+*Incident (2026-08-26, Essentia, session `29861dfa` / box `inqwpv4a`).* The
+first production outing of the automatic wake-cooldown ladder (see "A stamped
+failure is a cooldown, never a gravestone") defeated itself.
+
+Attempt 1 failed at ~13:27 in a post-roll build storm. The cooldown rung
+re-attempted at ~13:33: the resume launched the entrypoint, the daemon booted
+through 13:34:48.8, authenticated to the gateway at 13:34:48.5–49.1 and claimed
+its initial turn at **13:34:49.216** — and `/start` parked the box at
+**13:34:49.202**. The boot lost by **14 ms**.
+
+`opencodeBootWaitFirstSeenAt` was stamped during attempt 1 and cleared by
+nothing: `parkEstablishedRuntime` copies the whole metadata object, the wake
+claim stripped only four of the ten readiness-clock keys, and
+`clearRuntimeReadinessClocks` stripped the first eight **by hardcoded index**.
+Only a human Restart (`prepareInPlaceRestartMetadata`, which loops the whole
+list) cleared it. So the 10-minute hard cap was ~7 minutes old before attempt 2
+started booting, and **every automatic rung after the first five minutes was
+deterministically doomed, regardless of progress.**
+
+**The rules.**
+
+1. **Every automatic retry re-baselines the same clocks a human retry does.** An
+   attempt judged against a predecessor's budget is not an attempt. The only
+   thing an automatic rung keeps that a human restart clears is the
+   consecutive-failure accounting that drives its own escalation.
+2. **Never write a key list twice.** The four/eight/ten split existed because
+   three call sites hand-wrote `- 'key'` chains. Generate every chain from the
+   single exported list; index-addressed subsets (`KEYS[0] … KEYS[7]`) silently
+   stop covering a list that grows.
+3. **Scope a budget to its attempt, causally.** `staleOpencodeReadyReason` now
+   ignores any clock stamped before this attempt's boot epoch
+   (`runtimeBootEpochMs` = newest of `runtimeWakeStartedAt`,
+   `providerRunningConfirmedAt`, `initSucceededAt`). This is **not** a
+   progress reset: a stub launcher that changes phase for ever is still caught
+   at the cap, because only a NEW attempt moves the epoch. Do not "fix" an
+   inherited budget by making the hard cap progress-aware — that undoes
+   "A boot budget measures lack of progress, not wall-clock".
+4. **`jsonb - $1` is ambiguous; strip keys as literals.** Postgres cannot
+   choose between `jsonb - text` and `jsonb - integer` for an untyped
+   parameter. A bind-parameter strip inside a `try/catch` that only
+   `console.warn`s fails invisibly — which is the likeliest reason the
+   ready-path clear never cleared anything in production.
+
+*Automation:* `unit-session-restart-url-contract.test.ts` — "an automatic rung
+never inherits the previous attempt boot budget" (8 tests, including "a stub
+launcher that changes phase for ever is still caught at the cap" and
+"who resets the retry accounting"); `e2e-project-session-contract.test.ts` —
+"the automatic rung re-baselines the boot clocks but KEEPS the failure
+accounting".
+
+## An alarm on a metric the workload violates by design is noise, and noise trains you to delete the real page (2026-08-26)
+
+**When:** adding or reviewing any CloudWatch/SNS alarm, especially compliance
+alarms that exist to satisfy a control (Drata DCF-86) rather than an incident.
+`TargetResponseTime` Average ≥ 2 s on the gateway and API ALBs fired on 6–11 s
+averages — normal, because the gateway streams LLM completions and the API
+holds SSE `/event` streams for minutes. The alarm flapped ALARM/OK every 5–10
+min; each flap fanned out through **two** alarm sets on the same ALB (a
+hand-made `compliance-*` set from the 2026-07-27 evidence pass, never in
+Terraform, plus the `kortix-alb-*` set) × **three** email subscriptions on the
+same person = ~300 emails in one day and zero incidents. The 5xx alarms in the
+same inbox — the ones that page a real outage — had 3 messages each and were
+being trashed with the rest. Rules: **(1) before adding a threshold alarm, name
+the request shape that violates it in steady state; if streaming, long-poll or
+SSE traffic crosses it by design, alarm on errors and host health instead.
+(2) One alarm set per resource, and it lives in code — a console-made duplicate
+is drift, and the reconciler that owns the family deletes it. (3) A reconciler
+that can only create is half a reconciler: it must also delete what it retires,
+or a deleted alarm is resurrected on the next tick and Terraform's forget/destroy
+is undone.** `removed { lifecycle { destroy = false } }` lets the automatic
+apply pass its no-delete guard while the Lambda does the real deletion.
+*Enforcer:* `functions/test_alb_alarm_reconciler.py` — `ALARM_SPECS` contains no
+`TargetResponseTime`; retired `kortix-alb-*-target-response-time` (including the
+per-target-group variants Terraform never managed) and `compliance-*` alarms in
+`AWS/ApplicationELB` are deleted; `compliance-*-cpu-high` and every desired
+alarm survive.
+
+## A scheduled control that crashes is a control that never ran — alarm on the reconciler itself (2026-08-26)
+
+**When:** adding a boto3 call to any compliance Lambda
+(`infra/terraform/compliance-monitoring/functions/*`), or trusting that a
+scheduled reconciler "has been running". `fcf779ffb3` (2026-08-06) taught the
+ALB alarm reconciler to call `describe_target_groups`; its role only allowed
+`DescribeLoadBalancers`. Every 5-minute tick in 3 regions raised `AccessDenied`
+for 20 days. The schedule was ENABLED, the function Active, the apply green —
+and the alarms the reconciler exists to maintain silently stopped being
+maintained. It surfaced only because #6919 needed the reconciler to delete
+alarms and nothing was deleted. Rules: **(1) every AWS API a Lambda calls is
+asserted against its IAM policy in CI, not discovered in prod.** **(2) a
+scheduled control gets an `AWS/Lambda Errors ≥ 1` alarm to the same topic as
+the alarms it maintains; a control's own failure is the loudest alarm in the
+family.** **(3) "the apply succeeded" proves the code shipped, not that it ran
+— read the function's log group or its result payload before calling the
+change verified.** *Enforcer:*
+`infra/terraform/scripts/test_reconciler_iam_coverage.py` (terraform-ci) and
+`reconciler-health.tf` (`kortix-compliance-<function>-errors` alarms, 3
+regions).
+
+## Local Bun is not image Bun — feature-detect web APIs, and a green health gate proves only /health
+- **Incident (2026-08-26):** compress middleware (round-7 perf PR) called `CompressionStream`. Local dev + CI run Bun 1.3.14 (has it); the API image is `oven/bun:1.2-slim` = Bun 1.2.23 (does not). Every response ≥1KB on a compressible type 500'd (`ReferenceError`) on dev-api and Essentia; `/health` is <1KB, skipped the path, stayed 200 — so the deploy verification gate passed while `GET /v1/projects/:id` 500'd and the project shell showed "This project didn't load".
+- **Rule:** any Web/runtime global used in `apps/api` (or anything shipped in the Bun image) must exist in the image's Bun line (`ARG BUN_VERSION` in `apps/api/Dockerfile`), not just locally. Feature-detect (`typeof X !== 'undefined'`) with a `node:*` fallback, or bump and test the image's Bun. Deployed-SHA health checks do not exercise real routes — after a deploy that touches the response path, hit one real authenticated >1KB route.
+- **Enforcement:** `compressedStream()` in `apps/api/src/middleware/compress.ts` feature-detects and falls back to `node:zlib`; `compress.test.ts` pins the forced-fallback path (`useNative:false`) so the image path is exercised by CI forever.
+
+## Self-host update health-gate deadlock: the bug that sickens a replica blocks the update that fixes it
+- **Incident (2026-08-27, Essentia):** the compress 500 bug made the scheduler-leader API replica fail its own docker healthcheck (`/health` JSON >1KB on the leader → gzip path → 500). `kortix self-host update` then aborted every roll with `dependency failed to start: container ... is unhealthy` — compose's health gate refused to replace the sick container with the image that cures it. The box stayed broken through three roll attempts that all reported the same abort.
+- **Rule:** when a self-host update aborts on an unhealthy EXISTING container and the update contains the fix for that unhealthiness, `docker rm -f` the unhealthy replicas first, then re-run the update. Read the update's full output — an aborted roll leaves old containers running, so a later health probe answering does NOT mean the roll landed; verify the running commit, not liveness.
+- **Enforcement:** none automated yet; candidate = updater flag to replace unhealthy replicas of the service being updated.
+
+## A mocked-db unit test is not a real INSERT: a raw `sql` Date binding 500'd every real write
+- **Incident (2026-08-27, WS-Z4 assembly of the Kortix Runtime API):** the daemon's runtime-projection push (`POST /v1/platform/runtime-projection`) 500'd on EVERY real request. `saveRuntimeProjection`'s out-of-order guard was `sql`${col} <= ${input.capturedAt}`` — a raw `sql` fragment binding a JS `Date`. postgres-js serializes a Date inside a raw fragment with its locale `toString()` ("Thu Aug 27 2026 03:01:29 GMT+0200 (CEST)"), which Postgres cannot parse as a timestamp. The `.values()`/`set` column bindings map a Date fine; only the raw fragment broke. The route's unit test mocked `db` wholesale, so the SQL never ran — the bug was invisible until a real daemon pushed to a real Postgres.
+- **Rule:** inside a raw `sql`…`` fragment, never bind a JS `Date` for a timestamp column — bind `date.toISOString()` with an explicit `::timestamptz` cast. And a handler whose only test mocks the database has ZERO coverage of the SQL it emits: pin any raw `sql` fragment by compiling it (`new PgDialect().sqlToQuery(frag)`) and asserting the params are strings, not Dates — or exercise it against a real DB.
+- **Enforcement:** `capturedAtNotNewerThan()` in `apps/api/src/projects/lib/session-runtime-projection.ts` is the extracted fragment; `session-runtime-projection.test.ts` compiles it and asserts the bound param is the ISO string + `::timestamptz`, never a Date. Verified live on a Platinum box: the push went 500 → `200 {"stored":"stored"}`.
+
+## A session-bound sandbox PAT is default-denied by enforceTokenProjectScope: whitelist each new sandbox->API surface
+- **Incident (2026-08-27, WS-Z4):** the same runtime-projection push ALSO 403'd before it ever reached its handler. The in-sandbox `KORTIX_TOKEN` is one project+SESSION-scoped PAT ("One sandbox, one session-scoped Kortix credential"), and `enforceTokenProjectScope` in `apps/api/src/middleware/auth.ts` is DEFAULT-DENY: any surface not explicitly allowed 403s with "Project-scoped token cannot call this surface". A new sandbox->API route (`/v1/platform/runtime-projection`, the boot-timeline sibling) had no allowance, so the daemon's push died at the gate on every environment. Same class as the earlier `/v1/skills` and `/v1/runtime-assets/` 403s that shipped for the same reason.
+- **Rule:** whenever the sandbox daemon gains a new API route, add an explicit branch to `enforceTokenProjectScope` (gated on session-binding for a sandbox-only surface) AND a regression test in `auth.test.ts` — the route's own handler test does not mount `combinedAuth`, and the e2e flows exercise only ANON + a Supabase-JWT owner, so nothing else catches it.
+- **Enforcement:** `enforceTokenProjectScope` now allows `/v1/platform/runtime-projection` for a session-bound PAT only; `auth.test.ts` pins both the allow (session-bound) and the deny (plain project PAT). The handler still re-verifies the sandbox↔session binding via `isSessionSandboxCredential`.
+
+## A fire-and-forget scheduler must check its config BEFORE arming the timer, not inside the callback
+- **Incident (2026-08-27):** the sandbox daemon's `scheduleRuntimeProjectionPush` (runtime-projection-relay.ts) always armed a 2s `unref()`d debounce timer, and only checked control-plane config (`KORTIX_SESSION_ID/TOKEN/API_URL`) inside the fired `doPush`. Every unconfigured daemon (self-host, local dev, and every daemon unit test that does not set those vars) armed a timer that fired later to do nothing. Bun runs a package's test files in ONE process, so the env-route test armed this relay and the unref'd timer fired mid a SIBLING test — flaking `env route — mid-session boundary rules arm the shim` intermittently in CI while the full suite passed 1098/0 locally. Re-running the lane never converged (3 attempts across #6950/#6953).
+- **Rule:** a debounced/deferred fire-and-forget must no-op at the SCHEDULE call when there is nothing to do (no config, no sink), not only when the timer fires. An armed unref'd timer outlives its caller and leaks work into whatever runs next — a real production waste (self-host daemons scheduling pushes they can never send) and a test-order flake generator. Gate at entry: `if (!configured()) return` before `setTimeout`.
+- **Enforcement:** `projectionConfigured()` guards the top of `scheduleRuntimeProjectionPush`; the relay's own test still sets the three env vars so the push path stays exercised (25/0).
+
+## Under the gateway every model is `providerID: 'kortix'` — a "same provider" heuristic keyed on `providerID` spans the whole catalog
+- **Incident (2026-08-27, Essentia self-host, web `39685da4`):** the composer model picker looked dead — every click left the chip on "Claude Opus 5 (Global)" and every prompt was sent with it. The click DID persist the pick; `healBedrockModelKey` (#6915, 2026-08-26) then replaced it at resolution time. The heal finds "the key's own provider" by `providerID` equality and detects Bedrock by any sibling ranking as an inference profile. On the gateway all 481 catalog models share `providerID: 'kortix'`, `bedrockInferenceProfileRank` strips the `amazon-bedrock/` prefix so `amazon-bedrock/global.anthropic.claude-opus-5` still ranks 2, and OpenRouter/Codex/bare-Bedrock picks (no `global.` twin) fell through to the auto-seed fallback = the newest profile in the whole catalog. The unit suite (16/0) was green because every fixture used native ids (`amazon-bedrock` / `xai.grok-4.6`); no test flattened a gateway catalog.
+- **Rule:** any SDK/web logic that groups, filters, or "heals" models by provider must resolve the REAL provider (`FlatModel.provider`, or the modelID prefix under the gateway), never `providerID` alone — and must be tested against BOTH shapes: a native list and a `projectLlmCatalogToProviderList` gateway list. A native-only guard (the gateway already retries bare Bedrock ids after the 400, #6897) must short-circuit on `GATEWAY_PROVIDER_IDS`.
+- **Enforcement:** `healBedrockModelKey` step 0 returns gateway keys untouched; `bedrock-invokable.test.ts` "under the gateway the heal is inert" builds the fixture through the real `projectLlmCatalogToProviderList` → `flattenModels` and pins OpenRouter, bare-Bedrock and Codex picks as untouched.
+
+## Deployed configuration has one truth, and it is not the file in git
+
+Found 2026-08-27 while auditing secret access. The git profiles
+`apps/api/.env.{dev,staging,prod}` had drifted far from what the deployed
+environments actually run: dev was missing 54 keys, staging 34, prod 90, and
+`.env.prod` still declared `FRONTEND_URL=http://localhost:3000`. Runtime truth
+is the AWS Secrets Manager blob `kortix-<env>-env`, injected by ECS as
+`KORTIX_ENV_JSON`, plus the plain `environment` entries on the API task
+definition. Nothing synchronized the two: the dev and prod blobs are edited by
+operators, and the staging blob is rebuilt as existing-blob-plus-overrides on
+each staging deploy. An operator reading the git file was reading fiction.
+
+**Rules.**
+1. Name the single runtime source for every deployed setting, and make a
+   committed check assert the file equals it. Drift that nothing measures grows
+   without bound.
+2. Pull from the runtime source into the file. Push a file value into the
+   runtime source only as a deliberate change with a rollout.
+3. A file that mirrors a deployed environment must not receive a credential
+   whose value is identical to production, when that file is readable by more
+   people than production is. Keep it in the secret store and record the
+   omission with its reason.
+4. Every tool that reads or writes a dotenvx file must run the CLI with a bare
+   environment. An exported shell variable makes `dotenvx get` return the shell
+   value and `dotenvx set` a silent no-op that reports `○ no change`, so a
+   comparison silently reads — and a write silently skips — the wrong value.
+5. dotenvx writes `KEY="encrypted:…"` with quotes. A plaintext scan that matches
+   `=encrypted:` reports every encrypted value as plaintext. Match
+   `=["']?encrypted:`.
+6. Verify a credential before treating it as sensitive. The three
+   `AWS_SECRET_ACCESS_KEY` values in these files returned
+   `SignatureDoesNotMatch`; they were dead keys, not live production access.
+
+*Automation:* `pnpm test:envs --sm` runs `scripts/secrets-sm-parity.py check`,
+which fails on any Secrets Manager or task-definition key that is missing or
+different in the file. `scripts/secrets-file-only.allowlist` and
+`scripts/secrets-sm-quarantine.allowlist` carry the two classes of deliberate
+exception, each line with the rotation that removes it.
+
+*Incident:* no outage. The audit found the drift; no deployed environment was
+changed.
+
+## A down box has TWO proxy responses; the SDK must treat BOTH as wakeable
+
+Found 2026-08-27 on dev: clicking a session in the sidebar showed "Couldn't
+load this conversation." with a Retry that never recovered. Root cause: when a
+session's sandbox is down, the sandbox proxy answers a data read
+(`/p/<box>/8000/kortix/opencode/messages/<sid>`) in one of two ways depending on
+the box's status, and only one was handled:
+
+- status `stopped` → **503 JSON** `sandbox not ready (status: stopped)` — the SDK
+  classified this as `SandboxNotReadyError` (a waking state), kept the loader up,
+  retried, and the box woke via the `/start` the app fires on open. Recovered.
+- status `not-running` → **404 HTML** `This sandbox URL is not active. /
+  not-running` — NOT matched by `SANDBOX_NOT_READY_PATTERNS`
+  (`packages/sdk/src/core/http/opencode-errors.ts`), whose closest pattern was
+  `sandbox is not running` (the literal word "is"). So `readSessionMessagePage`
+  (`session-sync-registry.ts`) threw a HARD error →
+  `transcriptFreshness='error'` → the dead-end "Couldn't load" with no wake, no
+  retry.
+
+The `own-the-surface` reads cutover (#6987) routed the transcript read through
+this classifier, which is what exposed it — before, the same box-down 404 went
+down a different read path.
+
+**Rules.**
+1. A sandbox that is stopped/parked/idle is a WAKEABLE state, never a terminal
+   transcript failure. If a proxy can return more than one status/shape for
+   "box is down" (503 JSON vs 404 HTML state page here), the classifier must
+   accept EVERY one of them — enumerate them from the live wire, not from the
+   one you happened to see.
+2. Capture the real response BODY before writing the pattern. The fix strings
+   (`sandbox url is not active`, `not-running`) came from a captured dev 404,
+   not a guess — and they are specific enough to never match a genuine
+   `{"message":"Not found"}` 404 (asserted by a test).
+3. A control-plane status (`/start` said `ready`) can be stale against the data
+   proxy's live view (`not-running`). Do not trust one as proof of the other;
+   the read that actually failed is the truth.
+4. Follow-up recorded, not yet done: the proxy should return the SAME 503 for
+   `not-running` as it does for `stopped`, so there is one down-box response
+   instead of two. Classifier breadth is the belt; proxy consistency is the
+   suspenders.
+
+*Automation:* `packages/sdk/src/browser/session-sync/session-sync-registry.test.ts`
+pins that the `not-running` 404 throws `SandboxNotReadyError` while a genuine
+404 stays a hard error; `opencode-errors.test.ts` guards the pattern set.
+
+*Incident:* PR #6999 (`7060b2b2cc`), merged + dev-deployed 2026-08-27. TDD
+fix, no code change beyond two regex patterns. No data loss — messages sent at a
+dead composer were always durable inbox rows; only the transcript READ
+dead-ended.

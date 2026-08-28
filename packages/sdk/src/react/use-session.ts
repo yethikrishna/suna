@@ -50,6 +50,7 @@ import {
 } from '../core/rest/projects-client';
 import { RuntimeNotReadyError, getClient } from '../core/runtime/client';
 import { setCurrentRuntime } from '../core/session/current-runtime';
+import { openSessionBundle } from '../core/session/open-bundle';
 import { messagesBeforeRewind } from '../core/session/rewind';
 import { extractGatewayErrorDetails } from '../core/turns/errors';
 import { clearStartStash, readStartStash } from './session-start-stash';
@@ -800,6 +801,8 @@ export interface UseSessionOptions {
 const DISABLED_CHAT_ENGINE_SYNC = {
   messages: [] as ReturnType<typeof useSessionSync>['messages'],
   status: { type: 'idle' } as ReturnType<typeof useSessionSync>['status'],
+  freshness: 'idle' as ReturnType<typeof useSessionSync>['freshness'],
+  retryTranscript: () => {},
   isBusy: false,
   isLoading: false,
   diffs: [] as ReturnType<typeof useSessionSync>['diffs'],
@@ -874,6 +877,32 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
       sessionStartKey(projectId, sessionId),
     );
     if (cachedStartResultIsReady(cached)) markRuntimeReadyVerified();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, sessionId]);
+
+  // 1b. ONE read for the rest of the open.
+  //
+  // The session row, `/turn`, `/prompts`, `/transcript?shape=sync` and
+  // `/model-defaults` used to be five to six serial control-plane round trips
+  // before the first honest frame — 0.3-2.3 s each at the median on a real
+  // deployment, and `/turn` alone was measured SIX times inside one open
+  // because three hooks mount that query. `openSessionBundle` issues the one
+  // request that answers all of them; each of those consumers claims it inside
+  // its own `queryFn` and falls back to its own endpoint when there is nothing
+  // to claim. Nothing here changes WHAT any of them answer.
+  //
+  // A LAYOUT effect, for the same reason the seed above is one — React runs
+  // every layout effect, tree-wide, before any passive effect, and TanStack
+  // starts a query's fetch from a passive effect. That ordering is what makes
+  // the bundle already in flight when the first `/turn` fetch begins, rather
+  // than a seventh request racing the six it is meant to replace.
+  //
+  // Session identity is the whole dependency list: this is the OPEN read, not
+  // a poll, and re-running it on any other input would turn an accelerator
+  // into a second cadence.
+  useIsomorphicLayoutEffect(() => {
+    if (!startEnabled) return;
+    openSessionBundle(projectId, sessionId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, sessionId]);
 
@@ -1030,6 +1059,13 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
     kortixSessionScope: `${projectId}/${sessionId}`,
     networkEnabled: switched,
     working: working.state === 'working',
+    // The control plane holding a turn open keeps the transcript verification
+    // poll on even when the projection's answer is idle — the repair for a
+    // stale wire idle frame vetoing the open row while the SSE stream is dead
+    // (see UseSessionSyncOptions.serverHoldsTurn). Without it, that one wrong
+    // answer switched off the only read that could disprove it, and the
+    // transcript froze mid-turn until a reload.
+    serverHoldsTurn: working.serverOpenTurnToken !== null,
   });
   const sync = chatEngine ? rawSync : DISABLED_CHAT_ENGINE_SYNC;
   const runtimePhase = useRuntimePhase();
@@ -1163,12 +1199,23 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
     () => messages.filter((m) => m.info.role === 'user').length,
     [messages],
   );
+  // The title ladder arms ONCE per session, on the first user message this tab
+  // sees — not on every count change.
+  //
+  // `reconcileHydratedSessionTitle` reads the count only as `> 0`, but the
+  // count was the effect's DEPENDENCY: every message a hydrating transcript
+  // added aborted the running ladder and started a new one at delay 0, and
+  // each restart immediately refetched the sessions list. A thread with N user
+  // messages therefore paid N extra list reads on open — measured at up to 22
+  // `GET /sessions` in ONE session open. The boolean is the input the ladder
+  // actually has: has this conversation produced a user message yet.
+  const hasUserMessages = userMsgCount > 0;
   useEffect(() => {
-    if (!chatEngine || userMsgCount <= 0) return;
+    if (!chatEngine || !hasUserMessages) return;
     titleRefreshAbortRef.current?.abort();
     const controller = new AbortController();
     titleRefreshAbortRef.current = controller;
-    void reconcileHydratedSessionTitle(queryClient, projectId, sessionId, userMsgCount, {
+    void reconcileHydratedSessionTitle(queryClient, projectId, sessionId, 1, {
       signal: controller.signal,
     }).finally(() => {
       if (titleRefreshAbortRef.current === controller) {
@@ -1176,7 +1223,7 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
       }
     });
     return () => controller.abort();
-  }, [chatEngine, projectId, queryClient, sessionId, userMsgCount]);
+  }, [chatEngine, projectId, queryClient, sessionId, hasUserMessages]);
   const [sendState, setSendState] = useState<SendState>(IDLE_SEND_STATE);
   const pending = sendState.pending;
   const pendingBaseCount = useRef(0);
@@ -1426,6 +1473,11 @@ export function useSession(projectId: string, sessionId: string, options: UseSes
     // live data
     messages,
     status: sync.status,
+    /** Transcript-read state (`idle|loading|fresh|stale|error`), for gating the
+     *  chat body: `loading`/`error` with no messages are a wait and a failure,
+     *  not an empty session. `retryTranscript` re-reads the tail. */
+    freshness: sync.freshness,
+    retryTranscript: sync.retryTranscript,
     questions,
     permissions,
     diffs: sync.diffs,

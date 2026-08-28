@@ -508,15 +508,58 @@ export interface SessionTranscriptMessage {
   error: { name?: string; message?: string } | null;
 }
 
+/**
+ * Which source answered a transcript read.
+ *
+ * `live` is the sandbox's own OpenCode endpoint. `mirror` is the durable
+ * server-side copy the control plane writes at turn end, which is what lets a
+ * STOPPED or waking session answer at all. `none` is the honest "nothing could
+ * answer" and is the only value that accompanies `available: false`. The two
+ * sources are never merged — this field says which one you got.
+ */
+export type SessionTranscriptSource = 'live' | 'mirror' | 'none';
+
 /** Compact server-side transcript read — text + tool calls, stripped of tool
  *  inputs/outputs, for project automation (callable with project-scoped
  *  session tokens, unlike the raw sandbox proxy). */
 export interface SessionTranscript {
   available: boolean;
   reason: string | null;
+  source: SessionTranscriptSource;
+  /** The response contains the session's FIRST message. False means "this is a
+   *  tail", never "something is broken". */
+  complete: boolean;
+  /** When the mirror was last written; null for a live read. */
+  captured_at: string | null;
   opencode_session_id: string | null;
   message_count: number;
   messages: SessionTranscriptMessage[];
+}
+
+/** One mirrored message in the shape the session sync store hydrates from:
+ *  OpenCode's own envelope, with the parts array stripped of tool
+ *  inputs/outputs and file urls. */
+export interface SessionTranscriptSyncMessage {
+  info: Record<string, unknown>;
+  parts: Array<Record<string, unknown>>;
+}
+
+/**
+ * The durable transcript mirror, in sync-store shape.
+ *
+ * `source` is `mirror` or `none` — never `live`. A client whose sandbox is up
+ * reads the runtime directly, so this endpoint deliberately does not re-proxy
+ * it.
+ */
+export interface SessionTranscriptSyncEnvelope {
+  available: boolean;
+  reason: string | null;
+  source: SessionTranscriptSource;
+  complete: boolean;
+  captured_at: string | null;
+  opencode_session_id: string | null;
+  message_count: number;
+  messages: SessionTranscriptSyncMessage[];
 }
 
 export async function getSessionTranscript(
@@ -531,6 +574,32 @@ export async function getSessionTranscript(
   return unwrap(
     await backendApi.get<SessionTranscript>(
       `/projects/${projectId}/sessions/${sessionId}/transcript${qs ? `?${qs}` : ''}`,
+    ),
+  );
+}
+
+/**
+ * Read the durable server-side transcript mirror for a session.
+ *
+ * This is the ONE read that answers while the sandbox is down. It exists so a
+ * hibernated session can paint its history immediately instead of showing a
+ * full-screen loader for the length of the wake (measured 5-240 s).
+ *
+ * Messages carry OpenCode's real ids, so a client hydrates them provisionally
+ * (`hydrate(..., { source: 'cache' })`) and the live runtime read SETTLES them
+ * by id rather than duplicating them.
+ */
+export async function getSessionTranscriptSync(
+  projectId: string,
+  sessionId: string,
+  options?: { limit?: number; signal?: AbortSignal },
+) {
+  const search = new URLSearchParams({ shape: 'sync' });
+  if (options?.limit != null) search.set('limit', String(options.limit));
+  return unwrap(
+    await backendApi.get<SessionTranscriptSyncEnvelope>(
+      `/projects/${projectId}/sessions/${sessionId}/transcript?${search.toString()}`,
+      { showErrors: false },
     ),
   );
 }
@@ -586,6 +655,112 @@ export async function getSessionTurn(
 ): Promise<SessionTurnStatus> {
   return unwrap(
     await backendApi.get<SessionTurnStatus>(`/projects/${projectId}/sessions/${sessionId}/turn`),
+  );
+}
+
+// ── The session-open bundle ─────────────────────────────────────────────────
+//
+// ONE round trip for everything a session view needs to PAINT and ARM: the
+// session row, the running turns, the prompt queue, the durable transcript
+// mirror, the composer's control-plane essentials, and the model defaults.
+// It replaces 6 serial reads on the open path and introduces NO new truth —
+// every leg is byte-identical to the endpoint that already served it, so a
+// consumer can hand a leg straight to the code that reads that endpoint.
+//
+// EVERY LEG IS TRI-STATE. `known: false` means the server could not answer
+// that leg, and the client must render UNKNOWN — never idle, never an empty
+// queue, never "no transcript". A default rendered as an answer is the defect
+// class the bundle exists to remove; it must not come back wearing this name.
+
+/** A leg the server could not answer. Render the fact as UNKNOWN. */
+export interface SessionOpenBundleUnknown {
+  known: false;
+  reason: string;
+}
+
+/** = `GET .../turn`, plus the tri-state tag. */
+export type SessionOpenBundleTurn =
+  | ({ known: true } & SessionTurnStatus)
+  | SessionOpenBundleUnknown;
+
+/** = `GET .../prompts`, plus whether Stop is holding the whole queue. */
+export type SessionOpenBundleQueue =
+  | { known: true; prompts: SessionPrompt[]; held: boolean }
+  | SessionOpenBundleUnknown;
+
+/** = `GET .../transcript?shape=sync`. `requested: false` answers a
+ *  `transcript: 0` read: the caller asked for the pointer only, which is NOT
+ *  the same as the transcript being unknown. */
+export type SessionOpenBundleTranscript =
+  | { known: true; requested: false }
+  | ({ known: true; requested: true } & SessionTranscriptSyncEnvelope)
+  | SessionOpenBundleUnknown;
+
+/** Composer essentials that need no sandbox. Deliberately NOT the `/config`
+ *  route's freshness verdict — that one compiles the manifest and re-reads the
+ *  box, which a first paint must never wait on. */
+export interface SessionOpenBundleConfig {
+  known: true;
+  base_ref: string | null;
+  agent_name: string | null;
+  llm_gateway_enabled: boolean;
+}
+
+/** = `GET /projects/:id/model-defaults`. `known: false` with
+ *  `reason: 'llm_gateway_disabled'` mirrors that route's own 404. */
+export type SessionOpenBundleModels =
+  | {
+      known: true;
+      platformDefault: string | null;
+      accountDefault: string | null;
+      agentDefaults: Record<string, string>;
+      projectDefault: string | null;
+      resolvedForCaller: string | null;
+      resolvedSource: string;
+      freeTier: boolean;
+    }
+  | SessionOpenBundleUnknown;
+
+export interface SessionOpenBundle {
+  /** ONE clock for the whole envelope. Every leg is a snapshot at this instant,
+   *  and every projection that ranks a server observation against local
+   *  optimistic state must stamp from HERE, never from arrival time. */
+  observed_at: string;
+  session: ProjectSession;
+  turn: SessionOpenBundleTurn;
+  queue: SessionOpenBundleQueue;
+  transcript: SessionOpenBundleTranscript;
+  config: SessionOpenBundleConfig;
+  models: SessionOpenBundleModels;
+}
+
+/**
+ * Read the session-open bundle.
+ *
+ * `transcript` is the mirrored-message window: the default matches the SDK's
+ * own first-paint span, and `0` asks for the pointer only — what a client whose
+ * store is already warm wants, because it needs the identity and the count to
+ * TRUST what it holds, not the bytes it already has.
+ */
+export async function getSessionOpenBundle(
+  projectId: string,
+  sessionId: string,
+  options?: { transcript?: number; signal?: AbortSignal },
+): Promise<SessionOpenBundle> {
+  const search = new URLSearchParams();
+  if (options?.transcript != null) search.set('transcript', String(options.transcript));
+  const qs = search.toString();
+  return unwrap(
+    await backendApi.get<SessionOpenBundle>(
+      `/projects/${projectId}/sessions/${sessionId}/open-bundle${qs ? `?${qs}` : ''}`,
+      // A 404 here is an EXPECTED race: the session exists but the control
+      // plane has not marked it visible yet. `openSessionBundle` already
+      // resolves `null` and every consumer falls back to its direct read
+      // (`/message`, `/turn`, `/prompts`), so this must never fire the host's
+      // global "Not found" toast / Sentry. `showErrors: false` keeps the
+      // handled fallback silent.
+      { signal: options?.signal, showErrors: false },
+    ),
   );
 }
 

@@ -4,6 +4,9 @@ import { writeAgentEnvFile } from '../agent-env-file'
 import type { Config } from '../config'
 import { syncEgressShim } from '../egress-shim'
 import { KORTIX_USER_CONTEXT_HEADER } from '../kortix-user-context'
+import { invalidateRuntimeState } from '../runtime-state-projection'
+import { scheduleRuntimeProjectionPush } from '../runtime-projection-relay'
+import { llmProxyBaseUrl, setLlmProxyToken } from '../llm-proxy'
 import { logger } from '../logger'
 import { requiresRespawn, type Opencode } from '../opencode'
 import { reconcileProjectEnv, type ProjectEnvStore } from '../project-env'
@@ -107,6 +110,17 @@ function applyLlmGatewayMode(enabled: unknown, baseUrl: unknown): { changed: boo
   const token = process.env.KORTIX_TOKEN
   if (!token) {
     throw new Error('KORTIX_TOKEN is unavailable; cannot enable LLM gateway in this running sandbox')
+  }
+  // A running localhost LLM proxy (every gateway session since the in-sandbox
+  // image window) learns the new upstream + token and stays the provider
+  // base URL; a box that never started one keeps the direct config.
+  const proxyUrl = llmProxyBaseUrl()
+  if (proxyUrl && process.env.KORTIX_LLM_PROXY_DISABLE !== '1') {
+    setLlmProxyToken(token, baseUrl)
+    return setOpencodeRuntimeEnv({
+      KORTIX_LLM_BASE_URL: baseUrl,
+      KORTIX_LLM_PROXY_URL: proxyUrl,
+    })
   }
   return setOpencodeRuntimeEnv({
     KORTIX_LLM_BASE_URL: baseUrl,
@@ -259,6 +273,15 @@ export function createEnvRouter(
             mustRespawn,
           })
         }
+
+        // The daemon OWNS this write, so the projection is told rather than
+        // left to infer it. `/kortix/opencode/state` serves the agent roster,
+        // command list and config essentials this env change can move; a
+        // client that read it a second ago must not keep the pre-change answer
+        // until an SSE frame happens to hint at it.
+        invalidateRuntimeState('all', 'kortix-env-applied')
+        // ...and the server-side copy is refreshed too (debounced, etag-gated).
+        scheduleRuntimeProjectionPush('kortix-env-applied')
 
         const applied = projectEnv.snapshot()
         const exported = Object.keys(applied.env).length

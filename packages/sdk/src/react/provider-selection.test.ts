@@ -381,6 +381,66 @@ describe('nativeProviderListFromCatalog — default pick quality', () => {
   });
 });
 
+// PROVEN LIVE on the Essentia self-host 2026-08-26: a brand-new workspace with
+// Bedrock BYOK creds (AWS_BEARER_TOKEN_BEDROCK + AWS_REGION, native path,
+// llm_gateway OFF) auto-selected `xai.grok-4.6` — the newest Bedrock model in
+// the catalog and the one family with NO `global.`/`us.` twin. Bedrock refused
+// it ("Invocation of model ID xai.grok-4.6 with on-demand throughput isn't
+// supported. Retry your request with the ID or ARN of an inference profile")
+// and the session looped "Retrying in Ns" forever. Every fresh workspace was
+// wedged until a human picked another model.
+describe('nativeProviderListFromCatalog — Bedrock never auto-seeds a bare id', () => {
+  const bedrockCatalog = {
+    source: 'models.dev',
+    fetched_at: '2026-08-25T00:00:00Z',
+    provider_count: 1,
+    model_count: 4,
+    providers: [
+      {
+        id: 'amazon-bedrock',
+        name: 'Amazon Bedrock',
+        env: ['AWS_BEARER_TOKEN_BEDROCK', 'AWS_REGION'],
+        models: [
+          { id: 'xai.grok-4.6', name: 'Grok 4.6', released: '2026-08-12' },
+          { id: 'anthropic.claude-opus-5', name: 'Claude Opus 5', released: '2026-07-24' },
+          { id: 'us.anthropic.claude-opus-5', name: 'Claude Opus 5', released: '2026-07-24' },
+          { id: 'global.anthropic.claude-opus-5', name: 'Claude Opus 5', released: '2026-07-24' },
+        ],
+      },
+    ],
+  };
+  const connected = new Set(['AWS_BEARER_TOKEN_BEDROCK', 'AWS_REGION']);
+
+  test('the default is the global. inference profile, never the newer bare id', () => {
+    const list = nativeProviderListFromCatalog(bedrockCatalog as never, connected);
+    expect((list as { default?: Record<string, string> }).default).toEqual({
+      'amazon-bedrock': 'global.anthropic.claude-opus-5',
+    });
+  });
+
+  test("the composer's \"first model\" fallback never lands on a bare twin either", () => {
+    const list = nativeProviderListFromCatalog(bedrockCatalog as never, connected);
+    const bedrock = (list.all ?? []).find((p) => p.id === 'amazon-bedrock') as {
+      models: Record<string, unknown>;
+    };
+    // Same release date → the inference profile sorts ahead of its bare twin.
+    expect(Object.keys(bedrock.models)).toEqual([
+      'xai.grok-4.6',
+      'global.anthropic.claude-opus-5',
+      'us.anthropic.claude-opus-5',
+      'anthropic.claude-opus-5',
+    ]);
+  });
+
+  test('a bare id is still LISTED — a human can pick it, nothing picks it for them', () => {
+    const list = nativeProviderListFromCatalog(bedrockCatalog as never, connected);
+    const bedrock = (list.all ?? []).find((p) => p.id === 'amazon-bedrock') as {
+      models: Record<string, unknown>;
+    };
+    expect(Object.keys(bedrock.models)).toContain('xai.grok-4.6');
+  });
+});
+
 // UX parity with the runtime picker (field report: the pre-runtime list showed
 // duplicate names and every historical version, and no thinking-mode row).
 // The catalog wire payload (runtimeModelCatalog snapshot = @kortix/llm-catalog
@@ -558,5 +618,78 @@ describe('mergeNativeProviderLists (catalog ∪ runtime, one picker across boot)
     expect(mergeNativeProviderLists(catalog, undefined)).toBe(catalog);
     expect(mergeNativeProviderLists(undefined, runtime)).toBe(runtime);
     expect(mergeNativeProviderLists(undefined, undefined)).toBeUndefined();
+  });
+});
+
+describe('projectLlmCatalogToProviderList — variants for the gateway picker', () => {
+  test('a gateway model with an effort ladder gets one variant id per published tier, in order', () => {
+    const list = projectLlmCatalogToProviderList({
+      models: {
+        'amazon-bedrock/global.openai.gpt-5.6-sol': {
+          name: 'GPT-5.6 Sol (Global)',
+          reasoning: true,
+          reasoning_options: [
+            { type: 'effort', values: ['none', 'low', 'medium', 'high', 'xhigh', 'max'] },
+          ],
+        },
+      },
+    });
+    const kortix = (list.all ?? []).find((p) => p.id === 'kortix')!;
+    const model = kortix.models['amazon-bedrock/global.openai.gpt-5.6-sol'] as {
+      variants?: Record<string, unknown>;
+    };
+    expect(Object.keys(model.variants ?? {})).toEqual([
+      'none',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ]);
+  });
+
+  test('a budget_tokens-only knob (mainline Claude) synthesizes the gateway tiers the routing clamp accepts', () => {
+    const list = projectLlmCatalogToProviderList({
+      models: {
+        'anthropic/claude-sonnet-4-5': {
+          name: 'Claude Sonnet 4.5',
+          reasoning: true,
+          reasoning_options: [{ type: 'budget_tokens', min: 1024 }],
+        },
+      },
+    });
+    const model = (list.all ?? [])[0].models['anthropic/claude-sonnet-4-5'] as {
+      variants?: Record<string, unknown>;
+    };
+    expect(Object.keys(model.variants ?? {})).toEqual(['low', 'medium', 'high']);
+  });
+
+  test('a model with no reasoning knob gets NO variants key — never a fabricated ladder', () => {
+    const list = projectLlmCatalogToProviderList({
+      models: {
+        'openai/gpt-4.1': { name: 'GPT-4.1', reasoning: false },
+        'zai/glm-5': { name: 'GLM-5', reasoning: true, reasoning_options: [] },
+      },
+    });
+    const models = (list.all ?? [])[0].models as Record<string, { variants?: unknown }>;
+    expect(models['openai/gpt-4.1'].variants).toBeUndefined();
+    expect(models['zai/glm-5'].variants).toBeUndefined();
+  });
+
+  test('a variants map the API already sends is kept verbatim (runtime truth wins over derivation)', () => {
+    const list = projectLlmCatalogToProviderList({
+      models: {
+        'openai/gpt-5.6-sol': {
+          name: 'GPT-5.6 Sol',
+          reasoning: true,
+          reasoning_options: [{ type: 'effort', values: ['low', 'high'] }],
+          variants: { deep: { reasoningEffort: 'high' } },
+        },
+      },
+    });
+    const model = (list.all ?? [])[0].models['openai/gpt-5.6-sol'] as {
+      variants?: Record<string, unknown>;
+    };
+    expect(model.variants).toEqual({ deep: { reasoningEffort: 'high' } });
   });
 });

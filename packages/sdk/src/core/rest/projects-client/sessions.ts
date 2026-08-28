@@ -753,7 +753,13 @@ export async function getSessionOpenBundle(
   return unwrap(
     await backendApi.get<SessionOpenBundle>(
       `/projects/${projectId}/sessions/${sessionId}/open-bundle${qs ? `?${qs}` : ''}`,
-      { signal: options?.signal },
+      // A 404 here is an EXPECTED race: the session exists but the control
+      // plane has not marked it visible yet. `openSessionBundle` already
+      // resolves `null` and every consumer falls back to its direct read
+      // (`/message`, `/turn`, `/prompts`), so this must never fire the host's
+      // global "Not found" toast / Sentry. `showErrors: false` keeps the
+      // handled fallback silent.
+      { signal: options?.signal, showErrors: false },
     ),
   );
 }

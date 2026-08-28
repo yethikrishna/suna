@@ -434,6 +434,15 @@ class PreviewTeardown(unittest.TestCase):
         self.assertIn(
             "PREVIEW_PUBLIC_ORIGIN: ${{ needs.authorize.outputs.public_origin }}", job("deploy")
         )
+        # Making every labelled preview persistent turned the --target-full gate
+        # OFF by default, because runTests defaults off once branchEnv is set.
+        # The suite must still run when the label goes on; only a redeploy from a
+        # push skips it, so pushes stay fast without losing the gate.
+        self.assertIn(
+            "PREVIEW_RUN_TESTS: ${{ (github.event.action == 'labeled' || "
+            "github.event_name == 'workflow_dispatch') && '1' || '0' }}",
+            job("deploy"),
+        )
 
         teardown = job("teardown")
         # A push must no longer tear anything down, and must not strip the label.

@@ -491,7 +491,7 @@ export async function deployDaytonaPreview(
 export async function teardownPlatinumPreview(input: {
   apiUrl: string;
   apiKey: string;
-  prNumber: number;
+  prNumber?: number;
   branchEnv?: string;
 }): Promise<number> {
   if (!input.apiKey) return 0;
@@ -524,11 +524,16 @@ export async function reconcilePlatinumPreviews(input: {
   apiUrl: string;
   apiKey: string;
   activePullRequests: ReadonlyMap<number, string>;
+  liveBranchSandboxNames?: ReadonlySet<string>;
 }): Promise<number> {
   if (!input.apiKey) return 0;
   const api = new PlatinumApi(input.apiUrl, input.apiKey);
   const sandboxes = await allPlatinumPreviewSandboxes(api);
-  const stale = selectStalePreviewSandboxIds(sandboxes, input.activePullRequests);
+  const stale = selectStalePreviewSandboxIds(
+    sandboxes,
+    input.activePullRequests,
+    input.liveBranchSandboxNames,
+  );
   for (const sandboxId of stale) await deletePlatinum(api, sandboxId);
   return stale.length;
 }

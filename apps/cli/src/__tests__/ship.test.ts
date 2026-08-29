@@ -313,3 +313,30 @@ describe('ship provisioning declares who owns the first commit', () => {
     expect(body).toContain('seed_starter: false');
   });
 });
+
+// A project always has a manifest. Ship declares `seed_starter: false` — it
+// takes responsibility for the first commit — so it must actually HAVE a
+// kortix.yaml to push. This used to pass as "a `.kortix/`-only project —
+// nothing to verify", which is how a shipped project could end up with no
+// declared agents, no skills, and manifest detection falling back to v1.
+describe('ship refuses a project with no manifest', () => {
+  test('prepareManifest treats a missing kortix.yaml as fatal, and --no-verify does not bypass it', async () => {
+    const source = await Bun.file(
+      new URL('../commands/ship.ts', import.meta.url).pathname,
+    ).text();
+    const fn = source.slice(source.indexOf('function prepareManifest'));
+    const body = fn.slice(0, fn.indexOf('\n}\n'));
+
+    // The old escape hatch must be gone.
+    expect(body).not.toContain('if (!manifest) return { ok: true, env: empty };');
+    // Absence is now fatal.
+    expect(body).toContain('if (!manifest) {');
+    expect(body).toContain('refusing to ship a project with no manifest');
+
+    // --no-verify waives VALIDATION of a manifest, never its existence: the
+    // missing-manifest branch must not be gated on the flag.
+    const missingBranch = body.slice(body.indexOf('if (!manifest) {'));
+    const refusal = missingBranch.slice(0, missingBranch.indexOf('return { ok: false'));
+    expect(refusal).not.toContain('noVerify');
+  });
+});

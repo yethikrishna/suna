@@ -293,3 +293,23 @@ describe('stale-CLI warning on a 404 from the connector routes', () => {
     expect(capture.chunks.join('')).toBe('');
   });
 });
+
+// `kortix ship` scaffolds the folder with `kortix init` and then pushes that
+// history with a PLAIN (non-force) push. Server-side seeding is the default now
+// (apps/api/src/projects/managed-repo-seed.ts — "a project always has a
+// manifest"), so a seeded repo would turn ship's push into a non-fast-forward
+// rejection. Ship therefore has to say `seed_starter: false` OUT LOUD; an
+// absent flag no longer means "leave it empty", it means "seed it".
+//
+// Pinned on the source because the failure is silent and remote: the provision
+// call still returns 201 and the break only shows up at `git push`.
+describe('ship provisioning declares who owns the first commit', () => {
+  test('the provision body sends seed_starter:false', async () => {
+    const source = await Bun.file(
+      new URL('../commands/ship.ts', import.meta.url).pathname,
+    ).text();
+    const call = source.slice(source.indexOf("client.post<ProvisionResponse>('/projects/provision'"));
+    const body = call.slice(0, call.indexOf('});'));
+    expect(body).toContain('seed_starter: false');
+  });
+});

@@ -631,6 +631,14 @@ async function shipFirstTime(
     const prov = await client.post<ProvisionResponse>('/projects/provision', {
       name,
       account_id: accountId,
+      // WE own the first commit: this folder is already a `kortix init` scaffold
+      // and we push its history below with a plain (non-force) push, which a
+      // server-seeded repo would reject as non-fast-forward. Seeding is the
+      // server's DEFAULT now, so this has to be said out loud — an absent flag
+      // means "seed it" (apps/api/src/projects/managed-repo-seed.ts). The
+      // project still ends up with a kortix.yaml either way; this only picks
+      // who writes it.
+      seed_starter: false,
     });
     project = prov;
     // Bind the folder to the project the INSTANT it exists — before resolving a

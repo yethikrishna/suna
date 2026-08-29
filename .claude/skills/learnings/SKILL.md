@@ -3714,6 +3714,43 @@ fix, no code change beyond two regex patterns. No data loss — messages sent at
 dead composer were always durable inbox rows; only the transcript READ
 dead-ended.
 
+## OAuth loopback redirect URIs are protocol data, not perimeter SSRF attempts
+
+- **Incident (2026-08-28, v0.13.7 release QA):** flow `OAU-8` received an HTML
+  `403` before the API for `GET /v1/oauth/authorize` when `redirect_uri` used
+  `http://localhost` or `http://127.0.0.1`. The same request reached the API
+  when it used an HTTPS public origin. Dev, staging, and production reproduced
+  the block. The AWS Common managed rule group classified the loopback query
+  argument as SSRF, but OAuth public and native clients require loopback
+  redirects.
+- **Rule:** exclude loopback redirect values from the Common managed rule group
+  only when the method is `GET`, the path is exactly `/v1/oauth/authorize`, and
+  `redirect_uri` starts with `http://localhost` or `http://127.0.0.1`. Do not
+  disable the managed rule or its query inspection globally. Keep
+  KnownBadInputs and IP reputation inspection active. The API must validate the
+  complete redirect URI against the registered client.
+- **Enforcement:**
+  `infra/terraform/scripts/test_web_waf_associations.py` pins the scoped
+  Terraform statement. Deployed release flow `OAU-8` proves that a registered
+  loopback redirect reaches the API and completes authorization.
+
+## Release assertions must follow the named data source, not an obsolete availability bit
+
+- **Incident (2026-08-29, v0.13.7 release QA):** `SESS-24` failed two exact-SHA
+  staging attempts after a stopped session returned `available:true`. The API
+  was correct. `buildSessionTranscriptDigest()` intentionally serves the
+  durable transcript mirror for a stopped session. Its unit test already pinned
+  `source:"mirror"`. The end-to-end contract still expected the deleted
+  `available:false` behavior from before the mirror existed.
+- **Rule:** when a response can come from live, mirror, or no source, assert the
+  `source` discriminator and the required content. Do not use `available` alone
+  as a proxy for runtime state. Update the natural-language contract in the same
+  change that adds or removes a source.
+- **Enforcement:** `SESS-24` now stops the sandbox, requires
+  `available:true` plus `source:"mirror"`, and verifies session isolation in the
+  mirrored content. `session-transcript.test.ts` separately pins the stopped
+  session mirror and the no-mirror `available:false` path.
+
 ---
 
 ## A guard nobody armed is not a guard, and a path-only allowlist is a hole (2026-08-29)
@@ -3776,3 +3813,4 @@ build if a path-only allowlist reappears in `.gitleaks.toml`.
 *Incident:* No leak occurred. Found by audit, closed the same session. All
 findings reproduced in throwaway repos with real gitleaks 8.30.1 and the repo's
 own config; no real secret was ever written to disk in plaintext.
+||||||| 2108aa3c8a

@@ -217,8 +217,27 @@ function prepareManifest(flags: ShipFlags): { ok: boolean; env: EnvSpec } {
     return { ok: false, env: empty };
   }
 
-  // No kortix.yaml at all (a `.kortix/`-only project) — nothing to verify.
-  if (!manifest) return { ok: true, env: empty };
+  // NO MANIFEST AT ALL. This used to pass as "a `.kortix/`-only project —
+  // nothing to verify", and it is the client half of the same defect as the
+  // server's opt-in seeding: it let `kortix ship` push a project that has no
+  // kortix.yaml, so the project came out with no declared agents, no skills,
+  // and manifest detection falling back to v1 `kortix.toml`.
+  //
+  // A project always has a manifest (apps/api/src/projects/managed-repo-seed.ts).
+  // Ship declares `seed_starter: false` — it takes responsibility for the first
+  // commit — so it must actually HAVE one to push. `--no-verify` deliberately
+  // does not bypass this: it waives *validation* of a manifest, not its
+  // existence, and waiving existence is what produced the broken projects.
+  if (!manifest) {
+    process.stderr.write(
+      `\n${status.err('No kortix.yaml here — refusing to ship a project with no manifest.')}\n` +
+        `  ${C.dim}A Kortix project is defined by its manifest: agents, skills and\n` +
+        `  connectors all come from it. Pushing without one creates a project\n` +
+        `  that cannot start a session.${C.reset}\n` +
+        `  ${C.dim}Create one with ${C.reset}${C.cyan}kortix init${C.reset}${C.dim} in ${process.cwd()}.${C.reset}\n\n`,
+    );
+    return { ok: false, env: empty };
+  }
 
   if (!flags.noVerify) {
     const { errors, warnings } = lintManifest(manifest.data, manifest.format);

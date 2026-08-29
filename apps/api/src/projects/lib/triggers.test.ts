@@ -227,4 +227,25 @@ describe('findProjectTriggerBySlug — replica mirror convergence', () => {
       manifestReader = null;
     }
   });
+
+  test('bounds repeated missing slugs to one forced refresh per project interval', async () => {
+    const forceRefreshValues: Array<boolean | undefined> = [];
+    manifestReader = async (...args: unknown[]) => {
+      const opts = args[3] as { forceRefresh?: boolean } | undefined;
+      forceRefreshValues.push(opts?.forceRefresh);
+      return {
+        path: 'kortix.yaml',
+        content: 'kortix_version: 2\nproject:\n  name: stale\ntriggers: []\n',
+      };
+    };
+
+    try {
+      const project = fakeProject({ projectId: 'proj_refresh_cooldown' });
+      expect(await findProjectTriggerBySlug(project, 'missing-one')).toBeNull();
+      expect(await findProjectTriggerBySlug(project, 'missing-two')).toBeNull();
+      expect(forceRefreshValues).toEqual([undefined, true, undefined]);
+    } finally {
+      manifestReader = null;
+    }
+  });
 });

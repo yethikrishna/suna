@@ -593,6 +593,13 @@ export async function loadProjectTriggers(
   return extractTriggers(manifest);
 }
 
+function forcedTriggerRefreshCooldownMs(): number {
+  const value = Number(process.env.KORTIX_GIT_REFRESH_INTERVAL_MS || 60_000);
+  return Number.isFinite(value) && value >= 0 ? value : 60_000;
+}
+
+const lastForcedTriggerRefreshAt = new Map<string, number>();
+
 /**
  * Resolve one trigger for an action endpoint. A trigger can be absent from one
  * API replica's mirror for up to the normal refresh interval after another
@@ -606,6 +613,11 @@ export async function findProjectTriggerBySlug(
   const cachedSpec = cached.specs.find((spec) => spec.slug === slug);
   if (cachedSpec) return cachedSpec;
 
+  const now = Date.now();
+  const lastForcedAt = lastForcedTriggerRefreshAt.get(project.projectId) ?? 0;
+  if (now - lastForcedAt < forcedTriggerRefreshCooldownMs()) return null;
+
+  lastForcedTriggerRefreshAt.set(project.projectId, now);
   const refreshed = await loadProjectTriggers(project, { forceRefresh: true });
   return refreshed.specs.find((spec) => spec.slug === slug) ?? null;
 }

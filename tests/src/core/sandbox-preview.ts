@@ -140,8 +140,8 @@ for stack_attempt in 1 2; do
   # \`compose up -d\` prints container STATE and never container OUTPUT, so a
   # one-shot service that exits non-zero produced exactly one line —
   # \`service "kortix-migrate" didn't complete successfully: exit 1\` — and the
-  # reason for that 1 was nowhere. pi.kortix.com served a 502 for hours behind
-  # a log that could not say why (2026-08-29). \`kortix-migrate\` is the one
+  # reason for that 1 was nowhere. A branch environment's public name served a
+  # 502 for hours behind a log that could not say why (2026-08-29). \`kortix-migrate\` is the one
   # service that can fail this way; the health-gated ones report through
   # \`--wait\`.
   printf '::group::kortix-migrate output (attempt %s)\n' "$stack_attempt"

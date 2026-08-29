@@ -3765,4 +3765,5 @@ dead-ended.
   in emitted Node ESM. Source imports must name the emitted `.js` file.
 - **Enforcement:** `packages/sdk/scripts/smoke-install.mjs` installs React and
   TanStack Query, imports `@kortix/sdk/react`, and asserts `useSession` exists.
-  `packages/llm-catalog/src/index.ts` exports `./enablement.js` explicitly.
+  The `@kortix/llm-catalog` build runs `tsc-alias --resolve-full-paths` to turn
+  its extensionless workspace import into `./enablement.js` after `tsc` emits.

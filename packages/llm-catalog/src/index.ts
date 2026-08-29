@@ -7,7 +7,7 @@ export {
   autoSeedDefaultModel,
   autoSeedableModels,
   bedrockInferenceProfileRank,
-} from './enablement.js';
+} from './enablement';
 
 // ─── Kortix-owned provider auth requirements ────────────────────────────────
 //
@@ -77,10 +77,10 @@ export {
 // directly by the upstream SDK. No mismatch there; no override needed.
 //
 // NOTE: this package publishes dist/ via `tsc` with
-// moduleResolution:"Bundler" (see tsconfig.build.json). Every relative code
-// import must include its emitted `.js` extension because plain Node ESM does
-// not add it. The SDK install smoke imports the React entry so this remains
-// enforced against the packed artifact.
+// moduleResolution:"Bundler" (see tsconfig.build.json). Turbopack consumes the
+// extensionless workspace source. `tsc-alias --resolve-full-paths` adds `.js`
+// to the emitted relative import for plain Node ESM. The SDK install smoke
+// imports the React entry and enforces the packed output.
 
 export interface ProviderAuthMethod {
   /** Optional label, surfaced only if a provider ever exposes >1 method in the UI (none do today — the connect form always uses methods[0]). */

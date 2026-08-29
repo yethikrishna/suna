@@ -3750,6 +3750,22 @@ dead-ended.
   `available:true` plus `source:"mirror"`, and verifies session isolation in the
   mirrored content. `session-transcript.test.ts` separately pins the stopped
   session mirror and the no-mirror `available:false` path.
+## A root-only package smoke can publish a broken optional entry point
+
+- **Incident (2026-08-29, v0.13.7 npm release):** a fresh consumer could import
+  `@kortix/sdk` and `@kortix/sdk/server`, but `@kortix/sdk/react` failed after
+  installing its documented peers. The React graph reached
+  `@kortix/llm-catalog/dist/index.js`, which exported `./enablement` without the
+  `.js` extension required by plain Node ESM. Repository typechecks and the
+  root-only packed-artifact smoke did not traverse that graph.
+- **Rule:** a publish smoke must install every documented optional peer and
+  import every public entry point that those peers enable. TypeScript
+  `moduleResolution:"Bundler"` does not repair extensionless relative imports
+  in emitted Node ESM. Source imports must name the emitted `.js` file.
+- **Enforcement:** `packages/sdk/scripts/smoke-install.mjs` installs React and
+  TanStack Query, imports `@kortix/sdk/react`, and asserts `useSession` exists.
+  The `@kortix/llm-catalog` build runs `tsc-alias --resolve-full-paths` to turn
+  its extensionless workspace import into `./enablement.js` after `tsc` emits.
 
 ---
 
@@ -3816,4 +3832,3 @@ build if a path-only allowlist reappears in `.gitleaks.toml`.
 *Incident:* No leak occurred. Found by audit, closed the same session. All
 findings reproduced in throwaway repos with real gitleaks 8.30.1 and the repo's
 own config; no real secret was ever written to disk in plaintext.
-||||||| 2108aa3c8a

@@ -3790,9 +3790,12 @@ caught `INTERNAL_HMAC_SECRET` (generic-api-key) and still missed the plaintext
    which `pnpm install` executes (verified: `core.hooksPath` = `.githooks`
    after a bare `pnpm install`).
 2. **Never write a path-only gitleaks allowlist.** `paths` alone exempts the
-   whole file. Pair it with `condition = "AND"` plus `regexes` (and
+   whole file. Pair it with `condition = "AND"` **and** `regexes` (plus
    `regexTarget = "line"` when exempting a file *format* rather than a value)
    so only the intended lines are exempt and a real secret still fails.
+   `condition = "AND"` with no `regexes` is still path-only — the AND has
+   nothing to intersect. The first version of the tripwire below checked only
+   the condition and would have passed that shape; review caught it.
 3. **Know each gate's shape before trusting it.** `dotenvx ext precommit`
    inspects only the **staged** diff — correct for a hook, a no-op in CI where
    nothing is staged. gitleaks runs on the **pull request** — after the commit,

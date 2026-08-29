@@ -31,13 +31,29 @@ for f in "${files[@]}"; do
   bad_in_file=0
   while IFS= read -r line || [ -n "$line" ]; do
     n=$((n + 1))
-    case "$line" in
+    stripped=$(printf '%s' "$line" | sed -E 's/^[[:space:]]+//')
+    case "$stripped" in
       ''|'#'*) continue ;;
     esac
-    # KEY=VALUE only; anything else (export lines, continuations) is not a value.
-    printf '%s' "$line" | grep -qE '^[A-Za-z_][A-Za-z0-9_]*=' || continue
-    key=${line%%=*}
-    val=${line#*=}
+    # dotenv (v16, which dotenvx uses) also parses `export KEY=VALUE`, an
+    # indented line, and spaces around `=` as real values. Normalize all three
+    # to a bare KEY=VALUE before deciding anything, or they slip through.
+    norm=$(printf '%s' "$stripped" \
+      | sed -E 's/^export[[:space:]]+//; s/^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*/\1=/')
+    if ! printf '%s' "$norm" | grep -qE '^[A-Za-z_][A-Za-z0-9_]*='; then
+      # Fail closed. A non-comment line carrying '=' that this parser cannot
+      # read is not proof of safety — report it instead of skipping it.
+      case "$norm" in
+        *=*)
+          echo "UNPARSED   $f:$n  (has '=' but is not KEY=VALUE)"
+          bad_in_file=$((bad_in_file + 1))
+          fail=1
+          ;;
+      esac
+      continue
+    fi
+    key=${norm%%=*}
+    val=${norm#*=}
     val=${val#\"}; val=${val#\'}
     # dotenvx public keys are published on purpose (one per profile:
     # DOTENV_PUBLIC_KEY, _DEV, _STAGING, _PROD); empty values hold nothing.

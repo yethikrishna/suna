@@ -6,11 +6,15 @@
 # generic high-entropy rule. Their values are AES ciphertext (`encrypted:…`) and
 # a public key — neither is a usable secret.
 #
-# EVERY allowlist here must be `condition = "AND"` with `regexes`. A path-only
-# allowlist exempts the whole file, including a plaintext secret. Note also that
-# this scan runs on the PULL REQUEST, i.e. AFTER the commit is pushed. The guard
-# that runs BEFORE the commit is `.githooks/pre-commit`, activated by the root
-# package.json `prepare` script, and re-checked in CI by secrets-guard.yml.
+# EVERY allowlist that names `paths` must ALSO carry `condition = "AND"` and a
+# non-empty `regexes`. A path-only allowlist exempts the whole file, including a
+# plaintext secret — and so does `condition = "AND"` with no `regexes`, because
+# the AND then intersects nothing.
+#
+# Note also that this scan runs on the PULL REQUEST, i.e. AFTER the commit is
+# pushed. The guard that runs BEFORE the commit is `.githooks/pre-commit`,
+# activated by the root package.json `prepare` script, and re-checked in CI by
+# secrets-guard.yml.
 [extend]
 useDefault = true
 

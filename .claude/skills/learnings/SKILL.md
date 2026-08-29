@@ -3859,5 +3859,7 @@ own config; no real secret was ever written to disk in plaintext.
   not-found response. A successful read through another replica does not prove
   fleet-wide cache convergence.
 - **Enforcement:** `findProjectTriggerBySlug()` retries a missing cached trigger
-  through `readManifest(..., { forceRefresh: true })`. The manual fire route
-  uses this helper. Its unit test proves the cached-then-forced read sequence.
+  through `readManifest(..., { forceRefresh: true })`. A per-project cooldown
+  limits forced fetches to one per Git refresh interval. The manual fire route
+  uses this helper. Unit tests prove cached-hit, forced-refresh, and bounded-miss
+  sequences.

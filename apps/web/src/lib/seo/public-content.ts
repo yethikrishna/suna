@@ -64,8 +64,6 @@ export const STATIC_PUBLIC_ROUTES = [
   '/docs',
   '/download',
   '/enterprise',
-  '/help',
-  '/help/credits',
   '/connectors',
   '/legal',
   '/marketplace',
@@ -74,6 +72,7 @@ export const STATIC_PUBLIC_ROUTES = [
   '/self-hosted',
   '/solutions',
   '/support',
+  '/support/credits',
   '/use-cases',
 ] as const;
 
@@ -167,21 +166,6 @@ const MARKETING_RECORDS: PublicContentRecord[] = [
   },
   {
     kind: 'marketing',
-    slug: 'help',
-    title: 'Kortix Help Center',
-    description: 'Guides for billing, credits, and everyday Kortix questions.',
-    htmlPath: '/help',
-  },
-  {
-    kind: 'marketing',
-    slug: 'help/credits',
-    title: 'Kortix credits explained',
-    description:
-      'What credits are, how Kortix sessions consume them, and how to manage your balance and subscription.',
-    htmlPath: '/help/credits',
-  },
-  {
-    kind: 'marketing',
     slug: 'enterprise',
     title: 'Kortix Enterprise',
     description: PRICING_PLANS.find((plan) => plan.id === 'enterprise')?.note,
@@ -200,8 +184,20 @@ const MARKETING_RECORDS: PublicContentRecord[] = [
     kind: 'marketing',
     slug: 'support',
     title: 'Kortix support',
-    description: 'Support resources and contact information for Kortix.',
+    description:
+      'Reach Kortix support, read the guides, and find the answers to the questions people ask most.',
     htmlPath: '/support',
+  },
+  // The support hub's first article. It absorbed /help and /help/credits, which
+  // were a second support surface wearing the app sidebar; both paths 308 here
+  // from `next.config.ts`, as does the older /credits-explained.
+  {
+    kind: 'marketing',
+    slug: 'support/credits',
+    title: 'Kortix credits explained',
+    description:
+      'What credits are, how Kortix sessions consume them, and how to manage your balance and subscription.',
+    htmlPath: '/support/credits',
   },
   // The product pages. Each one's layout.tsx reads its title/description back
   // through `marketingMetadata(htmlPath)`, so this record is the single place

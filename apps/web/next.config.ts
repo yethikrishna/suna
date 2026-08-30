@@ -395,12 +395,36 @@ const nextConfig = (): NextConfig => ({
         destination: '/docs/guides/self-hosting',
         permanent: true,
       },
+      // The help centre was a second support surface: it wore the app sidebar
+      // and a ⌘K modal to host exactly one article, while /support carried the
+      // FAQ, the contact addresses and the account-deletion steps. They merged
+      // into /support, so every help URL lands on its counterpart there.
+      //
+      // Permanent (308), because these are indexed public URLs and the merge is
+      // not going to be undone. /help/:path* catches nothing today — the tree
+      // held only the index and credits — and exists so a stale deep link ends
+      // on the hub instead of the marketing 404.
+      {
+        source: '/help/credits',
+        destination: '/support/credits',
+        permanent: true,
+      },
+      {
+        source: '/help',
+        destination: '/support',
+        permanent: true,
+      },
+      {
+        source: '/help/:path*',
+        destination: '/support',
+        permanent: true,
+      },
       // Removed pages that may live on in old links and search indexes.
-      // /credits-explained became the help-center credits article; the
-      // /compare section was retired with no direct replacement.
+      // /credits-explained became the support credits article; the /compare
+      // section was retired with no direct replacement.
       {
         source: '/credits-explained',
-        destination: '/help/credits',
+        destination: '/support/credits',
         permanent: true,
       },
       {

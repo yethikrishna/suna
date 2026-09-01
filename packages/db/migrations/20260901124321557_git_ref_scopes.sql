@@ -42,30 +42,41 @@ set statement_timeout = '30s';
 --     the cutover's (grantable, "group", verb) were renamed and one was added.
 --   * kortix.iam_role_actions is now a VIEW over kortix.role_permissions, and a
 --     view has no unique index, so `ON CONFLICT` against it fails 42P10 (see
---     the 2026-08-19 learning). Seed the base table, keyed by role_id.
+--     the 2026-08-19 learning). Seed the base table, keyed by role_id. The
+--     20260819015727000 precedent still names the view because it ran BEFORE
+--     the view cutover later the same day; copying it verbatim today would
+--     fail.
+--
+-- One statement per (role, action), rather than a set-derived INSERT, so the
+-- role-capability-matrix drift alarm in apps/web can read what this seeds
+-- straight out of the SQL. `manager` is the only role holding
+-- project.gitops.push (verified against the live catalog).
 
-insert into kortix.permissions
+INSERT INTO kortix.permissions
   (action, scope_type, resource_type, delegable, description, area, level, implies)
-values
+VALUES
   ('project.gitops.ref.any', 'project', 'project', true,
    'Push Git refs beyond your own session branch.', 'git', 'edit',
    ARRAY['project.gitops.read','project.gitops.push']::text[]),
   ('project.gitops.ref.delete', 'project', 'project', true,
    'Delete a Git ref.', 'git', 'edit',
    ARRAY['project.gitops.read','project.gitops.push']::text[])
-on conflict (action) do nothing;
+ON CONFLICT (action) DO NOTHING;
 
--- Seed into every role that already holds project.gitops.push, so deployed
--- behaviour for humans is unchanged the moment this lands. Derived from the
--- table rather than hardcoding `manager`, so a role that gained gitops.push
--- since the cutover is covered too. MUST run after the inserts above:
--- role_permissions.action has an FK onto permissions.action.
-insert into kortix.role_permissions (role_id, action)
-select rp.role_id, leaf.action
-from kortix.role_permissions rp
-cross join (values
-  ('project.gitops.ref.any'),
-  ('project.gitops.ref.delete')
-) as leaf(action)
-where rp.action = 'project.gitops.push'
-on conflict (role_id, action) do nothing;
+-- MUST run after the inserts above: role_permissions.action has an FK onto
+-- permissions.action.
+INSERT INTO kortix.role_permissions (role_id, action)
+SELECT r.role_id, 'project.gitops.ref.any'
+  FROM kortix.iam_roles r
+ WHERE r.account_id IS NULL
+   AND r.key = 'manager'
+   AND r.scope_type = 'project'
+ON CONFLICT (role_id, action) DO NOTHING;
+
+INSERT INTO kortix.role_permissions (role_id, action)
+SELECT r.role_id, 'project.gitops.ref.delete'
+  FROM kortix.iam_roles r
+ WHERE r.account_id IS NULL
+   AND r.key = 'manager'
+   AND r.scope_type = 'project'
+ON CONFLICT (role_id, action) DO NOTHING;

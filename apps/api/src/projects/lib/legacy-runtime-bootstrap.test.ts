@@ -150,6 +150,15 @@ describe('bootstrapLegacyRuntime', () => {
     expect((calls.audits[0] as { outcome: string }).outcome).toBe('success');
   });
 
+  test('an install during the boot pass (opencode=updated) triggers exactly one more relaunch', async () => {
+    const calls: Calls = { patches: [], audits: [], execs: [] };
+    const updated = { daemon: 'ok', opencode: 'ok', runtime: { build: 1788044234, components: { agent: 'current', opencode: 'updated' } } };
+    const r = await bootstrapLegacyRuntime(input(), makeDeps({ health: [LEGACY_HEALTH, updated, updated, updated] }, calls));
+    expect(r.outcome).toBe('converged');
+    expect(calls.execs).toHaveLength(2);
+    expect(calls.audits).toHaveLength(2);
+  });
+
   test('current box: stamps the check and does nothing else', async () => {
     const calls: Calls = { patches: [], audits: [], execs: [] };
     const r = await bootstrapLegacyRuntime(input(), makeDeps({ health: [CURRENT_HEALTH] }, calls));

@@ -264,6 +264,8 @@ export interface LegacyBootstrapInput {
   reason: string;
   /** Skip the recent-check TTL (an operator sweep wants the truth now). */
   force?: boolean;
+  /** Internal: this call is the relaunch pass after an OpenCode install. */
+  postInstallPass?: boolean;
 }
 
 export interface LegacyBootstrapDeps {
@@ -567,7 +569,34 @@ export async function bootstrapLegacyRuntime(
       await deps.patchMetadata({
         [LEGACY_CHECK_METADATA_KEY]: { at: new Date(deps.now()).toISOString(), klass: 'current' } satisfies LegacyCheckRecord,
       });
-      return finish('converged', { to: { ...to, runtimeBuild: after.runtimeBuild } }, 'converged');
+      const converged = await finish('converged', { to: { ...to, runtimeBuild: after.runtimeBuild } }, 'converged');
+      // `updated` = this daemon installed OpenCode during its boot pass. Daemon
+      // builds before the restart re-detection fix keep spawning the binary
+      // they memoised at boot, so one more relaunch is what makes the installed
+      // OpenCode the running one. Idempotent: agent, entrypoint and token are
+      // already at the manifest, only the chain restarts.
+      if (after.opencodeComponent === 'updated' && !input.postInstallPass) {
+        deps.log('relaunching once more so the installed OpenCode is the running one', {
+          sandboxId: input.sandboxId,
+        });
+        const finishedRecord: LegacyBootstrapRecord = {
+          ...running,
+          state: 'converged',
+          to: { ...to, runtimeBuild: after.runtimeBuild },
+          finishedAt: new Date(deps.now()).toISOString(),
+        };
+        return bootstrapLegacyRuntime(
+          {
+            ...input,
+            force: true,
+            postInstallPass: true,
+            reason: `${input.reason}:post-install-relaunch`,
+            metadata: { ...(input.metadata ?? {}), [LEGACY_BOOTSTRAP_METADATA_KEY]: finishedRecord },
+          },
+          deps,
+        );
+      }
+      return converged;
     }
     await deps.sleep(LEGACY_BOOTSTRAP_POLL_MS);
   }

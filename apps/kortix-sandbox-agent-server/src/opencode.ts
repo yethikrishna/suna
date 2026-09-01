@@ -2543,6 +2543,12 @@ export function createOpencodeSupervisor(
     async restart() {
       await this.stop('SIGTERM')
       restartDelayMs = 500
+      // A restart is where a freshly converged OpenCode must take effect. The
+      // binary path is memoised at boot — before the convergence pass could
+      // have installed anything — so a restart that kept it would spawn the
+      // baked binary forever (prod, 2026-09-01: 1.18.23 installed, 1.17.11
+      // kept running until the daemon itself was relaunched).
+      binaryResolutionPromise = null
       await this.start()
       // A PLANNED restart strands its turn exactly like a crash does, and only
       // the crash path was cleaning up: `proc.on('exit')` returns early while

@@ -174,6 +174,9 @@ log "pnpm $pnpm_final, PNPM_HOME=$PNPM_HOME, rc at $PNPM_RC"
 # user keeps running everything as root.
 if id kortix >/dev/null 2>&1; then
   chown -R kortix:kortix "$STATE_DIR" "$PNPM_HOME_DIR" "$OPENCODE_HOME/.config/pnpm" 2>/dev/null || true
+  # The daemon replaces the CLI in place at /usr/local/bin/kortix; as `kortix`
+  # it needs to own that file (the image only chowns /opt/kortix).
+  [ -f /usr/local/bin/kortix ] && chown kortix:kortix /usr/local/bin/kortix 2>/dev/null || true
 fi
 # 5. Token model. Current boxes carry one session PAT as KORTIX_TOKEN. Rewrite
 #    the persisted value (pt-init re-exports /etc/environment on a cold boot)

@@ -44,7 +44,10 @@ export function EditorSection({
 /**
  * Label and help on the left, control on the right — for anything that fits a
  * switch, a select, a slider, or a short input. Stacks under `sm` so a narrow
- * pane never squeezes the control down to nothing.
+ * pane never squeezes the control down to nothing. The control is `w-52`
+ * (208px): the row lives in the agent page's 28rem column, and at the old
+ * `w-60` the label beside it was 100px wide and wrapped every help line
+ * three deep.
  */
 export function SettingRow({
   label,
@@ -58,7 +61,7 @@ export function SettingRow({
   return (
     <div className="flex flex-col gap-2 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
       <SettingLabel label={label} help={help} />
-      <div className="w-full shrink-0 sm:w-60">{children}</div>
+      <div className="w-full shrink-0 sm:w-52">{children}</div>
     </div>
   );
 }

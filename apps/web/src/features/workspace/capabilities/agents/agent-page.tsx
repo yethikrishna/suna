@@ -188,9 +188,11 @@ export function AgentPage({ projectId, agentName }: { projectId: string; agentNa
 // ─── Frame ─────────────────────────────────────────────────────────────────
 
 /**
- * The page's scroll container and column. `max-w-5xl` matches
- * `CapabilityPageShell`, so the Agents list and one agent's page share one
- * column width and the transition between them does not reflow the header.
+ * The page's scroll container and column. `max-w-6xl`, one step wider than
+ * `CapabilityPageShell`'s `max-w-5xl`: this page is two columns, and the
+ * right one holds label-left/control-right rows that need ~28rem to keep a
+ * label to two lines. The left column still gets ~650px for the
+ * instructions, which is prose width.
  */
 function AgentPageFrame({
   children,
@@ -201,7 +203,7 @@ function AgentPageFrame({
 }) {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto w-full max-w-5xl px-4 pt-8 pb-24 lg:pt-10">{children}</div>
+      <div className="mx-auto w-full max-w-6xl px-4 pt-8 pb-24 lg:pt-10">{children}</div>
       {footer}
     </div>
   );
@@ -219,7 +221,7 @@ function AgentPageSkeleton() {
           <Skeleton className="h-11 w-full rounded-md" />
           <Skeleton className="h-80 w-full rounded-md" />
         </div>
-        <div className="w-full shrink-0 space-y-6 lg:w-[22rem]">
+        <div className="w-full shrink-0 space-y-6 lg:w-[28rem]">
           <Skeleton className="h-28 w-full rounded-md" />
           <Skeleton className="h-40 w-full rounded-md" />
           <Skeleton className="h-28 w-full rounded-md" />
@@ -493,7 +495,7 @@ function EditableAgentPage({
         </div>
 
         {/* Right — everything the agent draws on and everyone who draws on it. */}
-        <aside className="w-full shrink-0 lg:w-[22rem]">
+        <aside className="w-full shrink-0 lg:w-[28rem]">
           <AgentConfigSections
             editor={editor}
             options={options}
@@ -549,7 +551,7 @@ function SaveBar({
           transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
           className="bg-background/95 sticky bottom-0 z-10 border-t shadow-sm backdrop-blur"
         >
-          <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3 px-4 py-3">
+          <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3">
             <p className="text-muted-foreground min-w-0 truncate text-xs">
               <span className="text-foreground font-medium">Unsaved changes.</span> Saving commits
               to your project repo.
@@ -660,7 +662,7 @@ function ReadOnlyAgentPage({
           </div>
         </div>
 
-        <aside className="w-full shrink-0 space-y-6 lg:w-[22rem]">
+        <aside className="w-full shrink-0 space-y-6 lg:w-[28rem]">
           {showUpgradeHint ? (
             <InfoBanner tone="info" title="Upgrade for the full agent editor">
               This project uses a v1 manifest. Migrate to{' '}

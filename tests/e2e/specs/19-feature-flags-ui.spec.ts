@@ -81,16 +81,17 @@ async function dismissOnboarding(page: Page): Promise<void> {
 }
 
 /**
- * Feature flags graduated out of the Settings overlay's Experimental tab a
- * second time, onto the Customize bar's Settings tab
- * (`/projects/[id]/config?section=feature-flags`, `settings-tabs.ts`
- * GRADUATED map: `experimental` -> `feature-flags`). The pane's own copy
- * reverted to "Feature flags" at the new location
- * (`project-settings-sections.ts`'s `FEATURE_FLAGS_SECTION`), so the page
- * title is that, not "Experimental" any more. Navigate straight there.
+ * Feature flags is a Workspace row of the Settings overlay (2026-09-02;
+ * `/projects/[id]/config` is gone). `/settings/<tab>` is the overlay's
+ * deep-link route: it opens the store on that tab and lands on the project
+ * page with the overlay over it. The rail row is labelled "Feature flags"
+ * (`settings/rail.ts`), which is the heading `SettingsTabHeader` renders.
+ *
+ * Called AFTER `dismissOnboarding` on purpose: that helper asserts zero open
+ * dialogs, and the overlay is one.
  */
 async function openFeatureFlags(page: Page, projectId: string): Promise<Locator> {
-  await page.goto(`/projects/${projectId}/config?section=feature-flags`, {
+  await page.goto(`/projects/${projectId}/settings/feature-flags`, {
     waitUntil: "domcontentloaded",
   });
   await expect(

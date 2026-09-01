@@ -21,7 +21,7 @@ import { getServerPublicEnv } from '@/lib/public-env-server';
 import { safeJsonForHtml } from '@/lib/security/safe-json';
 import { siteMetadata } from '@/lib/site-metadata';
 import { cn } from '@/lib/utils';
-import { featureFlags } from '@kortix/sdk/feature-flags';
+import { featureFlags } from '@kortix/sdk';
 import type { Metadata, Viewport } from 'next';
 import { headers } from 'next/headers';
 import { connection } from 'next/server';
@@ -148,15 +148,15 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: '/favicon.png', sizes: '32x32' },
+      { url: '/favicon.svg', sizes: '270x270' },
       {
-        url: '/favicon-light.png',
-        sizes: '32x32',
+        url: '/favicon.svg',
+        sizes: '270x270',
         media: '(prefers-color-scheme: dark)',
       },
     ],
-    shortcut: '/favicon.png',
-    apple: [{ url: '/logo_black.png', sizes: '180x180' }],
+    shortcut: '/favicon.svg',
+    apple: [{ url: '/favicon.svg', sizes: '270x270' }],
   },
   manifest: '/manifest.json',
   // No root canonical: Next.js inherits `alternates` into every page that does
@@ -287,7 +287,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 'Kortix – The AI Command Center for Your Company',
               ],
               url: siteMetadata.url,
-              logo: `${siteMetadata.url}/favicon.png`,
+              logo: `${siteMetadata.url}/favicon.svg`,
               description: siteMetadata.description,
               foundingDate: '2024',
               sameAs: [
@@ -373,7 +373,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                       billing, IAM) can open it via useRequestDemo(). */}
                       {/* Organization branding (Enterprise): the active
                       account's own logo / icon / favicon / product name.
-                      Reads the shared ['accounts'] query, so it sits inside
+                      Reads the shared account-list query, so it sits inside
                       ReactQueryProvider and above everything that renders a
                       KortixLogo. */}
                       <BrandingProvider>

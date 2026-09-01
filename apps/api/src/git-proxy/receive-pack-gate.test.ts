@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Hono } from 'hono';
 
 const PROJECT_ID = 'b06a70f1-be0a-4fd0-b052-26fffb92713f';
 const SESSION_ID = '9bf3acd4-85bc-46fe-a938-e61404e00270';
@@ -23,6 +24,8 @@ const DEFAULT_BRANCH = 'main';
 
 /** Swapped per test to impersonate each class of credential. */
 let principal: any = { kind: 'user', userId: 'user-1' };
+/** The agent grant the scope resolver reads; null = an ungoverned project. */
+let agentGrant: any = null;
 /** Refs the fake upstream actually received — empty means nothing was forwarded. */
 let upstreamReceived: string[] = [];
 
@@ -104,7 +107,18 @@ beforeAll(async () => {
   });
   upstreamUrl = `http://127.0.0.1:${upstreamServer.port}/upstream.git`;
 
-  proxyServer = Bun.serve({ port: 0, fetch: (req) => gitProxyApp.fetch(req) });
+  // The scope resolver reads the agent grant off the request context, which the
+  // auth middleware sets in production. Hono collects handlers in REGISTRATION
+  // order and this app's routes exist at import time, so a `use('*')` added
+  // here would run AFTER them. A parent app shares the context with a routed
+  // sub-app, which injects the grant without mocking a module process-wide.
+  const host = new Hono();
+  host.use('*', async (c, next) => {
+    c.set('agentGrant' as never, agentGrant as never);
+    await next();
+  });
+  host.route('/', gitProxyApp);
+  proxyServer = Bun.serve({ port: 0, fetch: (req) => host.fetch(req) });
   proxyBase = `http://127.0.0.1:${proxyServer.port}/${PROJECT_ID}.git`;
 
   // A real local repo with real commits to push.
@@ -188,13 +202,21 @@ describe('a session principal', () => {
     expect(upstreamReceived).toEqual([]);
   });
 
-  test('is refused deleting a branch', async () => {
-    const { code, output } = await push('origin', '--delete', 'refs/heads/main');
+  test('is refused deleting another branch', async () => {
+    const { code, output } = await push('origin', '--delete', 'refs/heads/feature');
     expect(code).not.toBe(0);
     expect(output).toContain('[remote rejected]');
     // The reason proves the refusal came from OUR gate. Without it, git's own
     // client-side refusal would satisfy `[remote rejected]` just as well.
     expect(output).toContain('own branch');
+    expect(upstreamReceived).toEqual([]);
+  });
+
+  test('deleting the default branch hits the structural floor, not the session rule', async () => {
+    const { code, output } = await push('origin', '--delete', 'refs/heads/main');
+    expect(code).not.toBe(0);
+    expect(output).toContain('[remote rejected]');
+    expect(output).toContain('cannot be deleted');
     expect(upstreamReceived).toEqual([]);
   });
 
@@ -249,6 +271,37 @@ describe('a user principal', () => {
     expect(code).not.toBe(0);
     expect(output).toContain('[remote rejected]');
     expect(output).toContain('cannot be deleted');
+    expect(upstreamReceived).toEqual([]);
+  });
+});
+
+describe('a session GRANTED project.gitops.ref.any', () => {
+  beforeAll(() => {
+    principal = { kind: 'session', sessionId: SESSION_ID, branch: SESSION_ID };
+    agentGrant = { agent: 'main', kortixCli: ['project.gitops.ref.any'] };
+  });
+  afterAll(() => {
+    agentGrant = null;
+  });
+
+  test('CAN push another branch — the scope is what makes it deliberate', async () => {
+    const { code, output } = await push('--force', 'origin', 'HEAD:refs/heads/shared');
+    expect(output).not.toContain('[remote rejected]');
+    expect(code).toBe(0);
+    expect(upstreamReceived).toEqual(['refs/heads/shared']);
+  });
+
+  test('is STILL refused deleting the default branch — a floor no grant lifts', async () => {
+    const { code, output } = await push('origin', '--delete', 'refs/heads/main');
+    expect(code).not.toBe(0);
+    expect(output).toContain('cannot be deleted');
+    expect(upstreamReceived).toEqual([]);
+  });
+
+  test('is STILL refused deleting another branch — that needs the delete scope', async () => {
+    const { code, output } = await push('origin', '--delete', 'refs/heads/feature');
+    expect(code).not.toBe(0);
+    expect(output).toContain('[remote rejected]');
     expect(upstreamReceived).toEqual([]);
   });
 });

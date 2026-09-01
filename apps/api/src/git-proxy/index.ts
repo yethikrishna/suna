@@ -33,6 +33,7 @@ import {
   wantsSideband,
 } from './receive-pack';
 import { evaluateRefUpdates, principalLabel } from './ref-policy';
+import { denialsAfterScopes } from './ref-scopes';
 import {
   FORWARD_REQUEST_HEADERS,
   STRIP_RESPONSE_HEADERS,
@@ -377,7 +378,14 @@ async function gateReceivePack(
     return c.text(reason, 400);
   }
 
-  const denials = evaluateRefUpdates(auth.principal, { defaultBranch: auth.project.defaultBranch }, parsed.updates);
+  // Pure policy first: it needs no I/O and answers every ordinary push. Only a
+  // denial is worth an authorization check, so a session pushing its own branch
+  // and a person pushing anything both reach the upstream without one.
+  const denials = denialsAfterScopes(
+    c,
+    auth.principal,
+    evaluateRefUpdates(auth.principal, { defaultBranch: auth.project.defaultBranch }, parsed.updates),
+  );
   if (denials.length > 0) {
     // Refuse before a single pack byte is uploaded. The client is mid-send;
     // git handles an early response and prints our per-ref reasons, so there is

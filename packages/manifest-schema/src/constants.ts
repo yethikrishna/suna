@@ -255,6 +255,8 @@ export const GRANTABLE_KORTIX_CLI_ACTIONS: readonly string[] = [
   'project.gitops.read',
   'project.gitops.push',
   'project.gitops.merge',
+  'project.gitops.ref.any',
+  'project.gitops.ref.delete',
   'project.secret.read',
   'project.secret.write',
   'project.connector.read',

@@ -42,8 +42,17 @@ describe('[[agents]] — grantable enum drift guard', () => {
   // either side is caught even if it happens to keep the two sides equal to
   // EACH OTHER but wrong in absolute terms (both sides sourced from the same
   // stale copy-paste, say).
-  test('45 grantable project actions (all of PROJECT_ACTIONS)', () => {
-    expect(GRANTABLE_KORTIX_CLI.size).toBe(45);
+  test('47 grantable project actions (all of PROJECT_ACTIONS)', () => {
+    expect(GRANTABLE_KORTIX_CLI.size).toBe(47);
+  });
+
+  // The git ref leaves are grantable on purpose: a project that WANTS an agent
+  // pushing beyond its own branch says so in `kortix_cli`. The session -> own
+  // branch binding itself is not here, and must never be — it is the
+  // credential's identity, not a permission (see git-proxy/ref-policy.ts).
+  test('the git ref-authority leaves are grantable', () => {
+    expect(GRANTABLE_KORTIX_CLI.has('project.gitops.ref.any')).toBe(true);
+    expect(GRANTABLE_KORTIX_CLI.has('project.gitops.ref.delete')).toBe(true);
   });
 
   // The three manager-tier project leaves are reachable via a project's

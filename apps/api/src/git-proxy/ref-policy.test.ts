@@ -118,8 +118,11 @@ describe('user principal', () => {
     expect(evaluateRefUpdates(user, ctx, [update(ref)])).toEqual([]);
   });
 
-  test('may delete a non-default branch', () => {
-    expect(evaluateRefUpdates(user, ctx, [remove('refs/heads/stale')])).toEqual([]);
+  test('deleting a non-default branch is stated as needing the delete scope', () => {
+    // The POLICY asks one question for every principal; ref-scopes.ts is what
+    // answers "a person holds it", so a human is unaffected in practice.
+    const [denial] = evaluateRefUpdates(user, ctx, [remove('refs/heads/stale')]);
+    expect(denial!.requires).toEqual(['project.gitops.ref.delete']);
   });
 
   test('may NOT delete the default branch', () => {
@@ -130,8 +133,13 @@ describe('user principal', () => {
 
   test('the default branch is read from the project, not hardcoded to main', () => {
     const devDefault = { defaultBranch: 'dev' };
-    expect(evaluateRefUpdates(user, devDefault, [remove('refs/heads/dev')])).toHaveLength(1);
-    expect(evaluateRefUpdates(user, devDefault, [remove('refs/heads/main')])).toEqual([]);
+    // `dev` is the default here, so its deletion hits the structural floor...
+    const [floor] = evaluateRefUpdates(user, devDefault, [remove('refs/heads/dev')]);
+    expect(floor!.requires).toBeUndefined();
+    expect(floor!.reason).toContain('cannot be deleted');
+    // ...while `main` is now an ordinary branch, deletable with the scope.
+    const [ordinary] = evaluateRefUpdates(user, devDefault, [remove('refs/heads/main')]);
+    expect(ordinary!.requires).toEqual(['project.gitops.ref.delete']);
   });
 
   test('force-push is NOT judged here — it is not decidable without the pack', () => {
@@ -142,10 +150,41 @@ describe('user principal', () => {
 });
 
 describe('internal principal', () => {
-  test('is unconstrained — server-side writers are gated at their own routes', () => {
-    expect(
-      evaluateRefUpdates(internal, ctx, [update('refs/heads/main'), remove('refs/heads/main')]),
-    ).toEqual([]);
+  test('may move any ref — server-side writers are gated at their own routes', () => {
+    expect(evaluateRefUpdates(internal, ctx, [update('refs/heads/main')])).toEqual([]);
+  });
+
+  test('still cannot delete the default branch — that floor is absolute', () => {
+    const denials = evaluateRefUpdates(internal, ctx, [remove('refs/heads/main')]);
+    expect(denials).toHaveLength(1);
+    expect(denials[0]!.requires).toBeUndefined();
+  });
+});
+
+describe('the two authority layers', () => {
+  test('a session denial names the scope that would widen it', () => {
+    const [other] = evaluateRefUpdates(session, ctx, [update('refs/heads/dev')]);
+    expect(other!.requires).toEqual(['project.gitops.ref.any']);
+    const [own] = evaluateRefUpdates(session, ctx, [remove(`refs/heads/${SESSION_ID}`)]);
+    expect(own!.requires).toEqual(['project.gitops.ref.delete']);
+    // Deleting ANOTHER ref needs both — one leaf could never express this.
+    const [both] = evaluateRefUpdates(session, ctx, [remove('refs/heads/other')]);
+    expect(both!.requires).toEqual(['project.gitops.ref.any', 'project.gitops.ref.delete']);
+  });
+
+  test('a STRUCTURAL denial names no scope, so nothing can grant past it', () => {
+    // The default-branch floor, for a principal that could otherwise delete refs.
+    const [floor] = evaluateRefUpdates(user, ctx, [remove('refs/heads/main')]);
+    expect(floor!.requires).toBeUndefined();
+    // A monitor has no principal behind it to hold a scope.
+    const [mon] = evaluateRefUpdates(monitor, ctx, [update('refs/heads/x')]);
+    expect(mon!.requires).toBeUndefined();
+  });
+
+  test('the default-branch floor outranks a delete scope for a session too', () => {
+    const [denial] = evaluateRefUpdates(session, ctx, [remove('refs/heads/main')]);
+    expect(denial!.requires).toBeUndefined();
+    expect(denial!.reason).toContain('cannot be deleted');
   });
 });
 

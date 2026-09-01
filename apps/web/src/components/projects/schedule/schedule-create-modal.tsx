@@ -116,11 +116,16 @@ export function ScheduleCreateModal({
   open,
   onOpenChange,
   onCreated,
+  initialAgent = null,
 }: {
   projectId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: (slug: string) => void;
+  /** Pre-selects the agent the trigger starts. An agent's own page opens
+   *  this modal for "its" triggers, so the picker lands on that agent rather
+   *  than asking a question the page already answered. Still changeable. */
+  initialAgent?: string | null;
 }) {
   const [kind, setKind] = useState<TriggerKind | null>(null);
   const copy = kind ? KIND_COPY[kind] : null;
@@ -129,7 +134,7 @@ export function ScheduleCreateModal({
   const [step, setStep] = useState<Step>('type');
   const [name, setName] = useState('');
   const [instruction, setInstruction] = useState('');
-  const [agentName, setAgentName] = useState<string | null>(null);
+  const [agentName, setAgentName] = useState<string | null>(initialAgent);
   const [model, setModel] = useState<ModelKey | null>(null);
 
   const [cron, setCron] = useState('0 0 9 * * *');

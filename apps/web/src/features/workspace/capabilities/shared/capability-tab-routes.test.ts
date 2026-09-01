@@ -1,22 +1,34 @@
 import { describe, expect, test } from 'bun:test';
 import {
   CAPABILITY_TABS,
+  PRIMARY_TABS,
   activeCapabilityTab,
+  agentHref,
   capabilityTabHref,
   channelsHref,
 } from './capability-tab-routes';
 
 describe('CAPABILITY_TABS', () => {
-  test('lists models, connectors, agent, skills, triggers, secrets, config in that order', () => {
-    // Models leads the bar (Jay, 2026-08-17) — it used to sit after Triggers.
+  test('lists agent, skills, connectors, triggers, models, secrets, config in that order', () => {
+    // Agents lead the bar (Marko, 2026-09-01): an agent is the one object a
+    // person is granted access to, so it is the object Customize is built
+    // around. Skills — the other thing you BUILD — follows; the rest is what
+    // agents draw on. Models led before that (Jay, 2026-08-17).
     expect(CAPABILITY_TABS.map((t) => t.key)).toEqual([
-      'models',
-      'connectors',
       'agent',
       'skills',
+      'connectors',
       'triggers',
+      'models',
       'secrets',
       'config',
+    ]);
+  });
+
+  test('the primary group is Agents then Skills, and it is a prefix of the bar', () => {
+    expect(PRIMARY_TABS).toEqual(['agent', 'skills']);
+    expect(CAPABILITY_TABS.slice(0, PRIMARY_TABS.length).map((t) => t.key)).toEqual([
+      ...PRIMARY_TABS,
     ]);
   });
 
@@ -61,7 +73,22 @@ describe('capabilityTabHref', () => {
   });
 });
 
+describe('agentHref', () => {
+  test('nests one agent under the Agents tab and encodes the manifest key', () => {
+    expect(agentHref('p1', 'churn')).toBe('/projects/p1/agent/churn');
+    expect(agentHref('p1', 'a b/c')).toBe('/projects/p1/agent/a%20b%2Fc');
+  });
+});
+
 describe('activeCapabilityTab', () => {
+  test("lights Agents on one agent's page, and only there among deeper paths", () => {
+    expect(activeCapabilityTab(agentHref('p1', 'churn'))).toBe('agent');
+    expect(activeCapabilityTab('/projects/p1/agent/churn/')).toBe('agent');
+    // Only the third segment `agent` earns the deeper match — a skill or a
+    // trigger one level down is not a route and must not light a tab.
+    expect(activeCapabilityTab('/projects/p1/skills/foo')).toBeNull();
+    expect(activeCapabilityTab('/projects/p1/agent/a/b')).toBeNull();
+  });
   test('matches the tab segment', () => {
     expect(activeCapabilityTab('/projects/p1/agent')).toBe('agent');
     expect(activeCapabilityTab('/projects/p1/connectors')).toBe('connectors');

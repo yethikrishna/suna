@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,7 +22,6 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { errorToast, successToast } from '@/components/ui/toast';
 import { EmptyState } from '@/features/layout/section/empty-state';
 import { detectManifestVersion } from '@/features/workspace/customize/migrate-to-v2/manifest-version';
-import { AgentEditorPanel } from '@/features/workspace/customize/sections/view/agent-editor';
 import { formatMode, toArray } from '@/features/workspace/customize/shared/utils';
 import {
   newConfigPrompt,
@@ -32,12 +31,14 @@ import { PROJECT_ACTIONS } from '@/lib/project-actions';
 import { useProjectCan } from '@/lib/use-project-can';
 import {
   getProjectDetail,
+  listProjectTriggers,
   type ProjectConfigSummary,
   updateProjectDefaultAgent,
 } from '@kortix/sdk';
 import { contract, qk, useProjectAccountId } from '@kortix/sdk/react';
 import { capitalizeWords } from '@kortix/shared';
 import {
+  CaretRightIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   RobotIcon,
@@ -46,6 +47,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { CapabilityPageShell } from '@/features/workspace/capabilities/shared/capability-page-shell';
+import { agentHref } from '@/features/workspace/capabilities/shared/capability-tab-routes';
 import { CatalogCard } from '@/features/workspace/capabilities/shared/catalog/catalog-card';
 import { catalogEmptyKind } from '@/features/workspace/capabilities/shared/catalog/catalog-empty';
 import {
@@ -53,10 +55,7 @@ import {
   CatalogNoMatch,
 } from '@/features/workspace/capabilities/shared/catalog/catalog-empty-state';
 import { CatalogGrid } from '@/features/workspace/capabilities/shared/catalog/catalog-grid';
-import { detailSelection } from '@/features/workspace/capabilities/shared/detail-selection';
-import { EntityDetailModal } from '@/features/workspace/capabilities/shared/entity/entity-modal';
 
-import { AgentDetailAside } from './agent-detail-aside';
 import { type AgentMode, filterAgents } from './agent-filter';
 
 type Agent = ProjectConfigSummary['agents'][number];
@@ -69,11 +68,16 @@ const MODE_FILTERS: ReadonlyArray<{ value: ModeFilter; label: string }> = [
 ];
 
 /**
- * /projects/[id]/agent — the standalone Agents catalog, and the same page body
- * shape as Skills: header + search + filter tabs, a card grid, and a detail
- * modal. It replaces the Customize overlay's master-detail Agents section,
- * which packed a list, a source pane and a settings aside into one fixed
- * three-column shell.
+ * /projects/[id]/agent — the Agents list, and the landing page of Customize.
+ *
+ * Customize is agent-centric (Marko, 2026-09-01). An agent is the one object
+ * a project manager grants a person or a group — every other resource is
+ * reached THROUGH an agent — so it is the object this whole surface is built
+ * around, and this list is where the sidebar's Customize row lands. Each card
+ * is a link to that agent's page (`agentHref`): its instructions, model,
+ * triggers, grants and who may use it, on one routed screen. The cards used to
+ * open a detail modal with the editor swapped into its source pane; a modal
+ * has no URL and buried the editor two clicks deep.
  *
  * Reads `config.agents` off the shared `['project-detail', projectId]` query,
  * so this page and everything else showing a project's agents cannot disagree
@@ -81,12 +85,8 @@ const MODE_FILTERS: ReadonlyArray<{ value: ModeFilter; label: string }> = [
  * `undefined` for a repo-less / capability-gated / config-build-failure
  * project, and `.filter` on that throws into prod Sentry.
  *
- * Card click opens `EntityDetailModal` on that agent: its markdown source in
- * the middle, its assignments + configuration cards in the aside.
- * `selectedPath` is looked up against the unfiltered `agents` list, not
- * `filtered` — so typing into search while the modal is open cannot yank it
- * shut. See `shared/detail-selection.ts` for why `open` follows the selection
- * alone.
+ * The trigger count on each card comes from the same `qk.project.triggers`
+ * list the Triggers tab reads — one request, counted per agent name.
  */
 export function AgentsPage({ projectId }: { projectId: string }) {
   // `accountId` skips useProjectCan's own getProject and lets the IAM probe
@@ -94,14 +94,13 @@ export function AgentsPage({ projectId }: { projectId: string }) {
   const accountId = useProjectAccountId(projectId);
   const canWrite =
     useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_AGENT_WRITE, { accountId }).allowed === true;
+  const canReadTriggers =
+    useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_TRIGGER_READ, { accountId }).allowed ===
+    true;
   const configure = useConfigureThread(projectId);
 
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<ModeFilter>('all');
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  // When set, the detail modal's source pane is swapped for the agent
-  // configuration editor (`paneOverride`) — a pane, not a modal on a modal.
-  const [editorOpen, setEditorOpen] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: qk.project.detail(projectId),
@@ -110,6 +109,20 @@ export function AgentsPage({ projectId }: { projectId: string }) {
   });
   const config = detailQuery.data?.config ?? null;
 
+  const triggersQuery = useQuery({
+    queryKey: qk.project.triggers(projectId),
+    queryFn: () => listProjectTriggers(projectId),
+    enabled: canReadTriggers,
+    ...contract('config'),
+  });
+  const triggerCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const trigger of triggersQuery.data?.triggers ?? []) {
+      counts.set(trigger.agent, (counts.get(trigger.agent) ?? 0) + 1);
+    }
+    return counts;
+  }, [triggersQuery.data]);
+
   const agents = useMemo(() => toArray(config?.agents), [config]);
 
   const modeArg = mode === 'all' ? null : mode;
@@ -117,30 +130,6 @@ export function AgentsPage({ projectId }: { projectId: string }) {
     () => filterAgents(agents, { mode: modeArg, query }),
     [agents, modeArg, query],
   );
-
-  // Unfiltered lookup (see the component doc comment above) — deliberately not
-  // `filtered.find(...)`.
-  const detail = detailSelection({
-    selection: selectedPath,
-    record: agents.find((agent) => agent.path === selectedPath),
-    isSuccess: detailQuery.isSuccess,
-  });
-
-  // The one honest auto-close: the config came back and this agent is not in
-  // it, so it really was deleted or renamed.
-  useEffect(() => {
-    if (detail.isMissing) setSelectedPath(null);
-  }, [detail.isMissing]);
-
-  // Switching agents (or closing the modal) always drops back to the source
-  // pane — an editor left open for agent A must never frame agent B's files.
-  // Adjusted during render: React's documented alternative to a
-  // setState-in-effect reset (same trick, no cascading render).
-  const [prevPath, setPrevPath] = useState(selectedPath);
-  if (prevPath !== selectedPath) {
-    setPrevPath(selectedPath);
-    setEditorOpen(false);
-  }
 
   // `null` = render the grid. Otherwise which "nothing to show" copy applies:
   // genuinely zero agents vs. agents exist but this filter/search hid all of
@@ -177,7 +166,7 @@ export function AgentsPage({ projectId }: { projectId: string }) {
   return (
     <CapabilityPageShell
       title="Agents"
-      description="Who does the work — each one's instructions, model, and access."
+      description="Who does the work. Each agent is what a person is given access to — configure what it knows, what it can reach, and when it runs."
       action={createButton('New')}
       search={
         <InputGroupSearch>
@@ -214,6 +203,7 @@ export function AgentsPage({ projectId }: { projectId: string }) {
       <CatalogGrid
         isLoading={detailQuery.isLoading}
         isError={detailQuery.isError}
+        error={detailQuery.error}
         onRetry={() => detailQuery.refetch()}
         isEmpty={emptyKind !== null}
         empty={
@@ -248,62 +238,47 @@ export function AgentsPage({ projectId }: { projectId: string }) {
         {filtered.map((agent) => (
           <CatalogCard
             key={agent.path}
+            href={agentHref(projectId, agent.name)}
             title={capitalizeWords(agent.name)}
             description={agent.description}
-            badges={<AgentCardBadges agent={agent} isDefault={defaultAgent === agent.name} />}
-            onClick={() => setSelectedPath(agent.path)}
+            badges={
+              <AgentCardBadges
+                agent={agent}
+                isDefault={defaultAgent === agent.name}
+                triggerCount={triggerCounts.get(agent.name) ?? 0}
+              />
+            }
+            trailing={
+              <CaretRightIcon
+                aria-hidden
+                className="text-muted-foreground/40 group-hover:text-muted-foreground mt-0.5 size-4 transition-colors"
+              />
+            }
           />
         ))}
       </CatalogGrid>
-      <EntityDetailModal
-        projectId={projectId}
-        entity={detail.record}
-        kind="agent"
-        open={detail.open}
-        isResolving={detail.isResolving}
-        meta={
-          detail.record && config ? <AgentDetailMeta agent={detail.record} config={config} /> : null
-        }
-        aside={
-          detail.record && config ? (
-            <AgentDetailAside
-              projectId={projectId}
-              agent={detail.record}
-              config={config}
-              onEditConfig={() => setEditorOpen(true)}
-            />
-          ) : null
-        }
-        paneOverride={
-          editorOpen && detail.record && config ? (
-            <AgentEditorPanel
-              projectId={projectId}
-              agentName={detail.record.name}
-              skillsOptions={toArray(config.skills).map((skill) => ({
-                id: skill.name,
-                label: skill.name,
-              }))}
-              onClose={() => setEditorOpen(false)}
-            />
-          ) : null
-        }
-        onOpenChange={(next) => {
-          if (!next) setSelectedPath(null);
-        }}
-      />
     </CapabilityPageShell>
   );
 }
 
 /**
- * Card badges — mode, and the default-agent star.
+ * Card badges — mode, the default-agent star, disabled, and how many triggers
+ * start it.
  *
  * `mode` is omitted when it is the implicit `primary`: every agent would
  * otherwise carry the same badge, which distinguishes nothing and just adds
  * noise to a grid. A subagent (or an explicit both-ways `all`) is the case
- * worth marking.
+ * worth marking. The trigger count is omitted at zero for the same reason.
  */
-function AgentCardBadges({ agent, isDefault }: { agent: Agent; isDefault: boolean }) {
+function AgentCardBadges({
+  agent,
+  isDefault,
+  triggerCount,
+}: {
+  agent: Agent;
+  isDefault: boolean;
+  triggerCount: number;
+}) {
   const mode = agent.mode?.toLowerCase();
   return (
     <>
@@ -324,39 +299,9 @@ function AgentCardBadges({ agent, isDefault }: { agent: Agent; isDefault: boolea
           Disabled
         </Badge>
       ) : null}
-    </>
-  );
-}
-
-/**
- * Status chips beside the modal title. Only states worth flagging:
- *
- *  - mode, when it is NOT the implicit `primary` — a "Primary" chip on every
- *    agent distinguishes nothing.
- *  - default, disabled — both are exceptions by definition.
- *
- * The declaring file is deliberately absent. It was a `kortix.yaml` chip, but
- * a file is a value, not a status, and the modal now prints the real source
- * path under the title — which says the same thing and is clickable-accurate.
- */
-function AgentDetailMeta({ agent, config }: { agent: Agent; config: ProjectConfigSummary }) {
-  const mode = agent.mode?.toLowerCase();
-  return (
-    <>
-      {mode && mode !== 'primary' ? (
-        <Badge variant="outline" size="sm" className="text-muted-foreground font-medium">
-          {formatMode(agent.mode ?? '')}
-        </Badge>
-      ) : null}
-      {config.open_code_default_agent === agent.name ? (
-        <Badge variant="outline" size="sm" className="text-muted-foreground gap-1 font-medium">
-          <StarSolid weight="fill" className="text-kortix-orange size-3.5 shrink-0" />
-          Default
-        </Badge>
-      ) : null}
-      {agent.enabled === false ? (
-        <Badge variant="muted" size="sm">
-          Disabled
+      {triggerCount > 0 ? (
+        <Badge variant="outline" size="xs" className="tabular-nums">
+          {triggerCount} {triggerCount === 1 ? 'trigger' : 'triggers'}
         </Badge>
       ) : null}
     </>

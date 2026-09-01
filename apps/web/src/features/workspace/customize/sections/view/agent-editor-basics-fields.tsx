@@ -59,11 +59,15 @@ export function BasicsSection({
   set,
   oc,
   setOc,
+  showDescription = true,
 }: {
   draft: AgentConfigBlock;
   set: SetKortix;
   oc: RuntimeAgentConfig;
   setOc: SetRuntime;
+  /** The agent page edits the description in its own header, beside the
+   *  instructions — pass `false` there so the field is not offered twice. */
+  showDescription?: boolean;
 }) {
   return (
     <EditorSection title="Basics" description="What this agent is, and whether it can run.">
@@ -77,23 +81,25 @@ export function BasicsSection({
         </div>
       </SettingRow>
 
-      <SettingBlock
-        label="Description"
-        help={
-          oc.mode === 'subagent'
-            ? 'Required. This is how other agents decide to call it.'
-            : 'One line on what this agent is for. Other agents read it when picking a subagent.'
-        }
-      >
-        <Textarea
-          aria-label="Description"
-          value={oc.description ?? ''}
-          placeholder="What this agent is for"
-          minHeight={44}
-          className="text-sm"
-          onChange={(e) => setOc('description', e.target.value)}
-        />
-      </SettingBlock>
+      {showDescription ? (
+        <SettingBlock
+          label="Description"
+          help={
+            oc.mode === 'subagent'
+              ? 'Required. This is how other agents decide to call it.'
+              : 'One line on what this agent is for. Other agents read it when picking a subagent.'
+          }
+        >
+          <Textarea
+            aria-label="Description"
+            value={oc.description ?? ''}
+            placeholder="What this agent is for"
+            minHeight={44}
+            className="text-sm"
+            onChange={(e) => setOc('description', e.target.value)}
+          />
+        </SettingBlock>
+      ) : null}
 
       <SettingRow
         label="Availability"
@@ -243,7 +249,17 @@ function ColorSwatches({
   );
 }
 
-export function ModelSection({ oc, setOc }: { oc: RuntimeAgentConfig; setOc: SetRuntime }) {
+export function ModelSection({
+  oc,
+  setOc,
+  showPrompt = true,
+}: {
+  oc: RuntimeAgentConfig;
+  setOc: SetRuntime;
+  /** The agent page gives the system prompt the whole left column — pass
+   *  `false` there so the collapsed copy of it does not sit in this section. */
+  showPrompt?: boolean;
+}) {
   const { data: providers } = useRuntimeProviders();
   const models = flattenModels(providers);
   // Mode-aware read-back: a native (gateway-off) agent model is
@@ -329,6 +345,7 @@ export function ModelSection({ oc, setOc }: { oc: RuntimeAgentConfig; setOc: Set
 
       {/* A wall of text most agents never set — collapsed, like the tool
           permissions at the foot of the editor. */}
+      {showPrompt ? (
       <SettingBlock label="System prompt" help="Replaces the default instructions for this agent.">
         <Disclosure variant="outline" className="overflow-hidden rounded-md">
           <DisclosureTrigger variant="outline">
@@ -356,6 +373,7 @@ export function ModelSection({ oc, setOc }: { oc: RuntimeAgentConfig; setOc: Set
           </DisclosureContent>
         </Disclosure>
       </SettingBlock>
+      ) : null}
     </EditorSection>
   );
 }

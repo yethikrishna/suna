@@ -48,8 +48,21 @@ export interface CapabilityTab {
  * `project-sidebar/project-settings-nav.tsx` mirrors it and is asserted
  * against it, so reordering here moves the landing tab too.
  *
+ * ## Agents lead, Skills second, everything else is their library
+ *
+ * Customize is agent-centric (Marko, 2026-09-01). An agent is the only
+ * object a project manager grants a person or a group access to — the object
+ * policy for `agent` is `closed`, every other resource is `open`
+ * (`apps/api/src/iam/authorize.ts`) — so it is the primitive every other
+ * decision hangs off: which model it thinks with, which skills it loads,
+ * which connectors and secrets it may reach, when a trigger starts it. The
+ * bar is ordered the way that decision is made: the two objects you BUILD
+ * (Agents, Skills) lead, the resources they draw on follow. `PRIMARY_TABS`
+ * below names the first group so the bar can draw the seam between them.
+ *
  * The Agents key is singular because a key IS its URL segment
- * (`/projects/<id>/agent`); only the label is plural.
+ * (`/projects/<id>/agent`); only the label is plural. One agent lives one
+ * level deeper, at `agentHref` (`/projects/<id>/agent/<name>`).
  *
  * Settings' key is `config`, not `settings`, and the mismatch is deliberate:
  * `/projects/<id>/settings` already belongs to the Settings OVERLAY's
@@ -59,17 +72,33 @@ export interface CapabilityTab {
  * redirects here through `settings-tabs.ts`'s `GRADUATED` map.
  */
 export const CAPABILITY_TABS: readonly CapabilityTab[] = [
-  { key: 'models', label: 'Models' },
-  { key: 'connectors', label: 'Connectors' },
   { key: 'agent', label: 'Agents' },
   { key: 'skills', label: 'Skills' },
+  { key: 'connectors', label: 'Connectors' },
   { key: 'triggers', label: 'Triggers' },
+  { key: 'models', label: 'Models' },
   { key: 'secrets', label: 'Secrets' },
   { key: 'config', label: 'Settings' },
 ];
 
+/**
+ * The tabs a person builds things on. The rest of the bar is what those
+ * things draw on — the tab bar draws a hairline seam after the last of these.
+ */
+export const PRIMARY_TABS: readonly CapabilityTab['key'][] = ['agent', 'skills'];
+
 export function capabilityTabHref(projectId: string, key: CapabilityTab['key']): string {
   return `/projects/${projectId}/${key}`;
+}
+
+/**
+ * One agent's page — the configuration of a single `agents.<name>` block,
+ * routed rather than modal so it has a URL a person can be sent to. The name
+ * is the manifest key, which may carry characters a path segment cannot, so
+ * it is encoded here and decoded in the page (`decodeURIComponent`).
+ */
+export function agentHref(projectId: string, agentName: string): string {
+  return `${capabilityTabHref(projectId, 'agent')}/${encodeURIComponent(agentName)}`;
 }
 
 /**
@@ -91,7 +120,9 @@ export function channelsHref(projectId: string): string {
 
 /**
  * The tab a pathname is on, matched against the shape `capabilityTabHref`
- * builds — `/projects/<id>/<key>` exactly, nothing deeper.
+ * builds — `/projects/<id>/<key>` exactly — plus the ONE deeper shape this
+ * group owns, `agentHref`'s `/projects/<id>/agent/<name>`, which lights the
+ * Agents tab: an agent's page is the Agents tab, opened on one agent.
  *
  * The shape check is load-bearing, not defensive tidying. This used to match on
  * the LAST segment alone, which was harmless while every key was unique to this
@@ -99,11 +130,14 @@ export function channelsHref(projectId: string): string {
  * the Settings overlay is also routable, at `/projects/<id>/settings/<tab>`, so
  * a last-segment match reported `/projects/p1/settings/schedules` as the
  * Schedules capability tab and lit the sidebar's Customize row from inside
- * Settings.
+ * Settings. The agent branch is therefore keyed on the THIRD segment being
+ * `agent`, never on the last one.
  */
 export function activeCapabilityTab(pathname: string): CapabilityTab['key'] | null {
   const segments = pathname.split('/').filter(Boolean);
-  if (segments.length !== 3 || segments[0] !== 'projects') return null;
+  if (segments[0] !== 'projects') return null;
+  if (segments.length === 4 && segments[2] === 'agent') return 'agent';
+  if (segments.length !== 3) return null;
   const hit = CAPABILITY_TABS.find((t) => t.key === segments[2]);
   return hit ? hit.key : null;
 }

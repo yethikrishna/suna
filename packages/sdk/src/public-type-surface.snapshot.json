@@ -3102,6 +3102,7 @@
     "updateTemplateWarmPool",
     "updateTicket",
     "updateTicketStatus",
+    "updateUserMetadata",
     "uploadAccountBrandingAsset",
     "uploadAppArtifactArchive",
     "uploadConnectorAttachment",

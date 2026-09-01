@@ -393,6 +393,8 @@ export {
   resetPassword,
   updatePassword,
   updateUserMetadata,
+  signInWithSso,
+  authMfa,
   authUser,
   signOut,
   HeadlessAuthError,

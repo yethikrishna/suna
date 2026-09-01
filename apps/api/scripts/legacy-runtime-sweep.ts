@@ -86,8 +86,12 @@ async function main() {
       continue;
     }
     const started = Date.now();
-    const result = await runLegacyRuntimeBootstrap(row, 'sweep', { force: opts.force });
-    console.log(`[sweep] ${label} → ${result.outcome}${result.detail ? ` (${result.detail})` : ''} in ${Math.round((Date.now() - started) / 1000)}s`);
+    try {
+      const result = await runLegacyRuntimeBootstrap(row, 'sweep', { force: opts.force });
+      console.log(`[sweep] ${label} → ${result.outcome}${result.detail ? ` (${result.detail})` : ''} in ${Math.round((Date.now() - started) / 1000)}s`);
+    } catch (err) {
+      console.log(`[sweep] ${label} → threw: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 }
 

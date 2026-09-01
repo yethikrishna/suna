@@ -77,8 +77,8 @@ export const LEGACY_BOOTSTRAP_EXEC_TIMEOUT_MS = 5 * 60 * 1000;
 export const LEGACY_BOOTSTRAP_CONVERGE_BUDGET_MS = 8 * 60 * 1000;
 export const LEGACY_BOOTSTRAP_POLL_MS = 5_000;
 
-/** Where the legacy daemon kept OpenCode's home (its XDG root). The current daemon derives it from $HOME. */
-export const LEGACY_OPENCODE_HOME = '/opt/kortix/home';
+/** OpenCode home on the box: 'auto' = detect from the running OpenCode / on-disk data (image generations differ). */
+export const LEGACY_OPENCODE_HOME = 'auto';
 
 export type RuntimeClass = 'legacy' | 'current' | 'not-ok' | 'unreachable';
 
@@ -150,6 +150,10 @@ export interface RenderScriptOptions {
    * asset yet. The box's own manifest wins whenever it has one.
    */
   entrypointSource?: string;
+  /** Fleet pnpm version (packages/shared runtime-versions.json); the script downgrades for an older Node. */
+  pnpmVersion?: string;
+  /** A freshly minted session PAT to install as the box's KORTIX_TOKEN; empty = keep. */
+  kortixToken?: string;
 }
 
 /**
@@ -161,17 +165,23 @@ export interface RenderScriptOptions {
 export function renderLegacyBootstrapScript(opts: RenderScriptOptions): string {
   const opencodeHome = opts.opencodeHome ?? LEGACY_OPENCODE_HOME;
   const healthWaitS = Math.max(30, Math.floor(opts.healthWaitS ?? 150));
-  if (!/^\/[A-Za-z0-9_./-]+$/.test(opencodeHome)) throw new Error('unsafe opencodeHome');
+  if (opencodeHome !== 'auto' && !/^\/[A-Za-z0-9_./-]+$/.test(opencodeHome)) throw new Error('unsafe opencodeHome');
   const template = loadScriptTemplate();
   const embedded = opts.entrypointSource ? Buffer.from(opts.entrypointSource, 'utf8').toString('base64') : '';
-  for (const placeholder of ['__OPENCODE_HOME__', '__RELAUNCH__', '__HEALTH_WAIT_S__', '__ENTRYPOINT_B64__']) {
+  const pnpmVersion = opts.pnpmVersion ?? '';
+  if (!/^[0-9A-Za-z.-]*$/.test(pnpmVersion)) throw new Error('unsafe pnpmVersion');
+  const kortixToken = opts.kortixToken ?? '';
+  if (!/^(kortix_pat_[A-Za-z0-9_-]+)?$/.test(kortixToken)) throw new Error('unsafe kortixToken');
+  for (const placeholder of ['__OPENCODE_HOME__', '__RELAUNCH__', '__HEALTH_WAIT_S__', '__ENTRYPOINT_B64__', '__PNPM_VERSION__', '__KORTIX_TOKEN__']) {
     if (!template.includes(placeholder)) throw new Error(`bootstrap script template lacks ${placeholder}`);
   }
   return template
     .replace('__OPENCODE_HOME__', opencodeHome)
     .replace('__RELAUNCH__', opts.relaunch)
     .replace('__HEALTH_WAIT_S__', String(healthWaitS))
-    .replace('__ENTRYPOINT_B64__', embedded);
+    .replace('__ENTRYPOINT_B64__', embedded)
+    .replace('__PNPM_VERSION__', pnpmVersion)
+    .replace('__KORTIX_TOKEN__', kortixToken);
 }
 
 /** The provider `exec` argv: the script travels base64 so no quoting layer can touch it. */
@@ -191,6 +201,7 @@ export interface ScriptReport {
   agent_sha256?: string;
   entrypoint_sha256?: string;
   previous_opencode?: string;
+  token_rotated?: boolean;
 }
 
 /** The script's last stdout line is its report. Anything else is a transport failure. */
@@ -267,6 +278,20 @@ export interface LegacyBootstrapDeps {
   exec: (command: string[], timeoutMs: number) => Promise<SandboxExecResult>;
   /** Entrypoint text to embed for an API that predates the asset; null when unavailable. */
   entrypointSource?: () => string | null;
+  /** Fleet pnpm version to install on a box whose pnpm predates `--allow-build`. */
+  pnpmVersion?: () => string | null;
+  /**
+   * When the box still carries the pre-2026-08 `kortix_sb_` service key as its
+   * KORTIX_TOKEN, mint a session PAT, store it as the sandbox service key, and
+   * return the secret for the script to install. Null = nothing to rotate.
+   */
+  rotateKortixToken?: () => Promise<string | null>;
+  /**
+   * The box reported whether it installed the rotated token (`null` = the
+   * script's report never arrived). The wiring stores the new service key
+   * only once the box provably holds it, or verifies by probing.
+   */
+  commitKortixToken?: (secret: string, rotatedOnBox: boolean | null) => Promise<void>;
   patchMetadata: (patch: Record<string, unknown>) => Promise<void>;
   audit: (event: {
     outcome: 'success' | 'failure';
@@ -347,7 +372,22 @@ export async function bootstrapLegacyRuntime(
   if (classification.klass === 'unreachable' || classification.klass === 'not-ok') {
     return { outcome: 'unreachable', classification };
   }
-  if (classification.klass === 'current') {
+  if (classification.klass === 'current' && classification.runtimeBuild === null) {
+    // A current daemon that has not finished (or has failed) its first
+    // convergence pass: not legacy, nothing for this module to do yet.
+    return { outcome: 'not-legacy', detail: 'daemon current, convergence pending', classification };
+  }
+  if (classification.klass === 'current' && input.force) {
+    // Operator-forced re-run on a current daemon: its OpenCode install failed
+    // (a 2026-07 image's pnpm 8, for one), or an operator wants the chain
+    // relaunched so the daemon re-detects a freshly installed binary. The
+    // script is idempotent — agent and entrypoint are skipped when already at
+    // the manifest — so a re-run is "fix the floor, relaunch, converge again".
+    deps.log('forced re-run on a current daemon', {
+      sandboxId: input.sandboxId,
+      opencodeComponent: classification.opencodeComponent,
+    });
+  } else if (classification.klass === 'current') {
     const patch: Record<string, unknown> = {
       [LEGACY_CHECK_METADATA_KEY]: { at: nowIso, klass: 'current' } satisfies LegacyCheckRecord,
     };
@@ -370,11 +410,11 @@ export async function bootstrapLegacyRuntime(
   const sameBuild = record?.manifestBuild === build;
   const attempts = sameBuild && record ? record.attempts : 0;
   if (record && sameBuild && record.state === 'failed') {
-    if (attempts >= LEGACY_BOOTSTRAP_MAX_ATTEMPTS) {
+    if (attempts >= LEGACY_BOOTSTRAP_MAX_ATTEMPTS && !input.force) {
       return { outcome: 'skipped-exhausted', detail: `${attempts} attempts on build ${build}`, classification };
     }
     const lastMs = Date.parse(record.lastAttemptAt);
-    if (Number.isFinite(lastMs) && nowMs - lastMs < LEGACY_BOOTSTRAP_COOLDOWN_MS) {
+    if (!input.force && Number.isFinite(lastMs) && nowMs - lastMs < LEGACY_BOOTSTRAP_COOLDOWN_MS) {
       return { outcome: 'skipped-cooldown', classification };
     }
   }
@@ -449,21 +489,35 @@ export async function bootstrapLegacyRuntime(
   };
 
   let execResult: SandboxExecResult;
+  // Token rotation only where the box's own environment is what the daemon
+  // boots from (Platinum: /etc/environment via pt-init). Daytona and E2B hand
+  // the daemon its env from the provider on every start, so a rotated secret
+  // in the box would diverge from what the daemon actually runs with.
+  const kortixToken =
+    strategy === 'pt-app' ? ((await deps.rotateKortixToken?.()) ?? undefined) : undefined;
+  const commitToken = async (rotatedOnBox: boolean | null) => {
+    if (!kortixToken) return;
+    await deps.commitKortixToken?.(kortixToken, rotatedOnBox);
+  };
   try {
     execResult = await deps.exec(
       bootstrapExecCommand(
         renderLegacyBootstrapScript({
           relaunch: strategy,
           entrypointSource: deps.entrypointSource?.() ?? undefined,
+          pnpmVersion: deps.pnpmVersion?.() ?? undefined,
+          kortixToken,
         }),
       ),
       LEGACY_BOOTSTRAP_EXEC_TIMEOUT_MS,
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    await commitToken(null);
     return finish('failed', { error: `exec: ${message}`.slice(0, 500) }, 'failed', 'provider exec failed');
   }
   const report = parseScriptReport(execResult);
+  await commitToken(report ? report.token_rotated === true : null);
   if (!report) {
     const tail = (execResult.stderr || execResult.stdout).trim().slice(-400);
     return finish(
@@ -494,7 +548,22 @@ export async function bootstrapLegacyRuntime(
   while (deps.now() < deadline) {
     const after = classifyDaemonHealth(await deps.fetchHealth());
     last = after;
-    if (after.klass === 'current' && after.opencode === 'ok') {
+    // The daemon reports its own convergence pass. `failed` is final for this
+    // boot — waiting would not change it — and the reason lives in /kortix/diag.
+    if (after.klass === 'current' && after.opencodeComponent === 'failed') {
+      return finish(
+        'failed',
+        { to: { ...to, runtimeBuild: after.runtimeBuild }, error: 'daemon converged but its OpenCode install failed (see /kortix/diag runtime.reasons.opencode)' },
+        'failed',
+        'opencode convergence failed',
+      );
+    }
+    if (
+      after.klass === 'current' &&
+      after.opencode === 'ok' &&
+      after.runtimeBuild !== null &&
+      (after.opencodeComponent === 'current' || after.opencodeComponent === 'updated')
+    ) {
       await deps.patchMetadata({
         [LEGACY_CHECK_METADATA_KEY]: { at: new Date(deps.now()).toISOString(), klass: 'current' } satisfies LegacyCheckRecord,
       });

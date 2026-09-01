@@ -49,7 +49,7 @@ describe('relaunchStrategyFor', () => {
 describe('renderLegacyBootstrapScript', () => {
   test('carries no secret, verifies every download, keeps the baked binary, restores on failure', () => {
     const s = renderLegacyBootstrapScript({ relaunch: 'pt-app' });
-    expect(s).not.toMatch(/kortix_sb_|kortix_pat_|Bearer [A-Za-z0-9]/);
+    expect(s).not.toMatch(/kortix_(sb|pat)_[A-Za-z0-9]{8,}|Bearer [A-Za-z0-9]/);
     expect(s).toContain('readenv KORTIX_SANDBOX_TOKEN');
     expect(s).toContain('/v1/runtime-assets/manifest');
     expect(s).toContain('sha256sum');
@@ -59,6 +59,8 @@ describe('renderLegacyBootstrapScript', () => {
     expect(s).toContain('bash -n');
     expect(s).toContain('/sbin/pt-app');
     expect(s).toContain('restoring the legacy chain');
+    expect(s).toContain('global-bin-dir=');
+    expect(s).toContain('npm install -g "pnpm@$want"');
     expect(s).toContain("RELAUNCH='pt-app'");
   });
   test('next-start strategy stages only', () => {
@@ -74,6 +76,7 @@ describe('renderLegacyBootstrapScript', () => {
   });
   test('rejects an unsafe opencode home', () => {
     expect(() => renderLegacyBootstrapScript({ relaunch: 'pt-app', opencodeHome: '/x; rm -rf /' })).toThrow();
+    expect(renderLegacyBootstrapScript({ relaunch: 'pt-app' })).toContain("OPENCODE_HOME='auto'");
   });
   test('exec command carries the script as base64 and runs it with bash', () => {
     const cmd = bootstrapExecCommand('echo hi');
@@ -165,8 +168,10 @@ describe('bootstrapLegacyRuntime', () => {
     const r = await bootstrapLegacyRuntime(input(meta), deps);
     expect(r.outcome).toBe('skipped-recent-check');
     expect(probed).toBe(false);
+    // force = an operator asking for the truth now: the box is probed, and a
+    // current daemon is re-run (idempotent script) rather than skipped.
     const forced = await bootstrapLegacyRuntime({ ...input(meta), force: true }, deps);
-    expect(forced.outcome).toBe('not-legacy');
+    expect(forced.outcome).toBe('converged');
     expect(probed).toBe(true);
   });
 
@@ -191,7 +196,9 @@ describe('bootstrapLegacyRuntime', () => {
     });
     const calls: Calls = { patches: [], audits: [], execs: [] };
     expect((await bootstrapLegacyRuntime(input(failedRecord(1, 1788044234, 60_000)), makeDeps({}, calls, clock))).outcome).toBe('skipped-cooldown');
+    expect((await bootstrapLegacyRuntime({ ...input(failedRecord(1, 1788044234, 60_000)), force: true }, makeDeps({}, calls, clock))).outcome).toBe('converged');
     expect((await bootstrapLegacyRuntime(input(failedRecord(LEGACY_BOOTSTRAP_MAX_ATTEMPTS, 1788044234, LEGACY_BOOTSTRAP_COOLDOWN_MS * 2)), makeDeps({}, calls, clock))).outcome).toBe('skipped-exhausted');
+    expect((await bootstrapLegacyRuntime({ ...input(failedRecord(LEGACY_BOOTSTRAP_MAX_ATTEMPTS, 1788044234, LEGACY_BOOTSTRAP_COOLDOWN_MS * 2)), force: true }, makeDeps({}, calls, clock))).outcome).toBe('converged');
     const retry = await bootstrapLegacyRuntime(input(failedRecord(1, 1788044234, LEGACY_BOOTSTRAP_COOLDOWN_MS * 2)), makeDeps({}, calls, clock));
     expect(retry.outcome).toBe('converged');
     expect((calls.patches.at(-1)![LEGACY_BOOTSTRAP_METADATA_KEY] as { attempts: number }).attempts).toBe(2);
@@ -218,6 +225,23 @@ describe('bootstrapLegacyRuntime', () => {
     expect((calls.patches.at(-1)![LEGACY_BOOTSTRAP_METADATA_KEY] as { error: string }).error).toContain('not converged');
   });
 
+  test('daemon relaunched but its OpenCode install failed = failed, not converged', async () => {
+    const calls: Calls = { patches: [], audits: [], execs: [] };
+    const failedOc = { daemon: 'ok', opencode: 'ok', runtime: { build: 1788044234, components: { agent: 'current', opencode: 'failed' } } };
+    const r = await bootstrapLegacyRuntime(input(), makeDeps({ health: [LEGACY_HEALTH, failedOc] }, calls));
+    expect(r.outcome).toBe('failed');
+    expect(r.detail).toBe('opencode convergence failed');
+    expect((calls.patches.at(-1)![LEGACY_BOOTSTRAP_METADATA_KEY] as { error: string }).error).toContain('OpenCode install failed');
+  });
+
+  test('a daemon with a runtime block but no convergence pass yet is left alone', async () => {
+    const calls: Calls = { patches: [], audits: [], execs: [] };
+    const pending = { daemon: 'ok', opencode: 'ok', runtime: { build: null, components: {} } };
+    const r = await bootstrapLegacyRuntime(input(), makeDeps({ health: [pending] }, calls));
+    expect(r.outcome).toBe('not-legacy');
+    expect(calls.patches).toHaveLength(0);
+  });
+
   test('daytona: stages and records staged; a staged record is not redone on the same build', async () => {
     const calls: Calls = { patches: [], audits: [], execs: [] };
     const deps = makeDeps({ health: [LEGACY_HEALTH, LEGACY_HEALTH], exec: async (cmd) => { calls.execs.push(cmd); return { exitCode: 0, stdout: '{"ok":true,"stage":"staged","agent_sha256":"a","entrypoint_sha256":"e"}\n', stderr: '' }; } }, calls);
@@ -228,6 +252,25 @@ describe('bootstrapLegacyRuntime', () => {
     const again = await bootstrapLegacyRuntime(input(calls.patches.at(-1)!, 'daytona'), deps);
     expect(again.outcome).toBe('staged');
     expect(calls.execs).toHaveLength(1);
+  });
+
+  test('a rotated session PAT is handed to the script; none when nothing to rotate', async () => {
+    const calls: Calls = { patches: [], audits: [], execs: [] };
+    const deps = makeDeps({ rotateKortixToken: async () => 'kortix_pat_fresh123' }, calls);
+    expect((await bootstrapLegacyRuntime(input(), deps)).outcome).toBe('converged');
+    const script = Buffer.from(calls.execs[0][2].split("'")[3], 'base64').toString('utf8');
+    expect(script).toContain("NEW_KORTIX_TOKEN='kortix_pat_fresh123'");
+    expect(script).toContain('KORTIX_TOKEN rotated');
+    const none = makeDeps({ rotateKortixToken: async () => null }, calls);
+    await bootstrapLegacyRuntime(input(), none);
+    const script2 = Buffer.from(calls.execs[1][2].split("'")[3], 'base64').toString('utf8');
+    expect(script2).toContain("NEW_KORTIX_TOKEN=''");
+    expect(() => renderLegacyBootstrapScript({ relaunch: 'pt-app', kortixToken: "x'; rm -rf /" })).toThrow();
+    // next-start providers never rotate: the provider owns the daemon's env.
+    let minted = 0;
+    const daytona = makeDeps({ health: [LEGACY_HEALTH, LEGACY_HEALTH], rotateKortixToken: async () => { minted++; return 'kortix_pat_x'; }, exec: async (cmd) => { calls.execs.push(cmd); return { exitCode: 0, stdout: '{"ok":true,"stage":"staged"}\n', stderr: '' }; } }, calls);
+    await bootstrapLegacyRuntime(input(null, 'daytona'), daytona);
+    expect(minted).toBe(0);
   });
 
   test('an in-progress attempt younger than the stale window is not duplicated', async () => {

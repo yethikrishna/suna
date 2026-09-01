@@ -141,6 +141,21 @@ export function requiresRespawn(changedNames: readonly string[]): boolean {
   )
 }
 
+/**
+ * The bearer OpenCode presents to the Kortix LLM gateway. Current boxes carry
+ * one session PAT as KORTIX_TOKEN. A box provisioned before 2026-08 carries a
+ * `kortix_sb_` service key there — valid for the daemon and the API, unknown to
+ * the gateway — and its session PAT under KORTIX_LLM_API_KEY (the variable the
+ * daemon of that era used). Prefer whichever is a PAT; never invent one.
+ */
+export function pickLlmGatewayKey(env: NodeJS.ProcessEnv): string | undefined {
+  const token = env.KORTIX_TOKEN?.trim()
+  const legacy = env.KORTIX_LLM_API_KEY?.trim()
+  if (token?.startsWith('kortix_pat_')) return token
+  if (legacy?.startsWith('kortix_pat_')) return legacy
+  return token || legacy || undefined
+}
+
 /** True when OpenCode uses the single synthetic `kortix` LLM provider. */
 export function hasKortixLlmGateway(env: NodeJS.ProcessEnv): boolean {
   return Boolean(
@@ -234,7 +249,7 @@ export async function buildOpencodeConfigContent(
   const connectorToken = env.KORTIX_TOKEN
   const apiUrl = env.KORTIX_API_URL
   const llmBaseUrl = env.KORTIX_LLM_BASE_URL
-  const llmApiKey = env.KORTIX_TOKEN
+  const llmApiKey = pickLlmGatewayKey(env)
 
   // Warm-fork no-restart path (stateful only). When the daemon runs the localhost
   // LLM proxy it exports KORTIX_LLM_PROXY_URL; the provider then points baseURL at

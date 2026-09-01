@@ -85,6 +85,8 @@ export const PROJECT_ACTIONS = {
   PROJECT_GITOPS_READ: 'project.gitops.read',
   PROJECT_GITOPS_PUSH: 'project.gitops.push',
   PROJECT_GITOPS_MERGE: 'project.gitops.merge',
+  PROJECT_GITOPS_REF_ANY: 'project.gitops.ref.any',
+  PROJECT_GITOPS_REF_DELETE: 'project.gitops.ref.delete',
   PROJECT_SECRET_READ: 'project.secret.read',
   PROJECT_SECRET_WRITE: 'project.secret.write',
   PROJECT_CONNECTOR_READ: 'project.connector.read',

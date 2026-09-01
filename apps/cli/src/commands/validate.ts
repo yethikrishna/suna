@@ -18,6 +18,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, dirname, relative, resolve } from 'node:path';
 import {
+  DEPRECATED_KORTIX_CLI_ALIASES,
   GRANTABLE_KORTIX_CLI_ACTIONS,
   type ManifestIssue,
   formatIssues,
@@ -124,7 +125,14 @@ export function runValidate(argv: string[]): number {
     process.stdout.write(
       `${C.dim}Grantable kortix_cli actions (project-scoped — account-level admin actions can never be granted to an agent):${C.reset}\n`,
     );
-    for (const a of GRANTABLE_KORTIX_CLI_ACTIONS) process.stdout.write(`  ${a}\n`);
+    for (const a of GRANTABLE_KORTIX_CLI_ACTIONS) {
+      // A deprecated spelling still validates and still resolves, but this list
+      // is what an agent reads to decide what to write — say which name is live.
+      const live = DEPRECATED_KORTIX_CLI_ALIASES[a];
+      process.stdout.write(
+        live ? `  ${a}${C.dim}  (deprecated — use ${live})${C.reset}\n` : `  ${a}\n`,
+      );
+    }
     return 0;
   }
 

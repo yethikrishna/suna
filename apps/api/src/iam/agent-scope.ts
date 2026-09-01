@@ -1,3 +1,4 @@
+import { DEPRECATED_KORTIX_CLI_ALIASES } from '@kortix/manifest-schema';
 import { canonicalConnectorAlias } from '../shared/connector-alias';
 /**
  * Agent-session scope enforcement — the `kortix_cli` half of per-agent
@@ -44,10 +45,7 @@ export function isProjectSessionPrincipal(c: Context): boolean {
  * runtime alias table, and NOT a second permission model: after normalization
  * `agentMayPerform` is a plain membership test against the catalog's spelling.
  */
-const MANIFEST_ACTION_ALIASES: Readonly<Record<string, string>> = {
-  'project.cr.open': 'project.gitops.push',
-  'project.cr.merge': 'project.gitops.merge',
-};
+const MANIFEST_ACTION_ALIASES = DEPRECATED_KORTIX_CLI_ALIASES;
 
 /**
  * Rewrite a grant's `kortixCli` list to the catalog's spelling.

@@ -10,6 +10,7 @@ import {
   ACCOUNT_SCOPED_SETTINGS_TABS,
   buildSettingsPanelSettingsNav,
   isSettingsTabAllowed,
+  probeAdmits,
   SettingsPanelShell,
   type SettingsPanelShellProps,
   type SettingsTabAllowedParams,
@@ -515,6 +516,19 @@ describe('isSettingsTabAllowed — project scope (JAY-547)', () => {
         false,
       );
     }
+  });
+
+  /**
+   * The probe answer the container feeds the gate. Fail-open while loading
+   * is load-bearing: an in-flight probe reads `allowed: false`, and the
+   * panel bounces an active tab that is not in the rail — so `=== true`
+   * sent every `/settings/sandbox` deep link to Profile in CI.
+   */
+  test('an in-flight probe admits the row; only a received denial hides it', () => {
+    expect(probeAdmits(undefined)).toBe(true);
+    expect(probeAdmits({ allowed: false, isLoading: true })).toBe(true);
+    expect(probeAdmits({ allowed: true, isLoading: false })).toBe(true);
+    expect(probeAdmits({ allowed: false, isLoading: false })).toBe(false);
   });
 
   test('with a project and every capability, the scope gate admits every tab', () => {

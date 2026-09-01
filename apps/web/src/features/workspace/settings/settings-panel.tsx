@@ -26,7 +26,7 @@ import {
   type CustomizeSection,
   type ProjectAction,
 } from '@/lib/project-actions';
-import { useProjectCans } from '@/lib/use-project-can';
+import { useProjectCans, type CanResult } from '@/lib/use-project-can';
 import { cn } from '@/lib/utils';
 import { hasOpenFloatingLayer, hasOpenNestedDialog } from '@/lib/z-stack';
 import { useSettingsPanelStore, type MembersTab } from '@/stores/settings-panel-store';
@@ -107,10 +107,29 @@ export interface SettingsTabAllowedParams {
   hasProject: boolean;
   /**
    * The caller's resolved project capabilities, `action -> allowed`. Read only
-   * for the tabs in `PROJECT_GATED_TABS`; an absent function hides those tabs,
-   * which is also what happens while the probe is still in flight.
+   * for the tabs in `PROJECT_GATED_TABS`; an absent function hides those
+   * tabs. The container answers through `probeAdmits`, which is fail-open
+   * while a probe is in flight.
    */
   canProject?: (action: ProjectAction) => boolean;
+}
+
+/**
+ * Whether one capability probe admits its row.
+ *
+ * Fail-open while the probe is in flight — the rule the retired config page
+ * applied to the same rows: a row disappears only on a denial actually
+ * received. It is not tidiness. The SDK reports an unresolved probe as
+ * `allowed: false, isLoading: true`, and `SettingsPanel` bounces an open
+ * dialog to `DEFAULT_SETTINGS_TAB` the moment its active tab is not in the
+ * rail — so a deep link to `/settings/sandbox` read as `allowed === true`
+ * landed on Profile every time, before the answer could arrive
+ * (`12-sandbox-templates.spec.ts`, `19-feature-flags-ui.spec.ts` in CI).
+ * Pinned by `settings-panel.test.tsx`.
+ */
+export function probeAdmits(probe: Pick<CanResult, 'allowed' | 'isLoading'> | undefined): boolean {
+  if (!probe) return true;
+  return probe.isLoading || probe.allowed;
 }
 
 /**
@@ -190,7 +209,7 @@ export function SettingsPanel({ projectId }: { projectId?: string }) {
   // disabled without a project, since the target is then `undefined`.
   const projectCans = useProjectCans(projectId, CUSTOMIZE_SECTION_GATE_ACTIONS);
   const canProject = useCallback(
-    (action: ProjectAction) => projectCans[action]?.allowed === true,
+    (action: ProjectAction) => probeAdmits(projectCans[action]),
     [projectCans],
   );
   const isTabAllowed = useCallback(

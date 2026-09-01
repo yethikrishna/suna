@@ -37,8 +37,13 @@ export function isProjectSessionPrincipal(c: Context): boolean {
  * underlying commit as the latter. Spec §2.4 collapsed them — neither string is
  * in `kortix.permissions`, so no route can assert one and no role can grant one.
  *
- * They survive in exactly ONE place: a hand-written `kortix_cli:` list in a
- * kortix.yaml an author wrote before the collapse. This table rewrites such a
+ * They are absent from `PROJECT_ACTIONS`, from the grantable catalog, from the
+ * agent-grant editor and from `kortix validate --scopes`, so nothing offers
+ * them as a live choice. They survive in exactly ONE place: a hand-written
+ * `kortix_cli:` list in a kortix.yaml an author wrote before the collapse,
+ * which both validators still ACCEPT (with a warning) precisely so that one
+ * outdated string cannot fail a manifest and leave its agent with an empty
+ * grant. This table rewrites such a
  * list to the live spelling ONCE, when the grant is resolved
  * (`canonicalizeGrantActions`, called from projects/agents.ts beside the
  * connector canonicalization). It is a spelling correction on INPUT — NOT a

@@ -803,8 +803,6 @@
                           "project.read",
                           "project.write",
                           "project.delete",
-                          "project.cr.open",
-                          "project.cr.merge",
                           "project.session.read",
                           "project.session.start",
                           "project.session.stop",
@@ -847,6 +845,8 @@
                           "project.review.submit",
                           "project.review.act",
                           "project.credentials.issue",
+                          "project.cr.open",
+                          "project.cr.merge",
                           "project.session.exec",
                           "project.gateway.routing.edit",
                           "project.schedule.read",
@@ -1064,8 +1064,6 @@
                           "project.read",
                           "project.write",
                           "project.delete",
-                          "project.cr.open",
-                          "project.cr.merge",
                           "project.session.read",
                           "project.session.start",
                           "project.session.stop",
@@ -1108,6 +1106,8 @@
                           "project.review.submit",
                           "project.review.act",
                           "project.credentials.issue",
+                          "project.cr.open",
+                          "project.cr.merge",
                           "*"
                         ]
                       }

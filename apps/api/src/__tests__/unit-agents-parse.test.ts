@@ -42,8 +42,8 @@ describe('[[agents]] — grantable enum drift guard', () => {
   // either side is caught even if it happens to keep the two sides equal to
   // EACH OTHER but wrong in absolute terms (both sides sourced from the same
   // stale copy-paste, say).
-  test('47 grantable project actions (all of PROJECT_ACTIONS)', () => {
-    expect(GRANTABLE_KORTIX_CLI.size).toBe(47);
+  test('45 grantable project actions (all of PROJECT_ACTIONS)', () => {
+    expect(GRANTABLE_KORTIX_CLI.size).toBe(45);
   });
 
   // The git ref leaves are grantable on purpose: a project that WANTS an agent
@@ -212,9 +212,30 @@ kortix_cli = ["project.frobnicate"]
     expect(errors[0].error).toContain('unknown action');
   });
 
-  test('the new CR actions are grantable', () => {
-    expect(GRANTABLE_KORTIX_CLI.has('project.cr.open')).toBe(true);
-    expect(GRANTABLE_KORTIX_CLI.has('project.cr.merge')).toBe(true);
+  // `project.cr.open` / `project.cr.merge` are OUT of the live catalog: spec
+  // §2.4 collapsed them into the gitops leaves, so keeping them here presented
+  // one capability under two names in `--scopes`, in the JSON schema, and in
+  // the agent-grant editor. They remain ACCEPTED on input as renamed aliases —
+  // see the deprecation tests below — so no existing manifest breaks.
+  test('the renamed CR actions are NOT in the grantable catalog', () => {
+    expect(GRANTABLE_KORTIX_CLI.has('project.cr.open')).toBe(false);
+    expect(GRANTABLE_KORTIX_CLI.has('project.cr.merge')).toBe(false);
+  });
+
+  test('a renamed action still PARSES, so an old manifest keeps its grant', () => {
+    // The failure this guards: rejecting it puts the spec in `errors`, and an
+    // agent whose manifest failed to parse is given an EMPTY grant — stripping
+    // every capability it holds over one outdated string.
+    const { specs, errors } = parse(
+      '\n[[agents]]\nname = "a"\nkortix_cli = ["project.cr.open", "project.trigger.create"]\n',
+    );
+    expect(errors).toEqual([]);
+    expect(specs[0]!.kortixCli).toEqual(['project.cr.open', 'project.trigger.create']);
+  });
+
+  test('a genuinely unknown action is still an error', () => {
+    const { errors } = parse('\n[[agents]]\nname = "a"\nkortix_cli = ["project.not.a.thing"]\n');
+    expect(errors.length).toBeGreaterThan(0);
   });
 
   test('account actions are NOT in the grantable set', () => {

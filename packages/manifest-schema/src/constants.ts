@@ -224,8 +224,6 @@ export const GRANTABLE_KORTIX_CLI_ACTIONS: readonly string[] = [
   'project.read',
   'project.write',
   'project.delete',
-  'project.cr.open',
-  'project.cr.merge',
   'project.session.read',
   'project.session.start',
   'project.session.stop',

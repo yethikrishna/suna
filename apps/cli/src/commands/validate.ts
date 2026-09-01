@@ -125,13 +125,18 @@ export function runValidate(argv: string[]): number {
     process.stdout.write(
       `${C.dim}Grantable kortix_cli actions (project-scoped — account-level admin actions can never be granted to an agent):${C.reset}\n`,
     );
-    for (const a of GRANTABLE_KORTIX_CLI_ACTIONS) {
-      // A deprecated spelling still validates and still resolves, but this list
-      // is what an agent reads to decide what to write — say which name is live.
-      const live = DEPRECATED_KORTIX_CLI_ALIASES[a];
+    for (const a of GRANTABLE_KORTIX_CLI_ACTIONS) process.stdout.write(`  ${a}\n`);
+    const renamed = Object.entries(DEPRECATED_KORTIX_CLI_ALIASES);
+    if (renamed.length > 0) {
+      // Not grantable any more, but still ACCEPTED in a manifest that has one.
+      // This list is what an agent reads to decide what to write, so it has to
+      // say what the old name maps to rather than pretend it never existed.
       process.stdout.write(
-        live ? `  ${a}${C.dim}  (deprecated — use ${live})${C.reset}\n` : `  ${a}\n`,
+        `\n${C.dim}Renamed — still accepted, but write the new name:${C.reset}\n`,
       );
+      for (const [was, now] of renamed) {
+        process.stdout.write(`  ${was}${C.dim} → ${now}${C.reset}\n`);
+      }
     }
     return 0;
   }

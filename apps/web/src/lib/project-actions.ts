@@ -56,8 +56,6 @@ export const PROJECT_ACTIONS = {
    *  a custom role can grant editing without granting deletion. */
   PROJECT_DELETE: 'project.delete',
 
-  PROJECT_CR_OPEN: 'project.cr.open',
-  PROJECT_CR_MERGE: 'project.cr.merge',
 
   PROJECT_TRIGGER_UPDATE: 'project.trigger.update',
   PROJECT_TRIGGER_DELETE: 'project.trigger.delete',

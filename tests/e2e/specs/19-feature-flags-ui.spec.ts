@@ -253,12 +253,14 @@ test.describe("19 — Feature flags UI", () => {
       );
       expect(persisted).toMatchObject({ enabled: true, overridden: true });
 
-      await page.reload({ waitUntil: "domcontentloaded" });
+      // A reload alone is not enough any more: the overlay's deep-link route
+      // resolved to the project page, so reloading brings the project home
+      // back with the overlay closed and its store state gone. Land on the
+      // project, clear onboarding (that helper asserts zero dialogs), then
+      // reopen the pane through the same deep link.
+      await page.goto(`/projects/${project.id}`, { waitUntil: "domcontentloaded" });
       await dismissOnboarding(page);
-      await expect(
-        page.getByRole("heading", { name: "Feature flags", exact: true }),
-      ).toBeVisible({ timeout: 30_000 });
-      const reopened = page.locator("body");
+      const reopened = await openFeatureFlags(page, project.id);
       const targetRow = flagRow(reopened, page, target.name);
       await expect(targetRow.getByRole("switch")).toHaveAttribute(
         "aria-checked",

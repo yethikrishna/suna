@@ -237,11 +237,16 @@ export function useAgentEditorOptions(
  * housekeeping switches. `children` slots page-owned sections (triggers,
  * people) into the same stack so the column reads as one list.
  */
+/**
+ * The pane's tabs, in order. Access leads: which skills, connectors and
+ * secrets an agent may reach — and who may reach the agent — is the decision
+ * Customize exists for (Marko, 2026-09-02); the model and the sampling knobs
+ * are set once and rarely revisited, so they sit further down.
+ */
 export const AGENT_CONFIG_SECTIONS = [
-  { key: 'model', label: 'Model' },
-  { key: 'triggers', label: 'Triggers' },
   { key: 'access', label: 'Access' },
-  { key: 'people', label: 'People' },
+  { key: 'triggers', label: 'Triggers' },
+  { key: 'model', label: 'Model' },
   { key: 'workspace', label: 'Workspace' },
   { key: 'tools', label: 'Tools' },
   { key: 'basics', label: 'Basics' },
@@ -249,71 +254,70 @@ export const AGENT_CONFIG_SECTIONS = [
 
 export type AgentConfigSectionKey = (typeof AGENT_CONFIG_SECTIONS)[number]['key'];
 
-/** The DOM id the jump bar scrolls to for one section. */
-export function agentConfigSectionId(key: AgentConfigSectionKey): string {
-  return `agent-config-${key}`;
+/** The tab the pane opens on, and the one an unknown `?section=` falls back to. */
+export const DEFAULT_AGENT_CONFIG_SECTION: AgentConfigSectionKey = 'access';
+
+export function isAgentConfigSectionKey(value: string | null): value is AgentConfigSectionKey {
+  return AGENT_CONFIG_SECTIONS.some((s) => s.key === value);
 }
 
+/**
+ * One tab of the configuration pane. The draft is shared across tabs — a
+ * switch never drops an edit — and the save bar below the pane is global, so
+ * a tab is a view, not a form of its own.
+ *
+ * Access carries two sections: what the agent may reach (the grant sets)
+ * and who may reach the agent (`people`). They are one question from two
+ * sides, and a person granting an agent to a group wants to see what that
+ * group inherits without changing tab.
+ */
 export function AgentConfigSections({
+  section,
   editor,
   options,
   skillsOptions,
   triggers,
   people,
 }: {
+  section: AgentConfigSectionKey;
   editor: AgentDraft;
   options: AgentEditorOptions;
   skillsOptions: { id: string; label: string }[];
-  /** The agent's triggers — a page-owned section, slotted after Model. */
+  /** The agent's triggers — a page-owned section, the Triggers tab. */
   triggers?: React.ReactNode;
-  /** Who may use the agent — a page-owned section, slotted after Access. */
+  /** Who may use the agent — a page-owned section, under Access. */
   people?: React.ReactNode;
 }) {
   const { draft, oc, set, setOc } = editor;
-  // Each section sits in an anchored wrapper so the pane's jump bar can
-  // scroll to it and spy on it (`data-agent-section` + the id). A slot the
-  // page leaves empty renders no wrapper, so the jump bar never offers a
-  // section that is not there.
-  const anchor = (key: AgentConfigSectionKey, node: React.ReactNode) =>
-    node ? (
-      <div
-        key={key}
-        id={agentConfigSectionId(key)}
-        data-agent-section={key}
-        className="scroll-mt-4"
-      >
-        {node}
-      </div>
-    ) : null;
-  return (
-    <div className="space-y-10">
-      {anchor('model', <ModelSection oc={oc} setOc={setOc} showPrompt={false} />)}
-      {anchor('triggers', triggers)}
-      {anchor(
-        'access',
-        <AccessSection
-          draft={draft}
-          set={set}
-          skillsOptions={skillsOptions}
-          connectorOptions={options.connectorOptions}
-          secretOptions={options.secretOptions}
-        />,
-      )}
-      {anchor('people', people)}
-      {anchor(
-        'workspace',
-        <WorkspaceSection draft={draft} set={set} sandboxOptions={options.sandboxOptions} />,
-      )}
-      {anchor(
-        'tools',
-        <ToolsSection permission={oc.permission} onChange={(next) => setOc('permission', next)} />,
-      )}
-      {anchor(
-        'basics',
-        <BasicsSection draft={draft} set={set} oc={oc} setOc={setOc} showDescription={false} />,
-      )}
-    </div>
-  );
+  switch (section) {
+    case 'access':
+      return (
+        <div className="space-y-10">
+          <AccessSection
+            draft={draft}
+            set={set}
+            skillsOptions={skillsOptions}
+            connectorOptions={options.connectorOptions}
+            secretOptions={options.secretOptions}
+          />
+          {people}
+        </div>
+      );
+    case 'triggers':
+      return <>{triggers}</>;
+    case 'model':
+      return <ModelSection oc={oc} setOc={setOc} showPrompt={false} />;
+    case 'workspace':
+      return <WorkspaceSection draft={draft} set={set} sandboxOptions={options.sandboxOptions} />;
+    case 'tools':
+      return (
+        <ToolsSection permission={oc.permission} onChange={(next) => setOc('permission', next)} />
+      );
+    case 'basics':
+      return (
+        <BasicsSection draft={draft} set={set} oc={oc} setOc={setOc} showDescription={false} />
+      );
+  }
 }
 
 /** Summarize a grant set — "All", "None", "3 picked" — for compact cards. */

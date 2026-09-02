@@ -25,16 +25,21 @@
  * ## How it scrolls
  *
  * On `lg` the two columns are two SCROLLERS. The document scrolls on the
- * left; the pane scrolls on the right, under its own header, so the model
- * picker and the grants stay reachable however long the instructions run —
- * the same shape as the reference (a document with a fixed "Overview" pane).
- * Below `lg` there is one scroller and the pane follows the document.
+ * left; the pane scrolls on the right, under its own header, so the grants
+ * stay reachable however long the instructions run — the same shape as the
+ * reference (a document with a fixed "Overview" pane). Below `lg` there is
+ * one scroller and the pane follows the document.
  *
  * Scrolling the document past its header condenses it: a compact bar with the
  * avatar, the name and the same two actions slides in at the top of the
  * document scroller, so "which agent" and "start it" never leave the screen.
- * The pane's header carries a jump bar over its sections with a scroll spy,
- * so a long pane reads as a table of contents rather than a wall.
+ *
+ * The pane is TABBED — Access, Triggers, Model, Workspace, Tools, Basics —
+ * rather than one long scroll: each tab is a short, self-contained screen,
+ * and Access, the reason the page exists, is the one it opens on. The draft
+ * is shared across tabs, so switching never drops an edit. `?section=<tab>`
+ * deep-links a tab and follows the selection, so the Access hub can send
+ * someone straight to an agent's grants.
  *
  * The save bar is OUTSIDE both scrollers, across the foot of the page. It
  * exists only while the draft is dirty.
@@ -56,7 +61,6 @@
  * remounts every draft rather than carrying one agent's edits onto another.
  */
 
-import { AgentAvatar } from '@/components/ui/agent-avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -85,7 +89,8 @@ import {
   AGENT_CONFIG_SECTIONS,
   AgentConfigSections,
   type AgentConfigSectionKey,
-  agentConfigSectionId,
+  DEFAULT_AGENT_CONFIG_SECTION,
+  isAgentConfigSectionKey,
   useAgentDraft,
   useAgentEditorOptions,
 } from '@/features/workspace/customize/sections/view/agent-editor';
@@ -118,7 +123,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, m } from 'motion/react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   type ReactNode,
   type RefObject,
@@ -138,9 +143,10 @@ import { AgentTriggersSection } from './agent-triggers-section';
 
 type Agent = ProjectConfigSummary['agents'][number];
 
-/** The pane's width on `lg`. One constant, because the pane, the skeleton
- *  and the compact bar's right edge all have to agree on it. */
-const PANE_WIDTH = 'lg:w-[26rem]';
+/** The pane's width. Wide enough that a label/control row keeps its label
+ *  to two lines and a grant checklist shows its hints; the document keeps
+ *  at least ~600px beside it on a 1440 screen with the sidebar open. */
+const PANE_WIDTH = 'lg:w-[30rem] xl:w-[34rem]';
 
 export function AgentPage({ projectId, agentName }: { projectId: string; agentName: string }) {
   // `accountId` skips useProjectCan's own getProject and lets the IAM probe
@@ -291,10 +297,7 @@ function AgentPageSkeleton() {
         <DocumentColumn>
           <div className="space-y-4">
             <Skeleton className="h-4 w-32 rounded-sm" />
-            <div className="flex items-center gap-3">
-              <Skeleton className="size-10 rounded-md" />
-              <Skeleton className="h-8 w-56 rounded-sm" />
-            </div>
+            <Skeleton className="h-8 w-56 rounded-sm" />
           </div>
           <div className="mt-8 space-y-6">
             <Skeleton className="h-11 w-full rounded-md" />
@@ -467,7 +470,6 @@ function AgentHeader({
   canWrite: boolean;
   children?: ReactNode;
 }) {
-  const isDefault = config.open_code_default_agent === agent.name;
   return (
     <header className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -487,14 +489,9 @@ function AgentHeader({
 
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <span className="flex items-center gap-3">
-            {/* The same tile the session list and the composer draw for this
-                agent, so the page is recognisably the thing you picked there. */}
-            <AgentAvatar agentName={agent.name} isDefault={isDefault} size={40} />
-            <h1 className="text-foreground text-2xl font-semibold tracking-tight text-balance">
-              {capitalizeWords(agent.name)}
-            </h1>
-          </span>
+          <h1 className="text-foreground text-2xl font-semibold tracking-tight text-balance">
+            {capitalizeWords(agent.name)}
+          </h1>
           <AgentChips agent={agent} config={config} size="sm" />
         </div>
         {children}
@@ -522,7 +519,6 @@ function CompactBar({
   config: ProjectConfigSummary;
   canWrite: boolean;
 }) {
-  const isDefault = config.open_code_default_agent === agent.name;
   return (
     <div className="sticky top-0 z-10 h-0">
       <AnimatePresence initial={false}>
@@ -537,7 +533,6 @@ function CompactBar({
           >
             <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-6 py-2 lg:px-10">
               <span className="flex min-w-0 items-center gap-2.5">
-                <AgentAvatar agentName={agent.name} isDefault={isDefault} size={24} />
                 <span className="text-foreground truncate text-sm font-medium">
                   {capitalizeWords(agent.name)}
                 </span>
@@ -583,98 +578,79 @@ function useScrolledPast(refs: RefObject<HTMLDivElement | null>[], threshold: nu
   return scrolled;
 }
 
-// ─── Pane header: jump bar ─────────────────────────────────────────────────
+// ─── Pane header: tabs ─────────────────────────────────────────────────────
 
 /**
- * "Configuration" and a row of section chips. The active chip follows the
- * pane's scroll (a spy over `[data-agent-section]`), and a click scrolls the
- * section's anchor into view. `keys` is whatever the pane actually rendered,
- * so a slot the page left empty never gets a dead chip.
+ * Which tab the pane shows. Seeded from `?section=` so the Access hub and
+ * the Triggers tab can deep-link one; written back with `replace` so the
+ * URL follows the selection without growing history.
+ */
+function usePaneSection(
+  available: readonly AgentConfigSectionKey[],
+): [AgentConfigSectionKey, (next: AgentConfigSectionKey) => void] {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const fromUrl = searchParams.get('section');
+  const initial =
+    isAgentConfigSectionKey(fromUrl) && available.includes(fromUrl)
+      ? fromUrl
+      : (available.find((k) => k === DEFAULT_AGENT_CONFIG_SECTION) ?? available[0]);
+  const [section, setSection] = useState<AgentConfigSectionKey>(initial);
+  const select = useCallback(
+    (next: AgentConfigSectionKey) => {
+      setSection(next);
+      const params = new URLSearchParams(window.location.search);
+      params.set('section', next);
+      router.replace(`${window.location.pathname}?${params.toString()}`, { scroll: false });
+    },
+    [router],
+  );
+  return [section, select];
+}
+
+/**
+ * "Configuration" over an underline tab row. One `TabsList`, the same
+ * primitive the Customize bar uses one level up, so the two rows of tabs on
+ * the screen read as the same kind of control at two scopes.
  */
 function PaneHeader({
-  paneRef,
+  section,
+  onSelect,
   keys,
 }: {
-  paneRef: RefObject<HTMLDivElement | null>;
+  section: AgentConfigSectionKey;
+  onSelect: (next: AgentConfigSectionKey) => void;
   keys: readonly AgentConfigSectionKey[];
 }) {
-  const [active, setActive] = useState<AgentConfigSectionKey | null>(keys[0] ?? null);
-
-  useEffect(() => {
-    const root = paneRef.current;
-    if (!root) return;
-    const sections = [...root.querySelectorAll<HTMLElement>('[data-agent-section]')];
-    if (sections.length === 0) return;
-    let raf = 0;
-    const measure = () => {
-      raf = 0;
-      // The section whose top is nearest the pane's top edge, allowing for
-      // the anchor's own scroll margin. The last one wins once the pane is
-      // scrolled to its end, so the final chip can actually light up.
-      const top = root.getBoundingClientRect().top + 24;
-      let current: string | null = null;
-      for (const el of sections) {
-        if (el.getBoundingClientRect().top <= top) current = el.dataset.agentSection ?? null;
-      }
-      const atEnd = root.scrollTop + root.clientHeight >= root.scrollHeight - 2;
-      if (atEnd) current = sections[sections.length - 1].dataset.agentSection ?? current;
-      setActive((current ?? sections[0].dataset.agentSection ?? null) as AgentConfigSectionKey | null);
-    };
-    const onScroll = () => {
-      if (raf === 0) raf = requestAnimationFrame(measure);
-    };
-    root.addEventListener('scroll', onScroll, { passive: true });
-    measure();
-    return () => {
-      root.removeEventListener('scroll', onScroll);
-      if (raf) cancelAnimationFrame(raf);
-    };
-  }, [paneRef, keys]);
-
-  const jump = (key: AgentConfigSectionKey) => {
-    const el = paneRef.current?.querySelector<HTMLElement>(`#${agentConfigSectionId(key)}`);
-    el?.scrollIntoView({ block: 'start', behavior: 'smooth' });
-    setActive(key);
-  };
-
-  const chips = AGENT_CONFIG_SECTIONS.filter((s) => keys.includes(s.key));
-
+  const tabs = AGENT_CONFIG_SECTIONS.filter((s) => keys.includes(s.key));
   return (
     <div className="border-border/60 bg-background sticky top-0 z-10 shrink-0 border-b lg:static">
-      <div className="flex items-center justify-between gap-3 px-5 pt-3 pb-1">
+      <div className="px-5 pt-3 pb-1">
         <span className="text-foreground text-sm font-medium">Configuration</span>
       </div>
-      {/* Chips wrap: seven of them do not fit one 26rem line, and a row that
-          scrolls sideways hides the last two behind an edge nobody drags. */}
-      <div
-        role="tablist"
-        aria-label="Configuration sections"
-        className="flex flex-wrap items-center gap-1 px-4 pb-2.5"
-      >
-        {chips.map((s) => (
-          <button
-            key={s.key}
-            type="button"
-            role="tab"
-            aria-selected={active === s.key}
-            onClick={() => jump(s.key)}
-            className={cn(
-              'shrink-0 rounded-full px-2.5 py-1 text-xs whitespace-nowrap',
-              'transition-[color,background-color,transform] active:scale-[0.96]',
-              active === s.key
-                ? 'bg-primary/[0.08] text-foreground font-medium'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
-            )}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
+      <Tabs value={section} onValueChange={(next) => onSelect(next as AgentConfigSectionKey)}>
+        <TabsList
+          type="underline"
+          underlineSize="md"
+          className="h-auto w-full justify-start gap-4 border-b-0 px-5"
+          aria-label="Configuration sections"
+        >
+          {tabs.map((s) => (
+            <TabsTrigger key={s.key} value={s.key} className="w-fit flex-none px-0.5 py-2">
+              {s.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
     </div>
   );
 }
 
 // ─── Editable body ─────────────────────────────────────────────────────────
+
+const EDITABLE_SECTIONS: readonly AgentConfigSectionKey[] = AGENT_CONFIG_SECTIONS.map((s) => s.key);
+/** What a v1 project, or a reader without write, can still see. */
+const READ_ONLY_SECTIONS: readonly AgentConfigSectionKey[] = ['access', 'triggers', 'model'];
 
 function EditableAgentPage({
   projectId,
@@ -702,6 +678,7 @@ function EditableAgentPage({
   // render (`useMemo`, not a ref read during render).
   const scrollRefs = useMemo(() => [documentRef], []);
   const condensed = useScrolledPast(scrollRefs, 96);
+  const [section, selectSection] = usePaneSection(EDITABLE_SECTIONS);
 
   const onSave = useCallback(async () => {
     if (!editor.isDirty || update.isPending) return;
@@ -761,9 +738,10 @@ function EditableAgentPage({
           </DocumentColumn>
         </>
       }
-      paneHeader={<PaneHeader paneRef={paneRef} keys={AGENT_CONFIG_SECTIONS.map((s) => s.key)} />}
+      paneHeader={<PaneHeader section={section} onSelect={selectSection} keys={EDITABLE_SECTIONS} />}
       pane={
         <AgentConfigSections
+          section={section}
           editor={editor}
           options={options}
           skillsOptions={skillsOptions}
@@ -1017,6 +995,7 @@ function ReadOnlyAgentPage({
   // render (`useMemo`, not a ref read during render).
   const scrollRefs = useMemo(() => [documentRef], []);
   const condensed = useScrolledPast(scrollRefs, 96);
+  const [section, selectSection] = usePaneSection(READ_ONLY_SECTIONS);
 
   return (
     <AgentPageFrame
@@ -1096,7 +1075,9 @@ function ReadOnlyAgentPage({
           </DocumentColumn>
         </>
       }
-      paneHeader={<PaneHeader paneRef={paneRef} keys={['triggers', 'people']} />}
+      paneHeader={
+        <PaneHeader section={section} onSelect={selectSection} keys={READ_ONLY_SECTIONS} />
+      }
       pane={
         <div className="space-y-6">
           {showUpgradeHint ? (
@@ -1106,16 +1087,22 @@ function ReadOnlyAgentPage({
               agent's instructions, model, tool permissions and access here.
             </InfoBanner>
           ) : null}
-          <AgentModel projectId={projectId} agentName={agent.name} />
-          <AgentScope projectId={projectId} agentName={agent.name} scope={agent.scope} />
-          <div className="space-y-10">
-            <div id={agentConfigSectionId('triggers')} data-agent-section="triggers" className="scroll-mt-4">
-              <AgentTriggersSection projectId={projectId} agentName={agent.name} />
-            </div>
-            <div id={agentConfigSectionId('people')} data-agent-section="people" className="scroll-mt-4">
+          {section === 'access' ? (
+            <div className="space-y-6">
+              <AgentScope projectId={projectId} agentName={agent.name} scope={agent.scope} />
               <AgentPeopleSection projectId={projectId} agentName={agent.name} />
             </div>
-          </div>
+          ) : section === 'triggers' ? (
+            <AgentTriggersSection projectId={projectId} agentName={agent.name} />
+          ) : (
+            <div className="space-y-6">
+              <AgentModel projectId={projectId} agentName={agent.name} />
+              <p className="text-muted-foreground text-xs text-pretty">
+                The model this agent runs on is set in its source file. With the model gateway on,
+                a per-agent pin can override it above.
+              </p>
+            </div>
+          )}
         </div>
       }
     />

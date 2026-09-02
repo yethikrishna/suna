@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from 'react';
 
-import { AgentAvatar } from '@/components/ui/agent-avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -240,14 +239,6 @@ export function AgentsPage({ projectId }: { projectId: string }) {
           <CatalogCard
             key={agent.path}
             href={agentHref(projectId, agent.name)}
-            leading={
-              <AgentAvatar
-                agentName={agent.name}
-                isDefault={defaultAgent === agent.name}
-                size={32}
-                className="mt-0.5"
-              />
-            }
             title={capitalizeWords(agent.name)}
             description={agent.description}
             badges={

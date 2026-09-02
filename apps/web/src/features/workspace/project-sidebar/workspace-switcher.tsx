@@ -91,8 +91,8 @@ export function WorkspaceSwitcher({ projectId }: { projectId: string }) {
   // than being silently dropped: without it, every account-scoped settings tab
   // opened on a project whose detail query has not resolved yet has no account
   // id to probe with, and renders as though the permission were denied. Same
-  // `['accounts']` key and `staleTime` as every other caller, so React Query
-  // serves them all from one fetch.
+  // `useAccountsList()` hook as every other caller, so React Query serves them
+  // all from one user-scoped fetch.
   useEnsureSelectedAccount();
 
   // For the rows that OPEN something in place — the settings panel, the log-out
@@ -138,8 +138,7 @@ export function WorkspaceSwitcher({ projectId }: { projectId: string }) {
               <SidebarMenuButton
                 aria-label="Switch workspace"
                 className={cn(
-                  'group/workspace relative flex h-8 cursor-pointer items-center gap-2 rounded-md px-2',
-                  'transition-colors duration-150',
+                  'group/workspace hover:bg-card relative flex cursor-pointer items-center gap-2 rounded-md px-1',
                   'group-data-[collapsible=icon]:!justify-center group-data-[collapsible=icon]:!gap-0 group-data-[collapsible=icon]:!px-0',
                 )}
               >
@@ -148,15 +147,28 @@ export function WorkspaceSwitcher({ projectId }: { projectId: string }) {
                     shape that swaps content the moment the query lands. The
                     control keeps its size either way — the row is a fixed
                     `h-8` — so the empty state is a quiet gap, not a jump. */}
+                {/* `glyph` BEFORE `emoji` below, matching EntityAvatar's own
+                    precedence. Both are required: a project's icon is a union —
+                    an emoji XOR a named glyph — so passing only `emoji` renders
+                    a glyph project's chalk INITIAL here, while the projects grid
+                    (`projects/project-card.tsx`) and ⌘K
+                    (`workspace/command-palette.tsx`) both draw its glyph. The
+                    sidebar is where a person looks at their workspace all day,
+                    so that gap read as "I picked an icon and nothing changed". */}
                 {project ? (
-                  <EntityAvatar label={project.name} emoji={project.icon} size="sm" />
+                  <EntityAvatar
+                    label={project.name}
+                    glyph={project.icon_glyph}
+                    emoji={project.icon}
+                    size="sm"
+                  />
                 ) : null}
 
                 <span className="text-foreground min-w-0 flex-1 truncate text-left text-sm font-medium tracking-tight group-data-[collapsible=icon]:hidden">
                   {project?.name ?? null}
                 </span>
 
-                <CaretUpDownIcon className="text-muted-foreground/50 group-hover/workspace:text-muted-foreground size-3.5 shrink-0 transition-colors duration-150 group-data-[collapsible=icon]:hidden" />
+                <CaretUpDownIcon className="text-muted-foreground/50 group-hover/workspace:text-muted-foreground size-3.5 shrink-0 group-data-[collapsible=icon]:hidden" />
               </SidebarMenuButton>
             </DropdownMenuTrigger>
 
@@ -208,7 +220,7 @@ export function WorkspaceSwitcher({ projectId }: { projectId: string }) {
                   header `UserMenu` has no such renderer and must navigate. */}
               <DropdownMenuItem onSelect={() => openUserSettings('profile')} size="sm">
                 <CogOne />
-                User Settings
+                Settings
               </DropdownMenuItem>
 
               {/* `prefetch` explicitly: `(public)/download/page.tsx` awaits

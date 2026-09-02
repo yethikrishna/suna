@@ -237,6 +237,23 @@ export function useAgentEditorOptions(
  * housekeeping switches. `children` slots page-owned sections (triggers,
  * people) into the same stack so the column reads as one list.
  */
+export const AGENT_CONFIG_SECTIONS = [
+  { key: 'model', label: 'Model' },
+  { key: 'triggers', label: 'Triggers' },
+  { key: 'access', label: 'Access' },
+  { key: 'people', label: 'People' },
+  { key: 'workspace', label: 'Workspace' },
+  { key: 'tools', label: 'Tools' },
+  { key: 'basics', label: 'Basics' },
+] as const;
+
+export type AgentConfigSectionKey = (typeof AGENT_CONFIG_SECTIONS)[number]['key'];
+
+/** The DOM id the jump bar scrolls to for one section. */
+export function agentConfigSectionId(key: AgentConfigSectionKey): string {
+  return `agent-config-${key}`;
+}
+
 export function AgentConfigSections({
   editor,
   options,
@@ -253,21 +270,48 @@ export function AgentConfigSections({
   people?: React.ReactNode;
 }) {
   const { draft, oc, set, setOc } = editor;
+  // Each section sits in an anchored wrapper so the pane's jump bar can
+  // scroll to it and spy on it (`data-agent-section` + the id). A slot the
+  // page leaves empty renders no wrapper, so the jump bar never offers a
+  // section that is not there.
+  const anchor = (key: AgentConfigSectionKey, node: React.ReactNode) =>
+    node ? (
+      <div
+        key={key}
+        id={agentConfigSectionId(key)}
+        data-agent-section={key}
+        className="scroll-mt-4"
+      >
+        {node}
+      </div>
+    ) : null;
   return (
-    <div className="space-y-8">
-      <ModelSection oc={oc} setOc={setOc} showPrompt={false} />
-      {triggers}
-      <AccessSection
-        draft={draft}
-        set={set}
-        skillsOptions={skillsOptions}
-        connectorOptions={options.connectorOptions}
-        secretOptions={options.secretOptions}
-      />
-      {people}
-      <WorkspaceSection draft={draft} set={set} sandboxOptions={options.sandboxOptions} />
-      <ToolsSection permission={oc.permission} onChange={(next) => setOc('permission', next)} />
-      <BasicsSection draft={draft} set={set} oc={oc} setOc={setOc} showDescription={false} />
+    <div className="space-y-10">
+      {anchor('model', <ModelSection oc={oc} setOc={setOc} showPrompt={false} />)}
+      {anchor('triggers', triggers)}
+      {anchor(
+        'access',
+        <AccessSection
+          draft={draft}
+          set={set}
+          skillsOptions={skillsOptions}
+          connectorOptions={options.connectorOptions}
+          secretOptions={options.secretOptions}
+        />,
+      )}
+      {anchor('people', people)}
+      {anchor(
+        'workspace',
+        <WorkspaceSection draft={draft} set={set} sandboxOptions={options.sandboxOptions} />,
+      )}
+      {anchor(
+        'tools',
+        <ToolsSection permission={oc.permission} onChange={(next) => setOc('permission', next)} />,
+      )}
+      {anchor(
+        'basics',
+        <BasicsSection draft={draft} set={set} oc={oc} setOc={setOc} showDescription={false} />,
+      )}
     </div>
   );
 }

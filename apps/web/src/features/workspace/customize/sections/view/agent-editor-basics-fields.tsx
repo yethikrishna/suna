@@ -34,6 +34,7 @@ import { ModelSelector } from '@/features/session/model-selector';
 import { flattenModels } from '@/features/session/session-chat-input';
 import { cn } from '@/lib/utils';
 import type { AgentConfigBlock, RuntimeAgentConfig } from '@kortix/sdk';
+import { useState } from 'react';
 import { modelKeyToWire, useFeatureFlag, useKortixRouteProjectId, useRuntimeProviders } from '@kortix/sdk/react';
 import { storedModelRefToKey } from '@/lib/llm-gateway';
 import {
@@ -141,7 +142,9 @@ export function BasicsSection({
         </div>
       </SettingRow>
 
-      <SettingRow
+      {/* A block, not a row: eight swatches plus the custom well are wider
+          than a row's control slot and wrapped into two ragged lines. */}
+      <SettingBlock
         label="Badge color"
         help={
           oc.color ? (
@@ -155,7 +158,7 @@ export function BasicsSection({
         }
       >
         <ColorSwatches value={oc.color} onChange={(v) => setOc('color', v)} />
-      </SettingRow>
+      </SettingBlock>
     </EditorSection>
   );
 }
@@ -179,7 +182,7 @@ function ColorSwatches({
   // control slot. `flex-wrap` is the safety net for a zoom or font change that
   // pushes it over, rather than letting one swatch clip.
   return (
-    <div className="flex flex-wrap items-center gap-0.5 sm:flex-nowrap sm:justify-end">
+    <div className="flex flex-wrap items-center gap-0.5">
       {THEME_COLORS.map((c) => {
         const active = value === c;
         return (
@@ -271,10 +274,22 @@ export function ModelSection({
     ? storedModelRefToKey(oc.model, llmGatewayFlag.enabled === true)
     : null;
 
+  // The sampling knobs and the step cap are set on a handful of agents and
+  // read by fewer. They open only when one of them carries a value, so an
+  // agent that tunes nothing shows one row — the model — and nothing else.
+  const advancedSet =
+    oc.variant !== undefined ||
+    !isSliderAtDefault(oc.temperature, 0) ||
+    !isSliderAtDefault(oc.top_p, 1) ||
+    oc.steps !== undefined;
+  const [advancedOpen, setAdvancedOpen] = useState(advancedSet);
+
   return (
     <EditorSection title="Model" description="How this agent thinks.">
+      {/* "Provider model", not "Model": the section is already titled Model,
+          and a row that repeats its section's name reads as a typo. */}
       <SettingRow
-        label="Model"
+        label="Provider model"
         help={
           oc.model ? (
             <InlineAction onClick={() => setOc('model', undefined)}>
@@ -290,58 +305,83 @@ export function ModelSection({
             models={models}
             providers={providers}
             selectedModel={selectedModelKey}
+            unsetLabel="Project default"
             onSelect={(m) => setOc('model', m ? modelKeyToWire(m) : undefined)}
           />
         </div>
       </SettingRow>
 
-      <SettingRow label="Variant" help="Provider variant to request, such as thinking.">
-        <Input
-          aria-label="Variant"
-          value={oc.variant ?? ''}
-          placeholder="Provider default"
-          variant="popover"
-          className="h-9 w-full text-sm"
-          onChange={(e) => setOc('variant', e.target.value)}
-        />
-      </SettingRow>
+      <div className="py-3.5">
+        <Disclosure
+          variant="outline"
+          className="overflow-hidden rounded-md"
+          open={advancedOpen}
+          onOpenChange={setAdvancedOpen}
+        >
+          <DisclosureTrigger variant="outline">
+            <Button
+              variant="popover"
+              className="flex w-full items-center justify-between gap-3 rounded-none text-sm font-normal"
+            >
+              <span className="min-w-0 truncate">Sampling and limits</span>
+              <span className="text-muted-foreground shrink-0 text-xs">
+                {advancedSet ? 'Customized' : 'Defaults'}
+              </span>
+            </Button>
+          </DisclosureTrigger>
+          <DisclosureContent variant="outline" contentClassName="border-border border-t">
+            <div className="divide-border/60 divide-y px-4">
+              <SettingRow label="Variant" help="Provider variant to request, such as thinking.">
+                <Input
+                  aria-label="Variant"
+                  value={oc.variant ?? ''}
+                  placeholder="Provider default"
+                  variant="popover"
+                  className="h-9 w-full text-sm"
+                  onChange={(e) => setOc('variant', e.target.value)}
+                />
+              </SettingRow>
 
-      <SliderRow
-        label="Temperature"
-        help="0 gives the same answer every time. 2 is the most random."
-        value={oc.temperature}
-        fallback={0}
-        min={0}
-        max={2}
-        step={0.05}
-        onChange={(v) => setOc('temperature', v)}
-      />
+              <SliderRow
+                label="Temperature"
+                help="0 gives the same answer every time. 2 is the most random."
+                value={oc.temperature}
+                fallback={0}
+                min={0}
+                max={2}
+                step={0.05}
+                onChange={(v) => setOc('temperature', v)}
+              />
 
-      <SliderRow
-        label="Top-p"
-        help="Nucleus sampling. Leave it alone unless you are tuning the model."
-        value={oc.top_p}
-        fallback={1}
-        min={0}
-        max={1}
-        step={0.01}
-        onChange={(v) => setOc('top_p', v)}
-      />
+              <SliderRow
+                label="Top-p"
+                help="Nucleus sampling. Leave it alone unless you are tuning the model."
+                value={oc.top_p}
+                fallback={1}
+                min={0}
+                max={1}
+                step={0.01}
+                onChange={(v) => setOc('top_p', v)}
+              />
 
-      <SettingRow label="Step limit" help="Most tool calls this agent may make in one run.">
-        <Input
-          aria-label="Step limit"
-          type="number"
-          min={1}
-          value={oc.steps ?? ''}
-          placeholder="No limit"
-          variant="popover"
-          className="h-9 w-full text-sm tabular-nums"
-          onChange={(e) =>
-            setOc('steps', e.target.value ? Math.max(1, Number(e.target.value)) : undefined)
-          }
-        />
-      </SettingRow>
+              <SettingRow label="Step limit" help="Most tool calls this agent may make in one run.">
+                <Input
+                  aria-label="Step limit"
+                  type="number"
+                  min={1}
+                  value={oc.steps ?? ''}
+                  placeholder="No limit"
+                  variant="popover"
+                  className="h-9 w-full text-sm tabular-nums"
+                  onChange={(e) =>
+                    setOc('steps', e.target.value ? Math.max(1, Number(e.target.value)) : undefined)
+                  }
+                />
+              </SettingRow>
+            </div>
+          </DisclosureContent>
+        </Disclosure>
+      </div>
 
       {/* A wall of text most agents never set — collapsed, like the tool
           permissions at the foot of the editor. */}

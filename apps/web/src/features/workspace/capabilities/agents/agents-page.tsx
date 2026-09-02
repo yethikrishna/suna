@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 
+import { AgentAvatar } from '@/components/ui/agent-avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -166,7 +167,7 @@ export function AgentsPage({ projectId }: { projectId: string }) {
   return (
     <CapabilityPageShell
       title="Agents"
-      description="Who does the work. Each agent is what a person is given access to — configure what it knows, what it can reach, and when it runs."
+      description="Each agent is what a person gets access to. Configure what it knows, what it can reach, and when it runs."
       action={createButton('New')}
       search={
         <InputGroupSearch>
@@ -239,6 +240,14 @@ export function AgentsPage({ projectId }: { projectId: string }) {
           <CatalogCard
             key={agent.path}
             href={agentHref(projectId, agent.name)}
+            leading={
+              <AgentAvatar
+                agentName={agent.name}
+                isDefault={defaultAgent === agent.name}
+                size={32}
+                className="mt-0.5"
+              />
+            }
             title={capitalizeWords(agent.name)}
             description={agent.description}
             badges={

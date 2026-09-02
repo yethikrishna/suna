@@ -265,10 +265,10 @@ describe('bootstrapLegacyRuntime', () => {
 
   test('a rotated session PAT is handed to the script; none when nothing to rotate', async () => {
     const calls: Calls = { patches: [], audits: [], execs: [] };
-    const deps = makeDeps({ rotateKortixToken: async () => 'kortix_pat_fresh123' }, calls);
+    const deps = makeDeps({ rotateKortixToken: async () => 'kortix_pat_xxxxxxxx' }, calls);
     expect((await bootstrapLegacyRuntime(input(), deps)).outcome).toBe('converged');
     const script = Buffer.from(calls.execs[0][2].split("'")[3], 'base64').toString('utf8');
-    expect(script).toContain("NEW_KORTIX_TOKEN='kortix_pat_fresh123'");
+    expect(script).toContain("NEW_KORTIX_TOKEN='kortix_pat_xxxxxxxx'");
     expect(script).toContain('KORTIX_TOKEN rotated');
     const none = makeDeps({ rotateKortixToken: async () => null }, calls);
     await bootstrapLegacyRuntime(input(), none);

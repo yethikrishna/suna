@@ -299,6 +299,14 @@ async function computeManifest(): Promise<RuntimeAssetsDigests> {
       path: '/v1/runtime-assets/agent',
     };
   }
+  if (entrypoint) {
+    components.entrypoint = {
+      version: null,
+      sha256: entrypoint.sha256,
+      size: entrypoint.size,
+      path: '/v1/runtime-assets/entrypoint',
+    };
+  }
   if (cli) {
     // Deliberately the SAME values as the v1 `cli_*` keys above — one
     // measurement, two spellings. A v1 daemon and a v2 daemon must never

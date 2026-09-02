@@ -21,6 +21,30 @@ linked, not inlined.
 
 ## Register
 
+### A runtime that only updates by pulling never updates a box that predates the puller (2026-09-01)
+
+**When:** designing or relying on any "the box converges on the API" mechanism
+(runtime-assets, daemon self-update). A daemon built before the pull code
+exists never pulls; restart/resume keep the VM and warm-fork keeps the disk, so
+every box from before the cutover is a fossil until the CONTROL PLANE reaches
+into it through the provider's own exec channel. Ship the push path with the
+pull path, and probe the fleet for boxes whose `/kortix/health` has no `runtime`
+block. *Incident:* OpenCode's 48-bit message-id rollover (2026-08-14) silently
+broke every pre-wrap session on OpenCode < 1.18.15; the fix (1.18.15) never
+reached July boxes — 9 prod sessions dead 19 days, 4 h 15 m zombie turns.
+*Automation:* `legacy-runtime-bootstrap.ts` scheduled from `box-reaper` (PR #7088);
+`scripts/legacy-runtime-sweep.ts --dry-run` lists what is still legacy.
+
+### Verify "converged" by what is RUNNING, not by what was installed (2026-09-01)
+
+**When:** any install-then-restart flow. The daemon memoised its OpenCode binary
+path at boot, installed 1.18.23, restarted — and kept spawning 1.17.11. The
+install log said success; `readlink /proc/<pid>/exe` said otherwise.
+*Automation:* `restart()` drops the memoised path (opencode.ts); the bootstrap
+relaunches once more after an `updated` boot pass and its health wait requires a
+FRESH daemon (`uptime_s` small), never the one just killed.
+
+||||||| 2108aa3c8a
 ### Pin every bundled Go binary to the scanner's fixed dependency floor (2026-09-01)
 
 **When:** you add or update a Go binary copied into `apps/api/Dockerfile`, or a

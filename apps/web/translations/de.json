@@ -1448,6 +1448,52 @@
       "pending": "Wird neu gestartet…"
     }
   },
+  "modelSelector": {
+    "search": "Modelle suchen",
+    "free": "Kostenlos",
+    "addProvider": "Anbieter hinzufügen",
+    "connectProvider": "Anbieter verbinden",
+    "manageModels": "Modelle verwalten",
+    "loading": "Modelle werden geladen",
+    "yourDefault": "Dein Standardmodell",
+    "defaultAria": "{model} ist dein Standardmodell",
+    "setDefaultAria": "{model} als mein Standardmodell festlegen",
+    "defaultTitle": "Dein Standardmodell",
+    "setDefaultTitle": "Als mein Standardmodell festlegen",
+    "upgrade": "Upgrade",
+    "noMatch": {
+      "title": "Keine passenden Modelle",
+      "description": "Keine Treffer für „{search}“. Versuche eine andere Suche.",
+      "clear": "Suche löschen"
+    },
+    "empty": {
+      "title": "Keine Modelle verfügbar",
+      "description": "Verbinde deinen eigenen Anbieter, um diese Sitzung zu starten.",
+      "upgradeDescription": "Führe ein Upgrade durch oder verbinde deinen eigenen Anbieter, um diese Sitzung zu starten."
+    }
+  },
+  "sessionScope": {
+    "resetDefault": "Auf Standard zurücksetzen",
+    "secrets": {
+      "unavailableTitle": "Zugriff auf Geheimnisse nicht verfügbar",
+      "unavailableDescription": "Die aktuelle Auswahl der Geheimnisse bleibt unverändert.",
+      "useProjectDefault": "Projektstandard verwenden",
+      "empty": "Für diesen Agenten sind keine Geheimnisse verfügbar."
+    },
+    "connectors": {
+      "unavailableTitle": "Zugriff auf Konnektoren nicht verfügbar",
+      "unavailableDescription": "Die aktuelle Konnektorauswahl bleibt unverändert.",
+      "empty": "Für diesen Agenten sind keine Konnektoren verfügbar.",
+      "private": "Privat",
+      "project": "Projekt",
+      "required": "Erforderlich – zum Fortfahren verbinden",
+      "notConnected": "Nicht verbunden",
+      "connectBeforeReply": "Mit {connector} ist noch nichts verbunden. Diese Sitzung fordert dich auf, die Verbindung vor der nächsten Antwort herzustellen.",
+      "connectionAria": "Verbindung für {connector}",
+      "currentConnection": "Aktuelle Verbindung",
+      "default": "Standard"
+    }
+  },
   "agents": {
     "title": "Worker",
     "create": "Worker erstellen",

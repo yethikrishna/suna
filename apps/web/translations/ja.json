@@ -1448,6 +1448,52 @@
       "pending": "再起動中…"
     }
   },
+  "modelSelector": {
+    "search": "モデルを検索",
+    "free": "無料",
+    "addProvider": "プロバイダーを追加",
+    "connectProvider": "プロバイダーに接続",
+    "manageModels": "モデルを管理",
+    "loading": "モデルを読み込み中",
+    "yourDefault": "デフォルト",
+    "defaultAria": "{model} はデフォルトモデルです",
+    "setDefaultAria": "{model} をデフォルトモデルに設定",
+    "defaultTitle": "デフォルトモデル",
+    "setDefaultTitle": "デフォルトモデルに設定",
+    "upgrade": "アップグレード",
+    "noMatch": {
+      "title": "一致するモデルがありません",
+      "description": "「{search}」に一致するものはありません。別のキーワードで検索してください。",
+      "clear": "検索をクリア"
+    },
+    "empty": {
+      "title": "利用できるモデルがありません",
+      "description": "自分のプロバイダーに接続すると、このセッションを利用できます。",
+      "upgradeDescription": "アップグレードするか、自分のプロバイダーに接続すると、このセッションを利用できます。"
+    }
+  },
+  "sessionScope": {
+    "resetDefault": "デフォルトに戻す",
+    "secrets": {
+      "unavailableTitle": "シークレットにアクセスできません",
+      "unavailableDescription": "現在のシークレット選択は変更されません。",
+      "useProjectDefault": "プロジェクトのデフォルトを使用",
+      "empty": "このエージェントで利用できるシークレットはありません。"
+    },
+    "connectors": {
+      "unavailableTitle": "コネクタにアクセスできません",
+      "unavailableDescription": "現在のコネクタ選択は変更されません。",
+      "empty": "このエージェントで利用できるコネクタはありません。",
+      "private": "プライベート",
+      "project": "プロジェクト",
+      "required": "必須 — 接続して続行",
+      "notConnected": "未接続",
+      "connectBeforeReply": "まだ {connector} に接続されていません。次の返信の前に接続を求められます。",
+      "connectionAria": "{connector} の接続",
+      "currentConnection": "現在の接続",
+      "default": "デフォルト"
+    }
+  },
   "agents": {
     "title": "ワーカー",
     "create": "ワーカーを作成",

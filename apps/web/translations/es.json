@@ -1448,6 +1448,52 @@
       "pending": "Reiniciando…"
     }
   },
+  "modelSelector": {
+    "search": "Buscar modelos",
+    "free": "Gratis",
+    "addProvider": "Añadir proveedor",
+    "connectProvider": "Conectar proveedor",
+    "manageModels": "Gestionar modelos",
+    "loading": "Cargando modelos",
+    "yourDefault": "Tu modelo predeterminado",
+    "defaultAria": "{model} es tu modelo predeterminado",
+    "setDefaultAria": "Establecer {model} como mi modelo predeterminado",
+    "defaultTitle": "Tu modelo predeterminado",
+    "setDefaultTitle": "Establecer como mi modelo predeterminado",
+    "upgrade": "Mejorar plan",
+    "noMatch": {
+      "title": "No hay modelos coincidentes",
+      "description": "Nada coincide con «{search}». Prueba con otra búsqueda.",
+      "clear": "Borrar búsqueda"
+    },
+    "empty": {
+      "title": "No hay modelos disponibles",
+      "description": "Conecta tu propio proveedor para empezar a usar esta sesión.",
+      "upgradeDescription": "Mejora tu plan o conecta tu propio proveedor para empezar a usar esta sesión."
+    }
+  },
+  "sessionScope": {
+    "resetDefault": "Restablecer valor predeterminado",
+    "secrets": {
+      "unavailableTitle": "El acceso a secretos no está disponible",
+      "unavailableDescription": "La selección actual de secretos no cambiará.",
+      "useProjectDefault": "Usar el secreto predeterminado del proyecto",
+      "empty": "No hay secretos disponibles para este agente."
+    },
+    "connectors": {
+      "unavailableTitle": "El acceso a conectores no está disponible",
+      "unavailableDescription": "La selección actual de conectores no cambiará.",
+      "empty": "No hay conectores disponibles para este agente.",
+      "private": "Privado",
+      "project": "Proyecto",
+      "required": "Obligatorio: conecta para continuar",
+      "notConnected": "No conectado",
+      "connectBeforeReply": "Aún no hay nada conectado a {connector}. Esta sesión te pedirá que lo conectes antes de su próxima respuesta.",
+      "connectionAria": "Conexión para {connector}",
+      "currentConnection": "Conexión actual",
+      "default": "Predeterminado"
+    }
+  },
   "agents": {
     "title": "Agentes",
     "create": "Crear Worker",

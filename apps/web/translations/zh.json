@@ -1444,6 +1444,52 @@
       "pending": "正在重启…"
     }
   },
+  "modelSelector": {
+    "search": "搜索模型",
+    "free": "免费",
+    "addProvider": "添加提供商",
+    "connectProvider": "连接提供商",
+    "manageModels": "管理模型",
+    "loading": "正在加载模型",
+    "yourDefault": "你的默认模型",
+    "defaultAria": "{model} 是你的默认模型",
+    "setDefaultAria": "将 {model} 设为我的默认模型",
+    "defaultTitle": "你的默认模型",
+    "setDefaultTitle": "设为我的默认模型",
+    "upgrade": "升级",
+    "noMatch": {
+      "title": "没有匹配的模型",
+      "description": "没有内容匹配“{search}”。请尝试其他搜索词。",
+      "clear": "清除搜索"
+    },
+    "empty": {
+      "title": "没有可用模型",
+      "description": "连接你自己的提供商后即可开始使用此会话。",
+      "upgradeDescription": "升级或连接你自己的提供商后即可开始使用此会话。"
+    }
+  },
+  "sessionScope": {
+    "resetDefault": "重置为默认设置",
+    "secrets": {
+      "unavailableTitle": "无法访问密钥",
+      "unavailableDescription": "当前密钥选择保持不变。",
+      "useProjectDefault": "使用项目默认设置",
+      "empty": "此智能体没有可用的密钥。"
+    },
+    "connectors": {
+      "unavailableTitle": "无法访问连接器",
+      "unavailableDescription": "当前连接器选择保持不变。",
+      "empty": "此智能体没有可用的连接器。",
+      "private": "私有",
+      "project": "项目",
+      "required": "必需 — 连接后继续",
+      "notConnected": "未连接",
+      "connectBeforeReply": "尚未连接到 {connector}。此会话会在下次回复前要求你完成连接。",
+      "connectionAria": "{connector} 的连接",
+      "currentConnection": "当前连接",
+      "default": "默认"
+    }
+  },
   "agents": {
     "title": "工作代理",
     "create": "创建 Worker",

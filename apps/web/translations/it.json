@@ -1448,6 +1448,52 @@
       "pending": "Riavvio…"
     }
   },
+  "modelSelector": {
+    "search": "Cerca modelli",
+    "free": "Gratis",
+    "addProvider": "Aggiungi provider",
+    "connectProvider": "Connetti provider",
+    "manageModels": "Gestisci modelli",
+    "loading": "Caricamento modelli",
+    "yourDefault": "Il tuo predefinito",
+    "defaultAria": "{model} è il tuo modello predefinito",
+    "setDefaultAria": "Imposta {model} come modello predefinito",
+    "defaultTitle": "Il tuo modello predefinito",
+    "setDefaultTitle": "Imposta come modello predefinito",
+    "upgrade": "Effettua l’upgrade",
+    "noMatch": {
+      "title": "Nessun modello corrispondente",
+      "description": "Nessun risultato per “{search}”. Prova con una ricerca diversa.",
+      "clear": "Cancella ricerca"
+    },
+    "empty": {
+      "title": "Nessun modello disponibile",
+      "description": "Connetti un provider personale per iniziare a usare questa sessione.",
+      "upgradeDescription": "Effettua l’upgrade o connetti un provider personale per iniziare a usare questa sessione."
+    }
+  },
+  "sessionScope": {
+    "resetDefault": "Ripristina predefinito",
+    "secrets": {
+      "unavailableTitle": "Accesso ai segreti non disponibile",
+      "unavailableDescription": "La selezione attuale dei segreti rimane invariata.",
+      "useProjectDefault": "Usa il predefinito del progetto",
+      "empty": "Nessun segreto disponibile per questo agente."
+    },
+    "connectors": {
+      "unavailableTitle": "Accesso ai connettori non disponibile",
+      "unavailableDescription": "La selezione attuale dei connettori rimane invariata.",
+      "empty": "Nessun connettore disponibile per questo agente.",
+      "private": "Privato",
+      "project": "Progetto",
+      "required": "Obbligatorio — connettiti per continuare",
+      "notConnected": "Non connesso",
+      "connectBeforeReply": "Non è ancora connesso nulla a {connector}. Questa sessione ti chiederà di connetterlo prima della prossima risposta.",
+      "connectionAria": "Connessione per {connector}",
+      "currentConnection": "Connessione attuale",
+      "default": "Predefinito"
+    }
+  },
   "agents": {
     "title": "Agenti",
     "create": "Crea worker",

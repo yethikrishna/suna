@@ -1451,6 +1451,52 @@
       "pending": "Restarting…"
     }
   },
+  "modelSelector": {
+    "search": "Search models",
+    "free": "Free",
+    "addProvider": "Add provider",
+    "connectProvider": "Connect provider",
+    "manageModels": "Manage models",
+    "loading": "Loading models",
+    "yourDefault": "Your default",
+    "defaultAria": "{model} is your default model",
+    "setDefaultAria": "Set {model} as my default model",
+    "defaultTitle": "Your default model",
+    "setDefaultTitle": "Set as my default model",
+    "upgrade": "Upgrade",
+    "noMatch": {
+      "title": "No models match",
+      "description": "Nothing matches “{search}”. Try a different search.",
+      "clear": "Clear search"
+    },
+    "empty": {
+      "title": "No models available",
+      "description": "Connect your own provider to start using this session.",
+      "upgradeDescription": "Upgrade or connect your own provider to start using this session."
+    }
+  },
+  "sessionScope": {
+    "resetDefault": "Reset to default",
+    "secrets": {
+      "unavailableTitle": "Secret access is unavailable",
+      "unavailableDescription": "The current secret selection stays unchanged.",
+      "useProjectDefault": "Use the project default",
+      "empty": "No secrets are available for this agent."
+    },
+    "connectors": {
+      "unavailableTitle": "Connector access is unavailable",
+      "unavailableDescription": "The current connector selection stays unchanged.",
+      "empty": "No connectors are available for this agent.",
+      "private": "Private",
+      "project": "Project",
+      "required": "Required — connect to continue",
+      "notConnected": "Not connected",
+      "connectBeforeReply": "Nothing is connected to {connector} yet. This session will ask you to connect it before its next reply.",
+      "connectionAria": "Connection for {connector}",
+      "currentConnection": "Current connection",
+      "default": "Default"
+    }
+  },
   "agents": {
     "title": "Workers",
     "create": "Create Worker",

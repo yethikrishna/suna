@@ -1451,6 +1451,52 @@
       "pending": "Redémarrage…"
     }
   },
+  "modelSelector": {
+    "search": "Rechercher des modèles",
+    "free": "Gratuit",
+    "addProvider": "Ajouter un fournisseur",
+    "connectProvider": "Connecter un fournisseur",
+    "manageModels": "Gérer les modèles",
+    "loading": "Chargement des modèles",
+    "yourDefault": "Votre modèle par défaut",
+    "defaultAria": "{model} est votre modèle par défaut",
+    "setDefaultAria": "Définir {model} comme modèle par défaut",
+    "defaultTitle": "Votre modèle par défaut",
+    "setDefaultTitle": "Définir comme modèle par défaut",
+    "upgrade": "Mettre à niveau",
+    "noMatch": {
+      "title": "Aucun modèle correspondant",
+      "description": "Aucun résultat pour « {search} ». Essayez une autre recherche.",
+      "clear": "Effacer la recherche"
+    },
+    "empty": {
+      "title": "Aucun modèle disponible",
+      "description": "Connectez votre propre fournisseur pour commencer à utiliser cette session.",
+      "upgradeDescription": "Mettez à niveau votre offre ou connectez votre propre fournisseur pour commencer à utiliser cette session."
+    }
+  },
+  "sessionScope": {
+    "resetDefault": "Rétablir la valeur par défaut",
+    "secrets": {
+      "unavailableTitle": "Accès aux secrets indisponible",
+      "unavailableDescription": "La sélection actuelle des secrets reste inchangée.",
+      "useProjectDefault": "Utiliser le secret par défaut du projet",
+      "empty": "Aucun secret n’est disponible pour cet agent."
+    },
+    "connectors": {
+      "unavailableTitle": "Accès aux connecteurs indisponible",
+      "unavailableDescription": "La sélection actuelle des connecteurs reste inchangée.",
+      "empty": "Aucun connecteur n’est disponible pour cet agent.",
+      "private": "Privé",
+      "project": "Projet",
+      "required": "Requis — connectez-vous pour continuer",
+      "notConnected": "Non connecté",
+      "connectBeforeReply": "Rien n’est encore connecté à {connector}. Cette session vous demandera de le connecter avant sa prochaine réponse.",
+      "connectionAria": "Connexion pour {connector}",
+      "currentConnection": "Connexion actuelle",
+      "default": "Par défaut"
+    }
+  },
   "agents": {
     "title": "Agents",
     "create": "Créer un Worker",

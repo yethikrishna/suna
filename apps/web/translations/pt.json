@@ -1448,6 +1448,52 @@
       "pending": "Reiniciando…"
     }
   },
+  "modelSelector": {
+    "search": "Buscar modelos",
+    "free": "Grátis",
+    "addProvider": "Adicionar provedor",
+    "connectProvider": "Conectar provedor",
+    "manageModels": "Gerenciar modelos",
+    "loading": "Carregando modelos",
+    "yourDefault": "Seu padrão",
+    "defaultAria": "{model} é seu modelo padrão",
+    "setDefaultAria": "Definir {model} como meu modelo padrão",
+    "defaultTitle": "Seu modelo padrão",
+    "setDefaultTitle": "Definir como meu modelo padrão",
+    "upgrade": "Fazer upgrade",
+    "noMatch": {
+      "title": "Nenhum modelo encontrado",
+      "description": "Nada corresponde a “{search}”. Tente outra busca.",
+      "clear": "Limpar busca"
+    },
+    "empty": {
+      "title": "Nenhum modelo disponível",
+      "description": "Conecte seu próprio provedor para começar a usar esta sessão.",
+      "upgradeDescription": "Faça upgrade ou conecte seu próprio provedor para começar a usar esta sessão."
+    }
+  },
+  "sessionScope": {
+    "resetDefault": "Redefinir para o padrão",
+    "secrets": {
+      "unavailableTitle": "O acesso aos segredos está indisponível",
+      "unavailableDescription": "A seleção atual de segredos permanece inalterada.",
+      "useProjectDefault": "Usar o padrão do projeto",
+      "empty": "Nenhum segredo está disponível para este agente."
+    },
+    "connectors": {
+      "unavailableTitle": "O acesso aos conectores está indisponível",
+      "unavailableDescription": "A seleção atual de conectores permanece inalterada.",
+      "empty": "Nenhum conector está disponível para este agente.",
+      "private": "Privado",
+      "project": "Projeto",
+      "required": "Obrigatório — conecte para continuar",
+      "notConnected": "Não conectado",
+      "connectBeforeReply": "Nada está conectado a {connector} ainda. Esta sessão solicitará a conexão antes da próxima resposta.",
+      "connectionAria": "Conexão para {connector}",
+      "currentConnection": "Conexão atual",
+      "default": "Padrão"
+    }
+  },
   "agents": {
     "title": "Agentes",
     "create": "Criar Worker",

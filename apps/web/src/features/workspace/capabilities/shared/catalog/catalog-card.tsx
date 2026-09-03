@@ -59,7 +59,11 @@ export function CatalogCard({
     disabled && 'pointer-events-none opacity-60',
     className,
   );
-  const body = (
+  // `trailing` may hold its own control (the connectors grant page's Required
+  // toggle), so in select mode it is a SIBLING of the body button, never a
+  // child — a <button> inside a <button> is invalid HTML and a hydration error.
+  const trailingSlot = trailing ? <span className="shrink-0">{trailing}</span> : null;
+  const content = (
     <>
       {leading ? <span className="shrink-0">{leading}</span> : null}
       <span className="min-w-0 flex-1 space-y-1">
@@ -78,7 +82,12 @@ export function CatalogCard({
           </span>
         ) : null}
       </span>
-      {trailing ? <span className="shrink-0">{trailing}</span> : null}
+    </>
+  );
+  const body = (
+    <>
+      {content}
+      {trailingSlot}
     </>
   );
 
@@ -102,8 +111,9 @@ export function CatalogCard({
           disabled={disabled}
           className="flex min-w-0 flex-1 items-start gap-3 text-left focus-visible:outline-none"
         >
-          {body}
+          {content}
         </button>
+        {trailingSlot}
       </div>
     );
   }

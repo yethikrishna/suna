@@ -40,7 +40,10 @@
       "createIn": "Направи у налогу {account}",
       "choose": "Изаберите налог"
     },
-    "name": { "label": "Назив радног простора", "placeholder": "Назив радног простора" },
+    "name": {
+      "label": "Назив радног простора",
+      "placeholder": "Назив радног простора"
+    },
     "validation": {
       "nameRequired": "Назив је обавезан",
       "nameCharacters": "Користите само слова, бројеве, размаке, цртице, доње црте или тачке",
@@ -127,7 +130,9 @@
       "shuffle": "Промешај",
       "shuffleLabel": "Промешај почетне предлоге"
     },
-    "files": { "loadError": "Пројекат није могао да се учита" }
+    "files": {
+      "loadError": "Пројекат није могао да се учита"
+    }
   },
   "settings": {
     "title": "Подешавања",
@@ -481,13 +486,20 @@
       "wallpaper": "Позадина",
       "wallpaperDescription": "Позадина вашег радног простора.",
       "defaultWallpaper": "Подразумевано",
-      "themes": { "light": "Светла", "dark": "Тамна", "system": "Системска" },
+      "themes": {
+        "light": "Светла",
+        "dark": "Тамна",
+        "system": "Системска"
+      },
       "densities": {
         "normal": {
           "label": "Нормално",
           "description": "Кораци и размишљање се приказују уживо док Kortix ради."
         },
-        "minimal": { "label": "Минимално", "description": "Један ред статуса док га не проширите." }
+        "minimal": {
+          "label": "Минимално",
+          "description": "Један ред статуса док га не проширите."
+        }
       },
       "wallpapers": {
         "dither": "Дитеринг",
@@ -515,7 +527,10 @@
           "label": "Завршетак задатка",
           "description": "Када сесија заврши задатак"
         },
-        "onError": { "label": "Грешке", "description": "Када сесија наиђе на грешку" },
+        "onError": {
+          "label": "Грешке",
+          "description": "Када сесија наиђе на грешку"
+        },
         "onQuestion": {
           "label": "Питања",
           "description": "Када Kortix тражи ваш одговор да би наставио"
@@ -538,17 +553,38 @@
       "sounds": "Звукови",
       "soundsDescription": "Пакет звукова за догађаје у сесији.",
       "soundPacks": {
-        "off": { "label": "Искључено", "description": "Сви звукови су искључени" },
-        "opencode": { "label": "Подразумевано", "description": "Подразумевани пакет звукова" },
-        "kortix": { "label": "Seshion пакет", "description": "Звиждук" }
+        "off": {
+          "label": "Искључено",
+          "description": "Сви звукови су искључени"
+        },
+        "opencode": {
+          "label": "Подразумевано",
+          "description": "Подразумевани пакет звукова"
+        },
+        "kortix": {
+          "label": "Seshion пакет",
+          "description": "Звиждук"
+        }
       },
       "volume": "Јачина звука",
       "preview": "Послушај",
       "soundEvents": {
-        "completion": { "label": "Завршетак задатка", "description": "Када AI заврши задатак" },
-        "error": { "label": "Грешка", "description": "Када сесија наиђе на грешку" },
-        "notification": { "label": "Обавештење", "description": "Питања и захтеви за дозволу" },
-        "send": { "label": "Порука је послата", "description": "Када пошаљете поруку" }
+        "completion": {
+          "label": "Завршетак задатка",
+          "description": "Када AI заврши задатак"
+        },
+        "error": {
+          "label": "Грешка",
+          "description": "Када сесија наиђе на грешку"
+        },
+        "notification": {
+          "label": "Обавештење",
+          "description": "Питања и захтеви за дозволу"
+        },
+        "send": {
+          "label": "Порука је послата",
+          "description": "Када пошаљете поруку"
+        }
       },
       "testNotificationTitle": "Пробно обавештење",
       "testNotificationBody": "Обавештења раде исправно!"
@@ -645,7 +681,10 @@
         "notBuilt": "Још није изграђено",
         "unknown": "Непознато"
       },
-      "sources": { "platform": "Kortix платформа", "dashboard": "Ова контролна табла" },
+      "sources": {
+        "platform": "Kortix платформа",
+        "dashboard": "Ова контролна табла"
+      },
       "facts": {
         "processor": "Процесор",
         "memory": "Меморија",
@@ -793,7 +832,11 @@
         "background": "Позадинска синхронизација",
         "startup": "Покретање"
       },
-      "statuses": { "ready": "спремно", "building": "изградња", "failed": "неуспело" },
+      "statuses": {
+        "ready": "спремно",
+        "building": "изградња",
+        "failed": "неуспело"
+      },
       "stale": {
         "superseded": "Није завршено, а новије подешавање га је заменило",
         "recovered": "Није завршено, али је окружење сада спремно",
@@ -839,7 +882,10 @@
         "blockedBody": "Изградња машине са које се овај пројекат покреће није успела и нема исправне копије. Свака нова сесија понавља покушај и наилази на исту грешку.",
         "degradedBody": "Машина је спремна на {ready}, али не ради на {failed}. Сесије усмерене тамо неће се покренути."
       },
-      "actions": { "fix": "Поправи помоћу агента", "rebuild": "Поново изгради" },
+      "actions": {
+        "fix": "Поправи помоћу агента",
+        "rebuild": "Поново изгради"
+      },
       "faq": {
         "title": "Како ово ради",
         "items": {
@@ -866,7 +912,11 @@
       }
     },
     "featureFlags": {
-      "stability": { "experimental": "Експериментално", "beta": "Бета", "stable": "Стабилно" },
+      "stability": {
+        "experimental": "Експериментално",
+        "beta": "Бета",
+        "stable": "Стабилно"
+      },
       "origin": {
         "overridden": "Промењено за овај пројекат",
         "defaultOn": "Подразумевано укључено",
@@ -1140,7 +1190,7 @@
     "eventBasedTriggerDescription": "Направи окидач за покретање када дође до догађаја",
     "noChatsFound": "Нема ћаскања",
     "noConversations": "Још нема ћаскања",
-    "search": "Тражи",
+    "search": "Претрага",
     "searchPlaceholder": "Тражи...",
     "searchResults": "Резултати претраге",
     "recent": "Недавно",
@@ -1173,7 +1223,107 @@
     "selectAllConversations": "Изаберите све разговоре",
     "deselectAllConversations": "Поништи избор свих разговора",
     "loadMore": "Учитајте више",
-    "remaining": "преостало"
+    "remaining": "преостало",
+    "newSession": "Нова сесија",
+    "collapse": "Скупи бочну траку",
+    "pin": "Закачи бочну траку",
+    "resize": "Промени ширину бочне траке",
+    "resizeHelp": "Превуците за промену ширине — кликните двапут за враћање",
+    "customize": "Прилагоди",
+    "sessions": "Сесије",
+    "sessionViewOptions": "Опције приказа сесија",
+    "sectionOptions": "Опције одељка",
+    "allSectionsHidden": "Сви одељци су сакривени.",
+    "metaCoordinator": "Meta координатор",
+    "files": "Датотеке",
+    "retry": "Покушај поново",
+    "proposedChanges": "Предложене измене",
+    "untitledChange": "Неименована измена",
+    "review": "Преглед",
+    "connectGpt": "Повежи GPT претплату",
+    "upgradePlan": "Надогради план",
+    "sessionList": {
+      "loadError": "Учитавање сесија није успело",
+      "empty": "Још нема сесија",
+      "noMatches": "Ниједна сесија не одговара активним филтерима.",
+      "actions": "Радње сесије",
+      "reviewCount": "Чека преглед: {count}",
+      "status": {
+        "needsYou": "Захтева вашу пажњу",
+        "starting": "Покретање",
+        "running": "У току",
+        "done": "Завршено",
+        "stopped": "Заустављено",
+        "failed": "Неуспело",
+        "legacy": "Застарело"
+      }
+    },
+    "workspace": {
+      "switch": "Промени радни простор",
+      "create": "Направи радни простор…",
+      "settings": "Подешавања",
+      "downloadApp": "Преузми апликацију",
+      "logOut": "Одјави се",
+      "find": "Пронађи радни простор…",
+      "accountSettings": "Подешавања налога",
+      "noMatches": "Нема одговарајућих радних простора",
+      "empty": "Још нема радних простора",
+      "account": "Налог",
+      "loadError": "Учитавање радних простора није успело"
+    },
+    "manifestUpgrade": {
+      "title": "Надогради на v2",
+      "description": "Овај пројекат и даље користи <toml>kortix.toml</toml>. Агент га претвара у <yaml>kortix.yaml</yaml>, освежава управљане вештине и отвара захтев за измену. Ништа се не мења док га не одобрите.",
+      "start": "Покрени надоградњу"
+    },
+    "filter": {
+      "grouping": "Груписање",
+      "ordering": "Редослед",
+      "show": "Прикажи",
+      "filters": "Филтери",
+      "reset": "Врати",
+      "status": "Статус",
+      "source": "Извор",
+      "collapseAll": "Скупи све",
+      "group": {
+        "status": "Статус",
+        "activity": "Активност",
+        "source": "Извор",
+        "none": "Без груписања"
+      },
+      "order": {
+        "activity": "Последња активност",
+        "created": "Датум креирања",
+        "name": "Назив"
+      },
+      "section": {
+        "needsYou": "Захтева вашу пажњу",
+        "running": "У току",
+        "recent": "Недавно",
+        "today": "Данас",
+        "yesterday": "Јуче",
+        "week": "Ове недеље",
+        "older": "Старије",
+        "chat": "Ћаскање",
+        "slack": "Slack",
+        "telegram": "Telegram",
+        "email": "Е-пошта",
+        "scheduled": "Заказано",
+        "webhook": "Webhook",
+        "all": "Све"
+      },
+      "statusValue": {
+        "running": "У току",
+        "done": "Завршено",
+        "stopped": "Заустављено",
+        "failed": "Неуспело",
+        "legacy": "Застарело"
+      },
+      "sourceValue": {
+        "mine": "Моја ћаскања",
+        "shared": "Дељено"
+      }
+    }
   },
   "dashboard": {
     "title": "Контролна табла",

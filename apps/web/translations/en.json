@@ -40,7 +40,10 @@
       "createIn": "Create in {account}",
       "choose": "Choose an account"
     },
-    "name": { "label": "Workspace name", "placeholder": "Workspace name" },
+    "name": {
+      "label": "Workspace name",
+      "placeholder": "Workspace name"
+    },
     "validation": {
       "nameRequired": "Name is required",
       "nameCharacters": "Use only letters, numbers, spaces, hyphens, underscores or dots",
@@ -127,7 +130,9 @@
       "shuffle": "Shuffle",
       "shuffleLabel": "Shuffle the starter prompts"
     },
-    "files": { "loadError": "Failed to load project" }
+    "files": {
+      "loadError": "Failed to load project"
+    }
   },
   "settings": {
     "title": "Settings",
@@ -146,9 +151,16 @@
       "backToApp": "Back to app",
       "close": "Close",
       "docs": "Docs",
-      "groups": { "workspace": "Workspace", "personal": "Personal", "account": "Account" },
+      "groups": {
+        "workspace": "Workspace",
+        "personal": "Personal",
+        "account": "Account"
+      },
       "items": {
-        "workspace": { "label": "General", "description": "Name and icon for this workspace." },
+        "workspace": {
+          "label": "General",
+          "description": "Name and icon for this workspace."
+        },
         "sandbox": {
           "label": "Sandbox templates",
           "description": "The recipe for the machine a session runs on, and the record of every time Kortix prepared one."
@@ -181,7 +193,9 @@
           "label": "Preferences",
           "description": "Language and keyboard shortcuts."
         },
-        "connected": { "label": "Connected accounts" },
+        "connected": {
+          "label": "Connected accounts"
+        },
         "tokens": {
           "label": "API keys",
           "description": "Keys that sign the CLI, a script, or a CI job in as you."
@@ -298,13 +312,20 @@
       "wallpaper": "Wallpaper",
       "wallpaperDescription": "The background behind your workspace.",
       "defaultWallpaper": "Default",
-      "themes": { "light": "Light", "dark": "Dark", "system": "System" },
+      "themes": {
+        "light": "Light",
+        "dark": "Dark",
+        "system": "System"
+      },
       "densities": {
         "normal": {
           "label": "Normal",
           "description": "Steps and thinking stream live while Kortix works."
         },
-        "minimal": { "label": "Minimal", "description": "One status line until you expand it." }
+        "minimal": {
+          "label": "Minimal",
+          "description": "One status line until you expand it."
+        }
       },
       "wallpapers": {
         "dither": "Dither",
@@ -332,7 +353,10 @@
           "label": "Task completions",
           "description": "When a session finishes its task"
         },
-        "onError": { "label": "Errors", "description": "When a session encounters an error" },
+        "onError": {
+          "label": "Errors",
+          "description": "When a session encounters an error"
+        },
         "onQuestion": {
           "label": "Questions",
           "description": "When Kortix needs your input to continue"
@@ -355,20 +379,38 @@
       "sounds": "Sounds",
       "soundsDescription": "Sound pack played for session events.",
       "soundPacks": {
-        "off": { "label": "Off", "description": "All sounds disabled" },
-        "opencode": { "label": "Default", "description": "Default sound pack" },
-        "kortix": { "label": "Seshion Pack", "description": "Whistlin'" }
+        "off": {
+          "label": "Off",
+          "description": "All sounds disabled"
+        },
+        "opencode": {
+          "label": "Default",
+          "description": "Default sound pack"
+        },
+        "kortix": {
+          "label": "Seshion Pack",
+          "description": "Whistlin'"
+        }
       },
       "volume": "Volume",
       "preview": "Preview",
       "soundEvents": {
-        "completion": { "label": "Task Completion", "description": "When AI finishes a task" },
-        "error": { "label": "Error", "description": "When a session encounters an error" },
+        "completion": {
+          "label": "Task Completion",
+          "description": "When AI finishes a task"
+        },
+        "error": {
+          "label": "Error",
+          "description": "When a session encounters an error"
+        },
         "notification": {
           "label": "Notification",
           "description": "Questions and permission requests"
         },
-        "send": { "label": "Message Sent", "description": "When you send a message" }
+        "send": {
+          "label": "Message Sent",
+          "description": "When you send a message"
+        }
       },
       "testNotificationTitle": "Test Notification",
       "testNotificationBody": "Notifications are working correctly!"
@@ -465,7 +507,10 @@
         "notBuilt": "Not built yet",
         "unknown": "Unknown"
       },
-      "sources": { "platform": "Kortix platform", "dashboard": "This dashboard" },
+      "sources": {
+        "platform": "Kortix platform",
+        "dashboard": "This dashboard"
+      },
       "facts": {
         "processor": "Processor",
         "memory": "Memory",
@@ -613,7 +658,11 @@
         "background": "Background sync",
         "startup": "Startup"
       },
-      "statuses": { "ready": "ready", "building": "building", "failed": "failed" },
+      "statuses": {
+        "ready": "ready",
+        "building": "building",
+        "failed": "failed"
+      },
       "stale": {
         "superseded": "Didn’t finish, and a newer setup has replaced it",
         "recovered": "Didn’t finish, but the environment is ready now",
@@ -634,7 +683,11 @@
         "imageId": "Image ID",
         "unknown": "Unknown"
       },
-      "duration": { "underMinute": "under 1m", "minutes": "{count}m", "hours": "{count}h" },
+      "duration": {
+        "underMinute": "under 1m",
+        "minutes": "{count}m",
+        "hours": "{count}h"
+      },
       "environment": {
         "ready": {
           "title": "This project’s environment is ready",
@@ -655,7 +708,10 @@
         "blockedBody": "The machine this project boots from failed to build, and no working copy is available. Every new session retries it and hits the same error.",
         "degradedBody": "The machine is ready on {ready} but failing on {failed}. Sessions routed there won’t start."
       },
-      "actions": { "fix": "Fix with agent", "rebuild": "Rebuild" },
+      "actions": {
+        "fix": "Fix with agent",
+        "rebuild": "Rebuild"
+      },
       "faq": {
         "title": "How this works",
         "items": {
@@ -682,7 +738,11 @@
       }
     },
     "featureFlags": {
-      "stability": { "experimental": "Experimental", "beta": "Beta", "stable": "Stable" },
+      "stability": {
+        "experimental": "Experimental",
+        "beta": "Beta",
+        "stable": "Stable"
+      },
       "origin": {
         "overridden": "Overridden for this project",
         "defaultOn": "Default on",
@@ -1163,7 +1223,107 @@
     "selectAllConversations": "Select all conversations",
     "deselectAllConversations": "Deselect all conversations",
     "loadMore": "Load more",
-    "remaining": "remaining"
+    "remaining": "remaining",
+    "newSession": "New session",
+    "collapse": "Collapse sidebar",
+    "pin": "Pin sidebar",
+    "resize": "Resize sidebar",
+    "resizeHelp": "Drag to resize — double-click to reset",
+    "customize": "Customize",
+    "sessions": "Sessions",
+    "sessionViewOptions": "Session view options",
+    "sectionOptions": "Section options",
+    "allSectionsHidden": "All sections are hidden.",
+    "metaCoordinator": "Meta coordinator",
+    "files": "Files",
+    "retry": "Try again",
+    "proposedChanges": "Proposed changes",
+    "untitledChange": "Untitled change",
+    "review": "Review",
+    "connectGpt": "Connect GPT subscription",
+    "upgradePlan": "Upgrade plan",
+    "sessionList": {
+      "loadError": "Failed to load sessions",
+      "empty": "No sessions yet",
+      "noMatches": "No sessions match the active filters.",
+      "actions": "Session actions",
+      "reviewCount": "Awaiting your review: {count}",
+      "status": {
+        "needsYou": "Needs you",
+        "starting": "Starting",
+        "running": "Running",
+        "done": "Done",
+        "stopped": "Stopped",
+        "failed": "Failed",
+        "legacy": "Legacy"
+      }
+    },
+    "workspace": {
+      "switch": "Switch workspace",
+      "create": "Create workspace…",
+      "settings": "Settings",
+      "downloadApp": "Download app",
+      "logOut": "Log out",
+      "find": "Find a workspace…",
+      "accountSettings": "Account settings",
+      "noMatches": "No matching workspaces",
+      "empty": "No workspaces yet",
+      "account": "Account",
+      "loadError": "Failed to load workspaces"
+    },
+    "manifestUpgrade": {
+      "title": "Upgrade to v2",
+      "description": "This project still runs <toml>kortix.toml</toml>. An agent converts it to <yaml>kortix.yaml</yaml>, refreshes managed skills, and opens a change request. Nothing changes until you approve it.",
+      "start": "Start upgrade"
+    },
+    "filter": {
+      "grouping": "Grouping",
+      "ordering": "Ordering",
+      "show": "Show",
+      "filters": "Filters",
+      "reset": "Reset",
+      "status": "Status",
+      "source": "Source",
+      "collapseAll": "Collapse all",
+      "group": {
+        "status": "Status",
+        "activity": "Activity",
+        "source": "Source",
+        "none": "None"
+      },
+      "order": {
+        "activity": "Last activity",
+        "created": "Date created",
+        "name": "Name"
+      },
+      "section": {
+        "needsYou": "Needs you",
+        "running": "Running",
+        "recent": "Recent",
+        "today": "Today",
+        "yesterday": "Yesterday",
+        "week": "This week",
+        "older": "Older",
+        "chat": "Chat",
+        "slack": "Slack",
+        "telegram": "Telegram",
+        "email": "Email",
+        "scheduled": "Scheduled",
+        "webhook": "Webhook",
+        "all": "All"
+      },
+      "statusValue": {
+        "running": "Running",
+        "done": "Done",
+        "stopped": "Stopped",
+        "failed": "Failed",
+        "legacy": "Legacy"
+      },
+      "sourceValue": {
+        "mine": "My chats",
+        "shared": "Shared"
+      }
+    }
   },
   "dashboard": {
     "title": "Dashboard",

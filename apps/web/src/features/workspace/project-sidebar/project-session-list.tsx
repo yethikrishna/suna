@@ -8,7 +8,6 @@ import {
   isMetaCoordinatorSession,
   matchesSourceFilters,
   matchesStatusFilters,
-  SESSION_DISPLAY_STATUS_LABELS,
   sessionDisplayStatus,
   sessionIsShared,
   sessionSource,
@@ -167,8 +166,7 @@ function ProjectSessionListSkeleton() {
 }
 
 export function ProjectSessionList({ projectId }: ProjectSessionListProps) {
-  const tI18nHardcoded = useTranslations('hardcodedUi');
-  const tHardcodedUi = useTranslations('hardcodedUi');
+  const t = useTranslations('sidebar');
   const { holdPeek } = useSidebar();
   const pathname = usePathname();
   const router = useRouter();
@@ -277,11 +275,7 @@ export function ProjectSessionList({ projectId }: ProjectSessionListProps) {
       const message = error instanceof Error ? error.message : undefined;
       return (
         <div className="space-y-1.5 px-2 py-2">
-          <p className="text-destructive/80 text-xs">
-            {tHardcodedUi.raw(
-              'componentsProjectsProjectSessionList.line120JsxTextFailedToLoadSessions',
-            )}
-          </p>
+          <p className="text-destructive/80 text-xs">{t('sessionList.loadError')}</p>
           {message && (
             <p className="text-muted-foreground/70 truncate text-xs" title={message}>
               {message}
@@ -293,7 +287,7 @@ export function ProjectSessionList({ projectId }: ProjectSessionListProps) {
             className="h-6 px-2 text-xs"
             onClick={() => refetch()}
           >
-            Retry
+            {t('retry')}
           </Button>
         </div>
       );
@@ -302,7 +296,7 @@ export function ProjectSessionList({ projectId }: ProjectSessionListProps) {
     if (viewState === 'empty') {
       return (
         <div className="text-muted-foreground/60 px-2 pt-1 pb-2 text-xs">
-          {tHardcodedUi.raw('componentsProjectsProjectSessionList.line132JsxTextNoSessionsYet')}
+          {t('sessionList.empty')}
         </div>
       );
     }
@@ -310,9 +304,7 @@ export function ProjectSessionList({ projectId }: ProjectSessionListProps) {
     if (viewState === 'no-matches') {
       return (
         <div className="text-muted-foreground/60 px-2 pt-1 pb-2 text-xs">
-          {tI18nHardcoded.raw(
-            'autoFeaturesCoWorkerProjectSidebarProjectSessionListJsxText1fba7ca0',
-          )}
+          {t('sessionList.noMatches')}
         </div>
       );
     }
@@ -333,7 +325,9 @@ export function ProjectSessionList({ projectId }: ProjectSessionListProps) {
     // no explanation.
     if (grouped.sections.length === 0) {
       return (
-        <div className="text-muted-foreground/60 px-2 pt-1 pb-2 text-xs">All sections hidden.</div>
+        <div className="text-muted-foreground/60 px-2 pt-1 pb-2 text-xs">
+          {t('allSectionsHidden')}
+        </div>
       );
     }
 
@@ -492,6 +486,7 @@ function SessionListHeader({
   reviewCountBySession: Record<string, number>;
   onMenuOpenChange: (open: boolean) => void;
 }) {
+  const t = useTranslations('sidebar');
   return (
     <div
       className={cn(
@@ -503,7 +498,7 @@ function SessionListHeader({
         href={`/projects/${projectId}/sessions`}
         className="text-muted-foreground hover:text-sidebar-foreground flex min-w-0 flex-1 flex-row items-center self-stretch text-sm font-medium"
       >
-        <span className="truncate">Sessions</span>
+        <span className="truncate">{t('sessions')}</span>
       </HoverPrefetchLink>
       {sessions.length > 0 && (
         <DropdownMenu onOpenChange={onMenuOpenChange}>
@@ -518,7 +513,7 @@ function SessionListHeader({
               variant="ghost"
               size="icon-xs"
               type="button"
-              aria-label="Session view options"
+              aria-label={t('sessionViewOptions')}
               className={SESSION_MENU_TRIGGER_CLASS}
             >
               <DotsThreeIcon className="size-4" />
@@ -560,6 +555,24 @@ function SessionListSection({
   onOpenChange,
   children,
 }: SessionListSectionProps) {
+  const t = useTranslations('sidebar.filter.section');
+  const sectionTranslationKeys = {
+    'needs-you': 'needsYou',
+    running: 'running',
+    recent: 'recent',
+    today: 'today',
+    yesterday: 'yesterday',
+    week: 'week',
+    older: 'older',
+    chat: 'chat',
+    slack: 'slack',
+    telegram: 'telegram',
+    email: 'email',
+    schedule: 'scheduled',
+    webhook: 'webhook',
+    all: 'all',
+  } as const;
+  const sectionKey = sectionTranslationKeys[section.id as keyof typeof sectionTranslationKeys];
   if (!showHeader) {
     return <div className="space-y-px">{children}</div>;
   }
@@ -578,10 +591,10 @@ function SessionListSection({
             SESSION_ROW_HEIGHT_CLASS,
           )}
         >
-          <span className="truncate">{section.label}</span>
+          <span className="truncate">{sectionKey ? t(sectionKey) : section.label}</span>
           <CaretRightIcon
             aria-hidden
-            className="size-3 shrink-0 opacity-0 transition-transform duration-150 ease-out group-hover/section-header:opacity-100 group-data-[state=open]/section:rotate-90"
+            className="duration-normal size-3 shrink-0 opacity-0 transition-transform ease-out group-hover/section-header:opacity-100 group-data-[state=open]/section:rotate-90"
           />
           <SessionSectionMenu
             projectId={projectId}
@@ -617,6 +630,7 @@ function SessionSectionMenu({
   sessions: ProjectSession[];
   reviewCountBySession: Record<string, number>;
 }) {
+  const t = useTranslations('sidebar');
   const [open, setOpen] = useState(false);
 
   return (
@@ -626,7 +640,7 @@ function SessionSectionMenu({
           variant="secondary"
           size="icon-xs"
           type="button"
-          aria-label="Section options"
+          aria-label={t('sectionOptions')}
           className={cn(
             SESSION_MENU_TRIGGER_CLASS,
             'relative ml-auto opacity-0',
@@ -695,7 +709,7 @@ function ProjectSessionRow({
   reviewCount = 0,
   nested = false,
 }: ProjectSessionRowProps) {
-  const tHardcodedUi = useTranslations('hardcodedUi');
+  const t = useTranslations('sidebar');
   const [menuOpen, setMenuOpen] = useState(false);
 
   const deferAfterClose = (fn: () => void) => {
@@ -747,7 +761,7 @@ function ProjectSessionRow({
           </div>
 
           {isMeta && (
-            <Hint side="top" label="Meta coordinator">
+            <Hint side="top" label={t('metaCoordinator')}>
               <span className="text-muted-foreground/80 flex size-4 shrink-0 items-center justify-center">
                 <MetaFolder className="size-3.5" weight="fill" />
               </span>
@@ -757,7 +771,7 @@ function ProjectSessionRow({
           <SessionTitle title={displayTitle} className={cn(isActive && 'font-medium')} />
 
           {/* Same pill the Review row wears (project-change-requests-nav.tsx):
-              `Badge` at `size="tabular"` — rounded-[5px], min-w-5, mono tabular
+              `Badge` at `size="tabular"` — a small radius, min-w-5, mono tabular
               figures. It was a hand-rolled `rounded-full` span, which is the one
               badge shape this system does not use, so a subagent count and a
               review count rendered as two different objects while meaning the
@@ -853,9 +867,7 @@ function ProjectSessionRow({
               variant="ghost"
               size="icon"
               type="button"
-              aria-label={tHardcodedUi.raw(
-                'componentsProjectsProjectSessionList.line312JsxAttrAriaLabelSessionActions',
-              )}
+              aria-label={t('sessionList.actions')}
               className={cn(
                 SESSION_MENU_TRIGGER_CLASS,
                 'absolute top-1/2 right-1 z-10 -translate-y-1/2',
@@ -991,13 +1003,20 @@ function SessionStatusDot({
   session: ProjectSession;
   reviewCount?: number;
 }) {
+  const t = useTranslations('sidebar.sessionList');
   const display = sessionDisplayStatus(session, reviewCount);
   const style = STATUS_DOT_STYLE[display];
+  const statusKeys: Record<SessionDisplayStatus, Parameters<typeof t>[0]> = {
+    'needs-you': 'status.needsYou',
+    starting: 'status.starting',
+    running: 'status.running',
+    done: 'status.done',
+    stopped: 'status.stopped',
+    failed: 'status.failed',
+    legacy: 'status.legacy',
+  };
   const label =
-    display === 'needs-you'
-      ? `${reviewCount} awaiting your review`
-      : SESSION_DISPLAY_STATUS_LABELS[display];
-
+    display === 'needs-you' ? t('reviewCount', { count: reviewCount }) : t(statusKeys[display]);
 
   return (
     <Hint side="right" label={<span className="text-xs">{label}</span>}>

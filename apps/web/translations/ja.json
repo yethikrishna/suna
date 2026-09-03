@@ -40,7 +40,10 @@
       "createIn": "{account} に作成",
       "choose": "アカウントを選択"
     },
-    "name": { "label": "ワークスペース名", "placeholder": "ワークスペース名" },
+    "name": {
+      "label": "ワークスペース名",
+      "placeholder": "ワークスペース名"
+    },
     "validation": {
       "nameRequired": "名前は必須です",
       "nameCharacters": "文字、数字、スペース、ハイフン、アンダースコア、ピリオドのみ使用できます",
@@ -127,7 +130,9 @@
       "shuffle": "入れ替え",
       "shuffleLabel": "スタータープロンプトを入れ替える"
     },
-    "files": { "loadError": "プロジェクトを読み込めませんでした" }
+    "files": {
+      "loadError": "プロジェクトを読み込めませんでした"
+    }
   },
   "settings": {
     "title": "設定",
@@ -481,7 +486,11 @@
       "wallpaper": "壁紙",
       "wallpaperDescription": "ワークスペースの背景です。",
       "defaultWallpaper": "デフォルト",
-      "themes": { "light": "ライト", "dark": "ダーク", "system": "システム" },
+      "themes": {
+        "light": "ライト",
+        "dark": "ダーク",
+        "system": "システム"
+      },
       "densities": {
         "normal": {
           "label": "標準",
@@ -518,7 +527,10 @@
           "label": "タスク完了",
           "description": "セッションがタスクを完了したとき"
         },
-        "onError": { "label": "エラー", "description": "セッションでエラーが発生したとき" },
+        "onError": {
+          "label": "エラー",
+          "description": "セッションでエラーが発生したとき"
+        },
         "onQuestion": {
           "label": "質問",
           "description": "Kortix が続行のために入力を必要とするとき"
@@ -533,22 +545,46 @@
           "label": "タブが非表示のときのみ",
           "description": "別のタブを表示しているときだけ通知します"
         },
-        "playSound": { "label": "通知音", "description": "通知を送信するときに音を鳴らします" }
+        "playSound": {
+          "label": "通知音",
+          "description": "通知を送信するときに音を鳴らします"
+        }
       },
       "sounds": "サウンド",
       "soundsDescription": "セッションイベントで再生するサウンドパックです。",
       "soundPacks": {
-        "off": { "label": "オフ", "description": "すべてのサウンドを無効にします" },
-        "opencode": { "label": "デフォルト", "description": "デフォルトのサウンドパック" },
-        "kortix": { "label": "Seshion パック", "description": "口笛" }
+        "off": {
+          "label": "オフ",
+          "description": "すべてのサウンドを無効にします"
+        },
+        "opencode": {
+          "label": "デフォルト",
+          "description": "デフォルトのサウンドパック"
+        },
+        "kortix": {
+          "label": "Seshion パック",
+          "description": "口笛"
+        }
       },
       "volume": "音量",
       "preview": "試聴",
       "soundEvents": {
-        "completion": { "label": "タスク完了", "description": "AI がタスクを完了したとき" },
-        "error": { "label": "エラー", "description": "セッションでエラーが発生したとき" },
-        "notification": { "label": "通知", "description": "質問と権限リクエスト" },
-        "send": { "label": "メッセージ送信", "description": "メッセージを送信したとき" }
+        "completion": {
+          "label": "タスク完了",
+          "description": "AI がタスクを完了したとき"
+        },
+        "error": {
+          "label": "エラー",
+          "description": "セッションでエラーが発生したとき"
+        },
+        "notification": {
+          "label": "通知",
+          "description": "質問と権限リクエスト"
+        },
+        "send": {
+          "label": "メッセージ送信",
+          "description": "メッセージを送信したとき"
+        }
       },
       "testNotificationTitle": "テスト通知",
       "testNotificationBody": "通知は正常に動作しています！"
@@ -645,7 +681,10 @@
         "notBuilt": "未ビルド",
         "unknown": "不明"
       },
-      "sources": { "platform": "Kortix プラットフォーム", "dashboard": "このダッシュボード" },
+      "sources": {
+        "platform": "Kortix プラットフォーム",
+        "dashboard": "このダッシュボード"
+      },
       "facts": {
         "processor": "プロセッサ",
         "memory": "メモリ",
@@ -793,7 +832,11 @@
         "background": "バックグラウンド同期",
         "startup": "起動"
       },
-      "statuses": { "ready": "準備完了", "building": "ビルド中", "failed": "失敗" },
+      "statuses": {
+        "ready": "準備完了",
+        "building": "ビルド中",
+        "failed": "失敗"
+      },
       "stale": {
         "superseded": "完了せず、新しい設定に置き換えられました",
         "recovered": "完了しませんでしたが、環境は現在準備完了です",
@@ -814,7 +857,11 @@
         "imageId": "イメージ ID",
         "unknown": "不明"
       },
-      "duration": { "underMinute": "1分未満", "minutes": "{count}分", "hours": "{count}時間" },
+      "duration": {
+        "underMinute": "1分未満",
+        "minutes": "{count}分",
+        "hours": "{count}時間"
+      },
       "environment": {
         "ready": {
           "title": "このプロジェクトの環境は準備完了です",
@@ -835,7 +882,10 @@
         "blockedBody": "このプロジェクトの起動元マシンをビルドできず、動作するコピーもありません。新しいセッションは毎回再試行し、同じエラーになります。",
         "degradedBody": "マシンは {ready} で準備完了ですが、{failed} では失敗しています。後者にルーティングされたセッションは開始できません。"
       },
-      "actions": { "fix": "エージェントで修正", "rebuild": "再ビルド" },
+      "actions": {
+        "fix": "エージェントで修正",
+        "rebuild": "再ビルド"
+      },
       "faq": {
         "title": "仕組み",
         "items": {
@@ -862,7 +912,11 @@
       }
     },
     "featureFlags": {
-      "stability": { "experimental": "試験運用", "beta": "ベータ", "stable": "安定版" },
+      "stability": {
+        "experimental": "試験運用",
+        "beta": "ベータ",
+        "stable": "安定版"
+      },
       "origin": {
         "overridden": "このプロジェクトで上書き",
         "defaultOn": "デフォルトでオン",
@@ -1169,7 +1223,107 @@
     "selectAllConversations": "すべての会話を選択",
     "deselectAllConversations": "すべての会話を解除",
     "loadMore": "もっと読み込む",
-    "remaining": "残り"
+    "remaining": "残り",
+    "newSession": "新しいセッション",
+    "collapse": "サイドバーを折りたたむ",
+    "pin": "サイドバーを固定",
+    "resize": "サイドバーのサイズを変更",
+    "resizeHelp": "ドラッグしてサイズ変更 — ダブルクリックでリセット",
+    "customize": "カスタマイズ",
+    "sessions": "セッション",
+    "sessionViewOptions": "セッション表示オプション",
+    "sectionOptions": "セクションオプション",
+    "allSectionsHidden": "すべてのセクションが非表示です。",
+    "metaCoordinator": "Meta コーディネーター",
+    "files": "ファイル",
+    "retry": "もう一度",
+    "proposedChanges": "提案された変更",
+    "untitledChange": "無題の変更",
+    "review": "確認",
+    "connectGpt": "GPT サブスクリプションを接続",
+    "upgradePlan": "プランをアップグレード",
+    "sessionList": {
+      "loadError": "セッションを読み込めませんでした",
+      "empty": "セッションはまだありません",
+      "noMatches": "有効なフィルターに一致するセッションがありません。",
+      "actions": "セッション操作",
+      "reviewCount": "確認待ち：{count}",
+      "status": {
+        "needsYou": "対応が必要",
+        "starting": "開始中",
+        "running": "実行中",
+        "done": "完了",
+        "stopped": "停止",
+        "failed": "失敗",
+        "legacy": "旧形式"
+      }
+    },
+    "workspace": {
+      "switch": "ワークスペースを切り替える",
+      "create": "ワークスペースを作成…",
+      "settings": "設定",
+      "downloadApp": "アプリをダウンロード",
+      "logOut": "ログアウト",
+      "find": "ワークスペースを検索…",
+      "accountSettings": "アカウント設定",
+      "noMatches": "一致するワークスペースがありません",
+      "empty": "ワークスペースはまだありません",
+      "account": "アカウント",
+      "loadError": "ワークスペースを読み込めませんでした"
+    },
+    "manifestUpgrade": {
+      "title": "v2 にアップグレード",
+      "description": "このプロジェクトはまだ <toml>kortix.toml</toml> を使用しています。エージェントが <yaml>kortix.yaml</yaml> に変換し、管理対象スキルを更新して変更リクエストを作成します。承認するまで変更は適用されません。",
+      "start": "アップグレードを開始"
+    },
+    "filter": {
+      "grouping": "グループ化",
+      "ordering": "並べ替え",
+      "show": "表示",
+      "filters": "フィルター",
+      "reset": "リセット",
+      "status": "ステータス",
+      "source": "ソース",
+      "collapseAll": "すべて折りたたむ",
+      "group": {
+        "status": "ステータス",
+        "activity": "アクティビティ",
+        "source": "ソース",
+        "none": "なし"
+      },
+      "order": {
+        "activity": "最終アクティビティ",
+        "created": "作成日",
+        "name": "名前"
+      },
+      "section": {
+        "needsYou": "対応が必要",
+        "running": "実行中",
+        "recent": "最近",
+        "today": "今日",
+        "yesterday": "昨日",
+        "week": "今週",
+        "older": "以前",
+        "chat": "チャット",
+        "slack": "Slack",
+        "telegram": "Telegram",
+        "email": "電子メール",
+        "scheduled": "スケジュール済み",
+        "webhook": "Webhook",
+        "all": "すべて"
+      },
+      "statusValue": {
+        "running": "実行中",
+        "done": "完了",
+        "stopped": "停止",
+        "failed": "失敗",
+        "legacy": "旧形式"
+      },
+      "sourceValue": {
+        "mine": "自分のチャット",
+        "shared": "共有"
+      }
+    }
   },
   "dashboard": {
     "title": "ダッシュボード",

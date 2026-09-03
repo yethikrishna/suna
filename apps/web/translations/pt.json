@@ -40,7 +40,10 @@
       "createIn": "Criar em {account}",
       "choose": "Escolher uma conta"
     },
-    "name": { "label": "Nome do espaço de trabalho", "placeholder": "Nome do espaço de trabalho" },
+    "name": {
+      "label": "Nome do espaço de trabalho",
+      "placeholder": "Nome do espaço de trabalho"
+    },
     "validation": {
       "nameRequired": "O nome é obrigatório",
       "nameCharacters": "Use somente letras, números, espaços, hífens, sublinhados ou pontos",
@@ -127,7 +130,9 @@
       "shuffle": "Embaralhar",
       "shuffleLabel": "Embaralhar as sugestões iniciais"
     },
-    "files": { "loadError": "Falha ao carregar o projeto" }
+    "files": {
+      "loadError": "Falha ao carregar o projeto"
+    }
   },
   "settings": {
     "title": "Configurações",
@@ -481,13 +486,20 @@
       "wallpaper": "Papel de parede",
       "wallpaperDescription": "O fundo da sua área de trabalho.",
       "defaultWallpaper": "Padrão",
-      "themes": { "light": "Claro", "dark": "Escuro", "system": "Sistema" },
+      "themes": {
+        "light": "Claro",
+        "dark": "Escuro",
+        "system": "Sistema"
+      },
       "densities": {
         "normal": {
           "label": "Normal",
           "description": "As etapas e o raciocínio aparecem em tempo real enquanto o Kortix trabalha."
         },
-        "minimal": { "label": "Mínima", "description": "Uma linha de status até você expandi-la." }
+        "minimal": {
+          "label": "Mínima",
+          "description": "Uma linha de status até você expandi-la."
+        }
       },
       "wallpapers": {
         "dither": "Pontilhado",
@@ -515,7 +527,10 @@
           "label": "Tarefas concluídas",
           "description": "Quando uma sessão conclui sua tarefa"
         },
-        "onError": { "label": "Erros", "description": "Quando uma sessão encontra um erro" },
+        "onError": {
+          "label": "Erros",
+          "description": "Quando uma sessão encontra um erro"
+        },
         "onQuestion": {
           "label": "Perguntas",
           "description": "Quando o Kortix precisa da sua resposta para continuar"
@@ -538,9 +553,18 @@
       "sounds": "Sons",
       "soundsDescription": "Pacote de sons para eventos da sessão.",
       "soundPacks": {
-        "off": { "label": "Desativado", "description": "Todos os sons estão desativados" },
-        "opencode": { "label": "Padrão", "description": "Pacote de sons padrão" },
-        "kortix": { "label": "Pacote Seshion", "description": "Assobio" }
+        "off": {
+          "label": "Desativado",
+          "description": "Todos os sons estão desativados"
+        },
+        "opencode": {
+          "label": "Padrão",
+          "description": "Pacote de sons padrão"
+        },
+        "kortix": {
+          "label": "Pacote Seshion",
+          "description": "Assobio"
+        }
       },
       "volume": "Volume",
       "preview": "Ouvir",
@@ -549,12 +573,18 @@
           "label": "Tarefa concluída",
           "description": "Quando a IA conclui uma tarefa"
         },
-        "error": { "label": "Erro", "description": "Quando uma sessão encontra um erro" },
+        "error": {
+          "label": "Erro",
+          "description": "Quando uma sessão encontra um erro"
+        },
         "notification": {
           "label": "Notificação",
           "description": "Perguntas e solicitações de permissão"
         },
-        "send": { "label": "Mensagem enviada", "description": "Quando você envia uma mensagem" }
+        "send": {
+          "label": "Mensagem enviada",
+          "description": "Quando você envia uma mensagem"
+        }
       },
       "testNotificationTitle": "Notificação de teste",
       "testNotificationBody": "As notificações estão funcionando corretamente!"
@@ -651,7 +681,10 @@
         "notBuilt": "Ainda não criado",
         "unknown": "Desconhecido"
       },
-      "sources": { "platform": "Plataforma Kortix", "dashboard": "Este painel" },
+      "sources": {
+        "platform": "Plataforma Kortix",
+        "dashboard": "Este painel"
+      },
       "facts": {
         "processor": "Processador",
         "memory": "Memória",
@@ -799,7 +832,11 @@
         "background": "Sincronização em segundo plano",
         "startup": "Inicialização"
       },
-      "statuses": { "ready": "pronto", "building": "criando", "failed": "falhou" },
+      "statuses": {
+        "ready": "pronto",
+        "building": "criando",
+        "failed": "falhou"
+      },
       "stale": {
         "superseded": "Não terminou e uma configuração mais recente o substituiu",
         "recovered": "Não terminou, mas o ambiente já está pronto",
@@ -845,7 +882,10 @@
         "blockedBody": "A máquina usada para iniciar este projeto não foi criada e nenhuma cópia funcional está disponível. Cada nova sessão tenta novamente e encontra o mesmo erro.",
         "degradedBody": "A máquina está pronta em {ready}, mas falha em {failed}. As sessões encaminhadas para lá não iniciarão."
       },
-      "actions": { "fix": "Corrigir com o agente", "rebuild": "Recriar" },
+      "actions": {
+        "fix": "Corrigir com o agente",
+        "rebuild": "Recriar"
+      },
       "faq": {
         "title": "Como funciona",
         "items": {
@@ -872,7 +912,11 @@
       }
     },
     "featureFlags": {
-      "stability": { "experimental": "Experimental", "beta": "Beta", "stable": "Estável" },
+      "stability": {
+        "experimental": "Experimental",
+        "beta": "Beta",
+        "stable": "Estável"
+      },
       "origin": {
         "overridden": "Substituído para este projeto",
         "defaultOn": "Ativado por padrão",
@@ -1179,7 +1223,107 @@
     "selectAllConversations": "Selecionar todas as conversas",
     "deselectAllConversations": "Desselecionar todas as conversas",
     "loadMore": "Carregar mais",
-    "remaining": "restantes"
+    "remaining": "restantes",
+    "newSession": "Nova sessão",
+    "collapse": "Recolher barra lateral",
+    "pin": "Fixar barra lateral",
+    "resize": "Redimensionar barra lateral",
+    "resizeHelp": "Arraste para redimensionar — clique duas vezes para repor",
+    "customize": "Personalizar",
+    "sessions": "Sessões",
+    "sessionViewOptions": "Opções de visualização das sessões",
+    "sectionOptions": "Opções da secção",
+    "allSectionsHidden": "Todas as secções estão ocultas.",
+    "metaCoordinator": "Coordenador Meta",
+    "files": "Arquivos",
+    "retry": "Tentar de novo",
+    "proposedChanges": "Alterações propostas",
+    "untitledChange": "Alteração sem título",
+    "review": "Rever",
+    "connectGpt": "Ligar subscrição GPT",
+    "upgradePlan": "Atualizar plano",
+    "sessionList": {
+      "loadError": "Não foi possível carregar as sessões",
+      "empty": "Ainda não existem sessões",
+      "noMatches": "Nenhuma sessão corresponde aos filtros ativos.",
+      "actions": "Ações da sessão",
+      "reviewCount": "A aguardar revisão: {count}",
+      "status": {
+        "needsYou": "Precisa de si",
+        "starting": "A iniciar",
+        "running": "Em execução",
+        "done": "Concluída",
+        "stopped": "Parada",
+        "failed": "Falhou",
+        "legacy": "Antiga"
+      }
+    },
+    "workspace": {
+      "switch": "Alternar espaço de trabalho",
+      "create": "Criar espaço de trabalho…",
+      "settings": "Configurações",
+      "downloadApp": "Transferir aplicação",
+      "logOut": "Sair",
+      "find": "Encontrar um espaço de trabalho…",
+      "accountSettings": "Configurações da conta",
+      "noMatches": "Nenhum espaço de trabalho correspondente",
+      "empty": "Ainda não existem espaços de trabalho",
+      "account": "Conta",
+      "loadError": "Não foi possível carregar os espaços de trabalho"
+    },
+    "manifestUpgrade": {
+      "title": "Atualizar para v2",
+      "description": "Este projeto ainda usa <toml>kortix.toml</toml>. Um agente converte-o em <yaml>kortix.yaml</yaml>, atualiza as competências geridas e abre um pedido de alteração. Nada muda até à sua aprovação.",
+      "start": "Iniciar atualização"
+    },
+    "filter": {
+      "grouping": "Agrupamento",
+      "ordering": "Ordenação",
+      "show": "Mostrar",
+      "filters": "Filters",
+      "reset": "Repor",
+      "status": "Status",
+      "source": "Source",
+      "collapseAll": "Recolher tudo",
+      "group": {
+        "status": "Status",
+        "activity": "Atividade",
+        "source": "Origem",
+        "none": "Nenhum"
+      },
+      "order": {
+        "activity": "Última atividade",
+        "created": "Data de criação",
+        "name": "Nome"
+      },
+      "section": {
+        "needsYou": "Precisa de si",
+        "running": "Executando",
+        "recent": "Recentes",
+        "today": "Hoje",
+        "yesterday": "Ontem",
+        "week": "Esta semana",
+        "older": "Mais antigos",
+        "chat": "Conversa",
+        "slack": "Slack",
+        "telegram": "Telegram",
+        "email": "E-mail",
+        "scheduled": "Agendado",
+        "webhook": "Webhook",
+        "all": "Todos"
+      },
+      "statusValue": {
+        "running": "Executando",
+        "done": "Pronto",
+        "stopped": "Parada",
+        "failed": "Falhou",
+        "legacy": "Antiga"
+      },
+      "sourceValue": {
+        "mine": "As minhas conversas",
+        "shared": "Partilhadas"
+      }
+    }
   },
   "dashboard": {
     "title": "Painel",

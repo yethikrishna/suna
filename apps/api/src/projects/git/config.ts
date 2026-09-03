@@ -185,6 +185,7 @@ export function resolveConfigAgents(
           description: native?.description ?? null,
           mode: native?.mode ?? null,
           color: native?.color ?? null,
+          model: native?.model ?? null,
           source: 'kortix.yaml' as const,
           enabled: spec.enabled,
           sandbox: spec.sandbox ?? null,
@@ -269,6 +270,7 @@ export async function loadProjectConfig(
         description: meta.description || null,
         mode: meta.mode || null,
         color: meta.color || null,
+        model: meta.model || null,
       };
     }),
   );

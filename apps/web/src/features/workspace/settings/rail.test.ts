@@ -40,7 +40,6 @@ describe('railGroups', () => {
       'appearance',
       'sessions',
       'preferences',
-      'connected',
       'tokens',
     ]);
   });
@@ -57,6 +56,7 @@ describe('railGroups', () => {
       'Sandbox templates',
       'Feature flags',
       'Upgrades',
+      'Connected accounts',
       'Credits',
       'Plan',
     ]);

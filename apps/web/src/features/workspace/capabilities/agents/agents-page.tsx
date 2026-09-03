@@ -18,7 +18,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { errorToast, successToast } from '@/components/ui/toast';
 import { EmptyState } from '@/features/layout/section/empty-state';
 import { detectManifestVersion } from '@/features/workspace/customize/migrate-to-v2/manifest-version';
@@ -29,8 +28,10 @@ import {
 } from '@/features/workspace/customize/use-configure-thread';
 import { PROJECT_ACTIONS } from '@/lib/project-actions';
 import { useProjectCan } from '@/lib/use-project-can';
+import { cn } from '@/lib/utils';
 import {
   getProjectDetail,
+  listProjectResourceGrants,
   listProjectTriggers,
   type ProjectConfigSummary,
   updateProjectDefaultAgent,
@@ -51,22 +52,14 @@ import { agentHref } from '@/features/workspace/capabilities/shared/capability-t
 import { CatalogCard } from '@/features/workspace/capabilities/shared/catalog/catalog-card';
 import { catalogEmptyKind } from '@/features/workspace/capabilities/shared/catalog/catalog-empty';
 import {
-  CatalogEmptyNote,
   CatalogNoMatch,
 } from '@/features/workspace/capabilities/shared/catalog/catalog-empty-state';
 import { CatalogGrid } from '@/features/workspace/capabilities/shared/catalog/catalog-grid';
 
 import { AgentColorMark } from './agent-color-mark';
-import { type AgentMode, filterAgents } from './agent-filter';
+import { filterAgents } from './agent-filter';
 
 type Agent = ProjectConfigSummary['agents'][number];
-type ModeFilter = AgentMode | 'all';
-
-const MODE_FILTERS: ReadonlyArray<{ value: ModeFilter; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: 'primary', label: 'Primary' },
-  { value: 'subagent', label: 'Subagents' },
-];
 
 /**
  * /projects/[id]/agent — the Agents list, and the landing page of Customize.
@@ -98,10 +91,12 @@ export function AgentsPage({ projectId }: { projectId: string }) {
   const canReadTriggers =
     useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_TRIGGER_READ, { accountId }).allowed ===
     true;
+  const canManageMembers =
+    useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_MEMBERS_MANAGE, { accountId }).allowed ===
+    true;
   const configure = useConfigureThread(projectId);
 
   const [query, setQuery] = useState('');
-  const [mode, setMode] = useState<ModeFilter>('all');
 
   const detailQuery = useQuery({
     queryKey: qk.project.detail(projectId),
@@ -128,20 +123,36 @@ export function AgentsPage({ projectId }: { projectId: string }) {
     return counts;
   }, [triggersQuery.data, config]);
 
+  // Who is granted each agent — the card's "N people" fact. Same key the
+  // agent page's People section reads, manager-gated like it.
+  const grantsQuery = useQuery({
+    queryKey: qk.project.resourceGrants(projectId),
+    queryFn: () => listProjectResourceGrants(projectId),
+    enabled: canManageMembers,
+    retry: false,
+    ...contract('inventory'),
+  });
+  const grantCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const grant of grantsQuery.data?.grants ?? []) {
+      if (grant.resource_type !== 'agent') continue;
+      counts.set(grant.resource_id, (counts.get(grant.resource_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [grantsQuery.data]);
+
   const agents = useMemo(() => toArray(config?.agents), [config]);
 
-  const modeArg = mode === 'all' ? null : mode;
-  const filtered = useMemo(
-    () => filterAgents(agents, { mode: modeArg, query }),
-    [agents, modeArg, query],
-  );
+  // No mode filter (Marko, 2026-09-03): the list is the manifest's `agents:`
+  // map, and whether one is a subagent is a chip on its card, not a lens on
+  // the list — three agents do not need a tab bar.
+  const filtered = useMemo(() => filterAgents(agents, { mode: null, query }), [agents, query]);
 
   // `null` = render the grid. Otherwise which "nothing to show" copy applies:
   // genuinely zero agents vs. agents exist but this filter/search hid all of
   // them. Telling the user "No agents yet" in the second case is false and
   // points at the wrong fix (clear the filter, not create an agent).
   const emptyKind = catalogEmptyKind(agents.length, filtered.length);
-  const modeLabel = MODE_FILTERS.find((filter) => filter.value === mode)?.label ?? 'All';
   const defaultAgent = config?.open_code_default_agent ?? null;
 
   // One control, two labels — same rule as the Skills page. The header has a
@@ -189,20 +200,15 @@ export function AgentsPage({ projectId }: { projectId: string }) {
         </InputGroupSearch>
       }
       filters={
-        <>
-          <Tabs value={mode} onValueChange={(value) => setMode(value as ModeFilter)}>
-            <TabsList>
-              {MODE_FILTERS.map((filter) => (
-                <TabsTrigger key={filter.value} value={filter.value}>
-                  {filter.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-          {config ? (
+        config ? (
+          <>
+            <p className="text-muted-foreground text-xs">
+              {agents.length} {agents.length === 1 ? 'agent' : 'agents'} in{' '}
+              <span className="font-mono">kortix.yaml</span>
+            </p>
             <DefaultAgentSelector projectId={projectId} config={config} canWrite={canWrite} />
-          ) : null}
-        </>
+          </>
+        ) : undefined
       }
     >
       <CatalogGrid
@@ -213,11 +219,7 @@ export function AgentsPage({ projectId }: { projectId: string }) {
         isEmpty={emptyKind !== null}
         empty={
           emptyKind === 'no-match' ? (
-            query.trim() ? (
-              <CatalogNoMatch query={query} />
-            ) : (
-              <CatalogEmptyNote>No matches in {modeLabel}.</CatalogEmptyNote>
-            )
+            <CatalogNoMatch query={query} />
           ) : (
             <EmptyState
               icon={RobotIcon}
@@ -247,11 +249,12 @@ export function AgentsPage({ projectId }: { projectId: string }) {
             leading={<AgentColorMark color={agent.color} className="mt-[7px]" />}
             title={capitalizeWords(agent.name)}
             description={agent.description}
-            badges={
-              <AgentCardBadges
+            badges={<AgentCardBadges agent={agent} isDefault={defaultAgent === agent.name} />}
+            meta={
+              <AgentCardFacts
                 agent={agent}
-                isDefault={defaultAgent === agent.name}
                 triggerCount={triggerCounts.get(agent.name) ?? 0}
+                peopleCount={canManageMembers ? (grantCounts.get(agent.name) ?? 0) : null}
               />
             }
             trailing={
@@ -268,23 +271,52 @@ export function AgentsPage({ projectId }: { projectId: string }) {
 }
 
 /**
- * Card badges — mode, the default-agent star, disabled, and how many triggers
- * start it.
+ * The card's facts line: what the agent runs on, what starts it, and who may
+ * use it — the three things a person configuring access wants to know before
+ * opening the page. Model falls back to the project default rather than
+ * printing nothing; triggers and people print their count, including zero,
+ * so every card has the same three slots and the eye can compare down a
+ * column. People is omitted for a reader who cannot see grants.
+ */
+function AgentCardFacts({
+  agent,
+  triggerCount,
+  peopleCount,
+}: {
+  agent: Agent;
+  triggerCount: number;
+  peopleCount: number | null;
+}) {
+  const model = agent.model ? agent.model.split('/').pop() : null;
+  const sep = <span aria-hidden className="text-muted-foreground/40">·</span>;
+  return (
+    <>
+      <span className={cn('truncate', model && 'font-mono')}>{model ?? 'Default model'}</span>
+      {sep}
+      <span className="tabular-nums">
+        {triggerCount} {triggerCount === 1 ? 'trigger' : 'triggers'}
+      </span>
+      {peopleCount !== null ? (
+        <>
+          {sep}
+          <span className="tabular-nums">
+            {peopleCount === 0 ? 'Admins only' : `${peopleCount} ${peopleCount === 1 ? 'grant' : 'grants'}`}
+          </span>
+        </>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Card badges — mode, the default-agent star, disabled.
  *
  * `mode` is omitted when it is the implicit `primary`: every agent would
  * otherwise carry the same badge, which distinguishes nothing and just adds
  * noise to a grid. A subagent (or an explicit both-ways `all`) is the case
- * worth marking. The trigger count is omitted at zero for the same reason.
+ * worth marking.
  */
-function AgentCardBadges({
-  agent,
-  isDefault,
-  triggerCount,
-}: {
-  agent: Agent;
-  isDefault: boolean;
-  triggerCount: number;
-}) {
+function AgentCardBadges({ agent, isDefault }: { agent: Agent; isDefault: boolean }) {
   const mode = agent.mode?.toLowerCase();
   return (
     <>
@@ -303,11 +335,6 @@ function AgentCardBadges({
       {agent.enabled === false ? (
         <Badge variant="muted" size="xs">
           Disabled
-        </Badge>
-      ) : null}
-      {triggerCount > 0 ? (
-        <Badge variant="outline" size="xs" className="tabular-nums">
-          {triggerCount} {triggerCount === 1 ? 'trigger' : 'triggers'}
         </Badge>
       ) : null}
     </>

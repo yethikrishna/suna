@@ -20,6 +20,8 @@ import { detectManifestVersion } from '@/features/workspace/customize/migrate-to
 import { UpgradesView } from '@/features/workspace/customize/migrate-to-v2/upgrade-view';
 import { ReviewView } from '@/features/workspace/customize/sections/view/review-view';
 import { ExperimentalTab } from '@/features/workspace/settings/tabs/experimental-tab';
+import { SettingsSectionHeader } from '@/components/ui/settings-section-header';
+import { GitView } from '@/features/workspace/customize/sections/view/git-view';
 import { GeneralTab } from '@/features/workspace/settings/tabs/general-tab';
 import { SandboxTab } from '@/features/workspace/settings/tabs/sandbox-tab';
 import { SnapshotsTab } from '@/features/workspace/settings/tabs/snapshots-tab';
@@ -343,6 +345,17 @@ function ProjectSettingsSectionPane({
   switch (sectionKey) {
     case 'general':
       return <GeneralTab projectId={projectId} />;
+    case 'git':
+      return (
+        <div className="mx-auto w-full max-w-2xl space-y-8">
+          <SettingsSectionHeader
+            title="Git repo"
+            description="The repository this workspace runs from, and who can reach it."
+            className="pb-1"
+          />
+          <GitView projectId={projectId} />
+        </div>
+      );
     case 'sandbox':
       return (
         <div className="space-y-8">

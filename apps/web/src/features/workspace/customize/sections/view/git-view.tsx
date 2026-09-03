@@ -582,8 +582,9 @@ function OwnGitClient({ project }: { project: ProjectWithOrigin }) {
         <DisclosureContent variant="outline" contentClassName="border-border border-t">
           <div className="space-y-2 px-4 py-3.5">
             <p className="text-muted-foreground text-xs text-pretty">
-              Clone from this address with any Git client. Kortix signs the request for you, so
-              there is no access token to create, paste, or keep on your machine.
+              Clone from this address with any Git client. When git asks, enter any username and a
+              Kortix API key as the password — the Kortix command line does this for you through its
+              credential helper, plain <code className="font-mono">git</code> does not.
             </p>
             <CommandLine value={gitCloneUrl(project)} label="Clone address" kind="address" />
           </div>
@@ -804,7 +805,13 @@ export function GitView({ projectId }: { projectId: string }) {
   // Managed = Kortix created this repository, so the managed-org admin
   // credential has repo-admin scope on it. False for a BYO repo and for a
   // repository on any provider other than GitHub.
-  const managed = project ? isManagedGithubProject(project) : false;
+  // The connection row is the truth since repositories moved out of
+  // `metadata.git` (`project_git_connections.managed`); the metadata check
+  // is the fallback for a server that predates the field. Reading metadata
+  // alone said "Kortix did not create this repository" for every managed
+  // repo — the block only holds `seed` and `fast_boot` now.
+  const managed =
+    detail.data?.git_connection?.managed ?? (project ? isManagedGithubProject(project) : false);
 
   return (
     <div className="space-y-8">
@@ -846,14 +853,17 @@ export function GitView({ projectId }: { projectId: string }) {
             connection={detail.data?.git_connection}
             canManage={canEdit}
           />
+          {/* The clone address right under the repository (Marko, 2026-09-03):
+              it is the Kortix-signed address of THIS repo, so it belongs with
+              the repo, not at the foot after who-can-access. */}
+          <OwnGitClient project={project as ProjectWithOrigin} />
+          <LocalSetup projectId={projectId} />
           <RepoAccessSection
             projectId={projectId}
             connection={detail.data?.git_connection}
             managed={managed}
             canManageMembers={canManageMembers}
           />
-          <LocalSetup projectId={projectId} />
-          <OwnGitClient project={project as ProjectWithOrigin} />
         </>
       ) : null}
     </div>

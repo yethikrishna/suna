@@ -136,8 +136,10 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
   'appearance',
   'sessions',
   'preferences',
-  'connected',
   'tokens',
+  // `connected` is still in the type but NOT here: it listed the ACCOUNT's
+  // GitHub App installations — the account page's Git tab — under a
+  // person's own settings (Marko, 2026-09-03). It redirects there.
   // `credits` and `plan` are still in the type but NOT here: the overlay's
   // Account group was removed on 2026-09-03 (Marko) — a wallet and a
   // subscription belong to the account page, `/accounts/[id]`, and both ids
@@ -193,10 +195,10 @@ const GRADUATED: Record<string, (projectId: string) => string> = {
   workspace: (p) => `/projects/${p}/config`,
   general: (p) => `/projects/${p}/config`,
   settings: (p) => `/projects/${p}/config`,
-  // Repositories and its pre-rename `git` merged INTO General as a "Git repo"
-  // section.
-  repositories: (p) => `/projects/${p}/config`,
-  git: (p) => `/projects/${p}/config`,
+  // Repositories and its pre-rename `git` are the Git repo section — its own
+  // section of the Settings tab since 2026-09-03.
+  repositories: (p) => `/projects/${p}/config?section=git`,
+  git: (p) => `/projects/${p}/config?section=git`,
   sandbox: (p) => `/projects/${p}/config?section=sandbox`,
   // Snapshots merged into Sandbox templates — a snapshot is a template's
   // build history.
@@ -280,6 +282,8 @@ export const ACCOUNT_GRADUATED: Record<string, string> = {
   // account page already owns both.
   credits: 'transactions',
   plan: 'billing',
+  // Connected accounts = the account's GitHub App installations = the Git tab.
+  connected: 'git',
   groups: 'groups',
   roles: 'roles',
   identity: 'identity',

@@ -34,7 +34,7 @@ const keysFor = (flags: ProjectSettingsSectionFlags) =>
  */
 describe('projectSettingsSections', () => {
   test('with every flag off it holds the two always-on sections, in order', () => {
-    expect(keysFor(OFF)).toEqual(['general', 'sandbox', 'feature-flags', 'upgrades']);
+    expect(keysFor(OFF)).toEqual(['general', 'git', 'sandbox', 'feature-flags', 'upgrades']);
   });
 
   test('the review flag adds its section', () => {
@@ -45,7 +45,7 @@ describe('projectSettingsSections', () => {
   test('the review flag preserves all static sections', () => {
     const keys = keysFor({ reviewEnabled: true });
     expect(keys).toContain('review');
-    expect(keys).toHaveLength(5);
+    expect(keys).toHaveLength(6);
   });
 
   test('Upgrades is last, where the rail pinned it', () => {
@@ -173,9 +173,7 @@ describe('the sub-nav is flat', () => {
   });
 
   test('the list order IS the rail order — one pass, nothing re-sorted', () => {
-    expect(projectSettingsSections({ reviewEnabled: true }).map((s) => s.key)).toEqual([
-      'general',
-      'sandbox',
+    expect(projectSettingsSections({ reviewEnabled: true }).map((s) => s.key)).toEqual(['general', 'git', 'sandbox',
       'review',
       'feature-flags',
       'upgrades',

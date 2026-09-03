@@ -185,7 +185,8 @@ describe('search terms carried across from the removed registry entries', () => 
     ['wallpaper', 'appearance'],
     ['hotkeys', 'preferences'],
     ['mute', 'sessions'],
-    ['oauth', 'connected'],
+    // `connected` left the overlay on 2026-09-03 — the account's GitHub App
+    // installations are the account page's Git tab.
     ['avatar', 'profile'],
     // API keys came back into the rail on 2026-08-18, so the two words that
     // name a person's own key answer HERE again, not on `account-tokens` —

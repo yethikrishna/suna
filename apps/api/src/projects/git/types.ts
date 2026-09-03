@@ -42,6 +42,9 @@ export interface ProjectConfigSummary {
      *  badge wears. null when the file sets none; optional so fixtures built
      *  before the field keep compiling. */
     color?: string | null;
+    /** The agent's `model:` frontmatter (`provider/model`), null when it
+     *  follows the project default. */
+    model?: string | null;
     source: 'opencode' | 'kortix.yaml';
     enabled?: boolean;
     sandbox?: string | null;

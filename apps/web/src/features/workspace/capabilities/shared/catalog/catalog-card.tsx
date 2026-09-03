@@ -11,6 +11,8 @@ export interface CatalogCardProps {
   title: ReactNode;
   description?: string | null;
   badges?: ReactNode;
+  /** A muted facts line under the description — the card's third row. */
+  meta?: ReactNode;
   trailing?: ReactNode;
   /** A card that NAVIGATES renders as a real `next/link` — prefetched, middle-
    *  clickable, and a client transition rather than a `router.push` from a
@@ -28,6 +30,7 @@ export function CatalogCard({
   title,
   description,
   badges,
+  meta,
   trailing,
   href,
   onClick,
@@ -54,6 +57,11 @@ export function CatalogCard({
         {description ? (
           <span className="text-muted-foreground line-clamp-2 text-xs text-pretty">
             {description}
+          </span>
+        ) : null}
+        {meta ? (
+          <span className="text-muted-foreground/80 flex flex-wrap items-center gap-x-2 gap-y-0.5 pt-1 text-xs">
+            {meta}
           </span>
         ) : null}
       </span>

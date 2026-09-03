@@ -75,11 +75,6 @@ const STATIC_GROUPS: readonly RailGroup[] = [
         description: 'Language and keyboard shortcuts.',
         icon: SlidersHorizontal,
       },
-      {
-        tab: 'connected',
-        label: 'Connected accounts',
-        icon: Link,
-      },
       // Labelled "API keys", routed at `/settings/tokens`. The id has to be
       // `tokens` — it is the URL segment, and the account page already spends
       // `api-keys` on a legacy redirect (`RENAMED` in `settings-tabs.ts`) —
@@ -140,6 +135,15 @@ export const RETIRED_RAIL_ITEMS: readonly RailItem[] = [
     description:
       'Changes an agent makes to this workspace. Every run opens a change request for you to review — nothing merges on its own.',
     icon: ArrowUpCircle,
+  },
+  // Connected accounts listed the ACCOUNT's GitHub App installations — the
+  // same rows the account page's Git tab manages — under a person's own
+  // settings. Gone from the rail on 2026-09-03 (Marko); `/settings/connected`
+  // redirects to that tab through `ACCOUNT_GRADUATED`.
+  {
+    tab: 'connected',
+    label: 'Connected accounts',
+    icon: Link,
   },
   {
     tab: 'credits',

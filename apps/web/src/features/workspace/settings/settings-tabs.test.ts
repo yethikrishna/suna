@@ -39,7 +39,6 @@ describe('SETTINGS_TABS', () => {
       'appearance',
       'sessions',
       'preferences',
-      'connected',
       'tokens',
     ]);
   });
@@ -148,12 +147,15 @@ describe('legacySectionRedirect', () => {
    * redirect back onto `/settings/<id>` would bounce through
    * `parseSettingsTab`, get `null`, and land on the bare overlay.
    */
-  test('the old settings section, general, git, repositories and workspace all open the Settings tab', () => {
-    // Repositories and its pre-rename `git` merged INTO General as a "Git
-    // repo" section; `workspace` was the overlay's own id for it between
-    // 2026-09-02 and 2026-09-03.
-    for (const id of ['settings', 'general', 'git', 'repositories', 'workspace']) {
+  test('the old settings section, general and workspace open the Settings tab; git and repositories its Git repo section', () => {
+    // `workspace` was the overlay's own id for General between 2026-09-02
+    // and 2026-09-03.
+    for (const id of ['settings', 'general', 'workspace']) {
       expect(legacySectionRedirect('p1', id)).toBe('/projects/p1/config');
+      expect(resolveOverlayTab(id)).toBeNull();
+    }
+    for (const id of ['git', 'repositories']) {
+      expect(legacySectionRedirect('p1', id)).toBe('/projects/p1/config?section=git');
       expect(resolveOverlayTab(id)).toBeNull();
     }
   });
@@ -184,8 +186,8 @@ describe('legacySectionRedirect', () => {
     const sections: Record<string, string> = {
       general: '/projects/p1/config',
       settings: '/projects/p1/config',
-      git: '/projects/p1/config',
-      repositories: '/projects/p1/config',
+      git: '/projects/p1/config?section=git',
+      repositories: '/projects/p1/config?section=git',
       workspace: '/projects/p1/config',
       sandbox: '/projects/p1/config?section=sandbox',
       // Snapshots merged INTO the sandbox pane — a snapshot is the build
@@ -324,6 +326,7 @@ describe('account-scoped sections redirect to /accounts/[id]', () => {
     // The overlay's Account group (Credits, Plan) left on 2026-09-03.
     credits: 'transactions',
     plan: 'billing',
+    connected: 'git',
   };
 
   test('the mirror above is the whole map', () => {

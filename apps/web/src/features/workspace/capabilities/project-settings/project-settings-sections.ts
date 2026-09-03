@@ -5,6 +5,7 @@ import {
   TrayIcon as Inbox,
   GearSixIcon as Settings,
   type Icon,
+  GitBranchIcon as GitBranch,
 } from '@phosphor-icons/react';
 
 import type { CustomizeSection } from '@/lib/project-actions';
@@ -49,6 +50,7 @@ import type { CustomizeSection } from '@/lib/project-actions';
  */
 export type ProjectSettingsSectionKey =
   | 'general'
+  | 'git'
   | 'sandbox'
   | 'review'
   | 'feature-flags'
@@ -86,6 +88,16 @@ const STATIC_SECTIONS: readonly ProjectSettingsSection[] = [
     key: 'general',
     label: 'General',
     icon: Settings,
+    gate: 'settings',
+  },
+  // Its own section since 2026-09-03 (Marko): the repository, its status,
+  // the base branch, the manifest file and who can reach the repo are one
+  // subject, and they were a long tail under General.
+  {
+    key: 'git',
+    label: 'Git repo',
+    icon: GitBranch,
+    description: 'The repository this workspace runs from, and who can reach it.',
     gate: 'settings',
   },
   {

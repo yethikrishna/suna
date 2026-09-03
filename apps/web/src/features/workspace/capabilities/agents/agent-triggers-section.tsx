@@ -11,31 +11,42 @@
  * have to leave its page to answer it. Creating one here opens the same
  * wizard the Triggers tab opens, with the agent pre-selected.
  *
- * Rows link to the Triggers tab rather than opening the detail sheet here:
- * the sheet is a 1,000-line component with its own mutations, and a second
- * mount of it would mean a second code path for pause, run and delete.
+ * A row opens the same detail sheet the Triggers tab opens
+ * (`schedule/schedule-detail-sheet.tsx`), in place — run, pause, edit and
+ * delete without leaving the agent (Marko, 2026-09-03). The sheet owns
+ * pause/resume itself; run and delete are the two mutations it asks its host
+ * for, so this section carries the same two the Triggers tab does, against
+ * the same query key, so a run started here shows up there.
  */
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { successToast } from '@/components/ui/toast';
+import { errorToast, successToast } from '@/components/ui/toast';
 import { ScheduleCreateModal } from '@/components/projects/schedule/schedule-create-modal';
 import {
+  KIND_COPY,
+  type TriggerKind,
   describeWhen,
+  isTriggerKind,
   triggerName,
 } from '@/components/projects/schedule/schedule-copy';
+import { ScheduleDetailSheet } from '@/components/projects/schedule/schedule-detail-sheet';
 import { EditorSection } from '@/features/workspace/customize/sections/view/agent-editor-primitives';
-import { capabilityTabHref } from '@/features/workspace/capabilities/shared/capability-tab-routes';
 import { PROJECT_ACTIONS } from '@/lib/project-actions';
 import { useProjectCan } from '@/lib/use-project-can';
 import { cn } from '@/lib/utils';
-import { listProjectTriggers, type ProjectTrigger } from '@kortix/sdk';
+import {
+  deleteProjectTrigger,
+  fireProjectTrigger,
+  listProjectTriggers,
+  type ProjectTrigger,
+} from '@kortix/sdk';
 import { contract, qk } from '@kortix/sdk/react';
 import { PlusIcon, PulseIcon, TimerIcon, WebhooksLogoIcon, type Icon } from '@phosphor-icons/react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useMemo, useState } from 'react';
 
 const KIND_ICON: Record<ProjectTrigger['type'], Icon> = {
   cron: TimerIcon,
@@ -81,7 +92,15 @@ export function AgentTriggersSection({
   const queryClient = useQueryClient();
   const canCreate =
     useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_TRIGGER_CREATE).allowed === true;
+  const canWrite =
+    useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_TRIGGER_UPDATE).allowed === true;
   const [createOpen, setCreateOpen] = useState(false);
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ProjectTrigger | null>(null);
+  const invalidate = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: qk.project.triggers(projectId) }),
+    [queryClient, projectId],
+  );
 
   // Same key and fetcher as the Triggers tab, so a trigger created there shows
   // here on the next focus without a second cache to reconcile.
@@ -94,6 +113,38 @@ export function AgentTriggersSection({
     () => triggersForAgent(triggersQuery.data?.triggers ?? [], agentName, defaultAgent),
     [triggersQuery.data, agentName, defaultAgent],
   );
+  const selected = mine.find((t) => t.slug === selectedSlug) ?? null;
+
+  // The same two mutations the Triggers tab owns, against the same key.
+  const run = useMutation({
+    mutationFn: (trigger: ProjectTrigger) => fireProjectTrigger(projectId, trigger.slug),
+    onSuccess: (res) => {
+      if (res.status === 'fired') {
+        successToast('Started', {
+          description: res.session_id
+            ? `Session ${res.session_id.slice(0, 8)}…`
+            : 'Getting a session ready',
+        });
+      } else if (res.status === 'queued') {
+        successToast('Queued', { description: res.reason ?? 'Busy right now — it will retry' });
+      } else {
+        errorToast('It could not start', { description: res.error });
+      }
+      void invalidate();
+    },
+    onError: (err) => errorToast(err instanceof Error ? err.message : 'It could not start'),
+  });
+  const remove = useMutation({
+    mutationFn: (trigger: ProjectTrigger) => deleteProjectTrigger(projectId, trigger.slug),
+    onSuccess: (_data, trigger) => {
+      const noun = isTriggerKind(trigger.type) ? KIND_COPY[trigger.type as TriggerKind].noun : 'trigger';
+      successToast(`${noun[0].toUpperCase()}${noun.slice(1)} deleted`);
+      setDeleteTarget(null);
+      setSelectedSlug(null);
+      void invalidate();
+    },
+    onError: (err) => errorToast(err instanceof Error ? err.message : 'Could not delete it'),
+  });
 
   return (
     <EditorSection title="Triggers" description="When this agent starts on its own.">
@@ -113,10 +164,11 @@ export function AgentTriggersSection({
               const KindIcon = KIND_ICON[trigger.type] ?? TimerIcon;
               return (
                 <li key={trigger.slug}>
-                  <Link
-                    href={capabilityTabHref(projectId, 'triggers')}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSlug(trigger.slug)}
                     className={cn(
-                      'group bg-popover flex items-center gap-3 rounded-md border px-3 py-2',
+                      'group bg-popover flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left',
                       'hover:border-border transition-[background-color,border-color] hover:bg-accent',
                       'focus-visible:ring-ring/50 focus-visible:ring-2 focus-visible:outline-none',
                     )}
@@ -148,7 +200,7 @@ export function AgentTriggersSection({
                         Paused
                       </Badge>
                     ) : null}
-                  </Link>
+                  </button>
                 </li>
               );
             })}
@@ -174,12 +226,48 @@ export function AgentTriggersSection({
           open={createOpen}
           onOpenChange={setCreateOpen}
           initialAgent={agentName}
-          onCreated={() => {
-            void queryClient.invalidateQueries({ queryKey: qk.project.triggers(projectId) });
+          onCreated={(slug) => {
+            setCreateOpen(false);
+            void invalidate();
             successToast('Trigger created');
+            // Straight into the new entry, as the Triggers tab does.
+            setSelectedSlug(slug);
           }}
         />
       ) : null}
+
+      <ScheduleDetailSheet
+        projectId={projectId}
+        trigger={selected}
+        canWrite={canWrite}
+        open={!!selected}
+        onOpenChange={(next) => {
+          if (!next) setSelectedSlug(null);
+        }}
+        onRun={() => selected && run.mutate(selected)}
+        running={run.isPending && run.variables?.slug === selected?.slug}
+        onDelete={() => selected && setDeleteTarget(selected)}
+        onMutated={invalidate}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(next) => {
+          if (!next) setDeleteTarget(null);
+        }}
+        title="Delete this trigger?"
+        description={
+          deleteTarget ? (
+            <>
+              <span className="text-foreground font-medium">{triggerName(deleteTarget)}</span> (
+              {describeWhen(deleteTarget).toLowerCase()}) stops running and is removed.
+            </>
+          ) : undefined
+        }
+        confirmLabel="Delete"
+        confirmVariant="destructive"
+        onConfirm={() => deleteTarget && remove.mutate(deleteTarget)}
+      />
     </EditorSection>
   );
 }

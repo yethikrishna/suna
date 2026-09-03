@@ -203,6 +203,28 @@ export function diffAgentGrants(
   };
 }
 
+/**
+ * The agent grants a draft actually writes for a PROJECT MEMBER.
+ *
+ * Agents are closed by default: a member with no grant rows can use none of
+ * them (`objectUsable`, `apps/api/src/iam/authorize.ts`), and only the
+ * manager tier bypasses that. So "All agents" for a member is not "write no
+ * rows" — that would be "no agents" — it is one grant per agent the project
+ * has today. A custom role's tier is not known here, so a custom role keeps
+ * the literal selection.
+ */
+export function effectiveAgentIds(
+  builtinRole: ProjectRole | undefined,
+  customRoleId: string | null | undefined,
+  agents: AgentSelection,
+  projectAgents: readonly { id: string }[],
+): string[] {
+  if (agents.mode === 'subset') return agents.ids;
+  if (customRoleId) return [];
+  if (builtinRole === 'manager') return [];
+  return projectAgents.map((a) => a.id);
+}
+
 export interface AccessDraft {
   role: RoleValue;
   agents: AgentSelection;
@@ -436,8 +458,13 @@ export function AccessDialog({
   const builtin = baselineBuiltinRole(roleScope ?? 'project', role);
 
   // ── Agents (project scope only) ───────────────────────────────────────
+  // Not for a project admin: the manager tier uses every agent regardless of
+  // grants (`objectUsable` in `apps/api/src/iam/authorize.ts`), so a picker
+  // under that role would write rows that change nothing.
   const showAgents =
-    scope.kind === 'project' && (mode.kind === 'grant' || mode.kind === 'edit');
+    scope.kind === 'project' &&
+    (mode.kind === 'grant' || mode.kind === 'edit') &&
+    builtin !== 'manager';
   const resourceGrantsQuery = useQuery({
     queryKey: qk.project.resourceGrants(projectId ?? ''),
     queryFn: () => listProjectResourceGrants(projectId as string),
@@ -653,7 +680,7 @@ export function AccessDialog({
     // project scope
     const projectBuiltin = (builtin ?? 'member') as ProjectRole;
     const pid = scope.projectId;
-    const agentIdsToGrant = agents.mode === 'subset' ? agents.ids : [];
+    const agentIdsToGrant = effectiveAgentIds(projectBuiltin, roleId, agents, projectAgents);
 
     for (const userId of principals.memberIds) {
       tasks.push({
@@ -694,7 +721,11 @@ export function AccessDialog({
   function buildEditTasks(): Task[] {
     if (mode.kind !== 'edit') return [];
     const { principal, current } = mode;
-    const diff = diffAccessDraft(current, { role, agents, expiresAt: expires });
+    const effectiveDraftAgents: AgentSelection =
+      agents.mode === 'all' && builtin !== 'manager' && !isCustom
+        ? { mode: 'subset', ids: projectAgents.map((a) => a.id) }
+        : agents;
+    const diff = diffAccessDraft(current, { role, agents: effectiveDraftAgents, expiresAt: expires });
     if (!diff.dirty) return [];
     const roleId = role.kind === 'custom' ? role.roleId : null;
     const expiresIso = expirySupported ? endOfLocalDayIso(expires) : undefined;
@@ -1071,6 +1102,13 @@ export function AccessDialog({
                     <TabsTriggerCompact value="subset">Only these…</TabsTriggerCompact>
                   </TabsListCompact>
                 </Tabs>
+                {agents.mode === 'all' ? (
+                  <FieldDescription>
+                    {projectAgents.length === 0
+                      ? 'This project has no agents yet.'
+                      : `Every agent in this project today (${projectAgents.length}). Agents added later need a new grant — agents are closed until someone is granted them.`}
+                  </FieldDescription>
+                ) : null}
                 {agents.mode === 'subset' ? (
                   resourceGrantsQuery.isLoading ? (
                     <Skeleton className="h-24 w-full rounded-md" />

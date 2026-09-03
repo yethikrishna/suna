@@ -1854,6 +1854,67 @@
       "signOut": "Abmelden",
       "signingOut": "Wird abgemeldet...",
       "sending": "Wird gesendet..."
+    },
+    "unified": {
+      "welcome": "Willkommen bei Kortix",
+      "tagline": "Deine KI-Kommandozentrale",
+      "email": "E-Mail",
+      "emailPlaceholder": "Deine E-Mail-Adresse",
+      "password": "Passwort",
+      "showPassword": "Passwort anzeigen",
+      "hidePassword": "Passwort ausblenden",
+      "changeEmail": "E-Mail ändern",
+      "edit": "Bearbeiten",
+      "continue": "Weiter",
+      "sending": "Wird gesendet …",
+      "oneMoment": "Einen Moment …",
+      "useDifferentEmail": "Andere E-Mail-Adresse verwenden",
+      "usePasswordInstead": "Stattdessen ein Passwort verwenden",
+      "emailCodeInstead": "Code per E-Mail senden",
+      "forgotPassword": "Passwort vergessen?",
+      "automaticAccount": "Neu hier? Mit „Weiter“ wird dein Konto automatisch erstellt.",
+      "sso": {
+        "title": "Single Sign-on verwenden",
+        "description": "<address>{email}</address> kann sich über den Identitätsanbieter deiner Organisation anmelden.",
+        "continue": "Mit SSO fortfahren",
+        "enterWorkEmail": "Gib oben deine geschäftliche E-Mail-Adresse ein und wähle dann Single Sign-on.",
+        "notConfigured": "Single Sign-on ist für „{domain}“ nicht eingerichtet. Bitte deine Administration, es zu konfigurieren, oder fahre mit E-Mail fort.",
+        "lookingUp": "Identitätsanbieter wird gesucht …",
+        "use": "Single Sign-on (SSO) verwenden"
+      },
+      "code": {
+        "title": "E-Mail prüfen",
+        "description": "Wir haben einen Code an <address>{email}</address> gesendet",
+        "verifying": "Wird überprüft …",
+        "notReceived": "Keinen Code erhalten?",
+        "resendIn": "Erneut senden in {seconds}",
+        "resend": "Erneut senden"
+      },
+      "credentials": {
+        "signin": {
+          "title": "Willkommen zurück",
+          "description": "Gib dein Passwort ein, um fortzufahren.",
+          "passwordPlaceholder": "Dein Passwort"
+        },
+        "signup": {
+          "title": "Konto erstellen",
+          "description": "Wähle ein Passwort, um loszulegen.",
+          "passwordPlaceholder": "Passwort erstellen"
+        },
+        "unknown": {
+          "title": "Passwort eingeben",
+          "passwordPlaceholder": "Dein Passwort"
+        }
+      },
+      "errors": {
+        "unexpected": "Ein unerwarteter Fehler ist aufgetreten",
+        "signupsClosed": "Die Registrierung ist derzeit geschlossen. Wende dich an deine Administration oder beantrage Zugriff.",
+        "ssoRequired": "Deine Organisation verlangt Single Sign-on. Fahre stattdessen mit SSO fort.",
+        "incorrectPassword": "Falsches Passwort. Versuche es erneut oder setze es über „Passwort vergessen?“ zurück.",
+        "existingAccountWrongPassword": "Du hast bereits ein Konto – gib dein bestehendes Passwort ein, um dich anzumelden.",
+        "confirmAccount": "Prüfe deine E-Mail, um dein Konto zu bestätigen",
+        "invalidCode": "Ungültiger oder abgelaufener Code"
+      }
     }
   },
   "onboarding": {

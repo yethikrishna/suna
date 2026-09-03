@@ -1854,6 +1854,67 @@
       "signOut": "ログアウト",
       "signingOut": "ログアウト中...",
       "sending": "送信中..."
+    },
+    "unified": {
+      "welcome": "Kortixへようこそ",
+      "tagline": "あなたのAIコマンドセンター",
+      "email": "メールアドレス",
+      "emailPlaceholder": "メールアドレスを入力",
+      "password": "パスワード",
+      "showPassword": "パスワードを表示",
+      "hidePassword": "パスワードを非表示",
+      "changeEmail": "メールアドレスを変更",
+      "edit": "編集",
+      "continue": "続行",
+      "sending": "送信中…",
+      "oneMoment": "少々お待ちください…",
+      "useDifferentEmail": "別のメールアドレスを使用",
+      "usePasswordInstead": "パスワードを使用",
+      "emailCodeInstead": "メールでコードを受け取る",
+      "forgotPassword": "パスワードをお忘れですか？",
+      "automaticAccount": "初めての方は、「続行」を選ぶとアカウントが自動的に作成されます。",
+      "sso": {
+        "title": "シングルサインオンを使用",
+        "description": "<address>{email}</address>では、組織のIDプロバイダーを通じてサインインできます。",
+        "continue": "SSOで続行",
+        "enterWorkEmail": "上に勤務先のメールアドレスを入力し、シングルサインオンを選択してください。",
+        "notConfigured": "“{domain}”ではシングルサインオンが設定されていません。管理者に設定を依頼するか、メールアドレスで続行してください。",
+        "lookingUp": "IDプロバイダーを確認中…",
+        "use": "シングルサインオン（SSO）を使用"
+      },
+      "code": {
+        "title": "メールを確認してください",
+        "description": "<address>{email}</address>にコードを送信しました",
+        "verifying": "確認中…",
+        "notReceived": "コードが届きませんか？",
+        "resendIn": "{seconds}秒後に再送信",
+        "resend": "再送信"
+      },
+      "credentials": {
+        "signin": {
+          "title": "おかえりなさい",
+          "description": "続行するにはパスワードを入力してください。",
+          "passwordPlaceholder": "パスワードを入力"
+        },
+        "signup": {
+          "title": "アカウントを作成",
+          "description": "開始するにはパスワードを設定してください。",
+          "passwordPlaceholder": "パスワードを作成"
+        },
+        "unknown": {
+          "title": "パスワードを入力",
+          "passwordPlaceholder": "パスワードを入力"
+        }
+      },
+      "errors": {
+        "unexpected": "予期しないエラーが発生しました",
+        "signupsClosed": "現在、新規登録を停止しています。管理者に連絡するか、アクセスを申請してください。",
+        "ssoRequired": "組織でシングルサインオンが必須です。SSOで続行してください。",
+        "incorrectPassword": "パスワードが正しくありません。もう一度お試しいただくか、「パスワードをお忘れですか？」からリセットしてください。",
+        "existingAccountWrongPassword": "すでにアカウントがあります。既存のパスワードを入力してサインインしてください。",
+        "confirmAccount": "メールを確認してアカウントを認証してください",
+        "invalidCode": "コードが無効か、有効期限が切れています"
+      }
     }
   },
   "onboarding": {

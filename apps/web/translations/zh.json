@@ -1850,6 +1850,67 @@
       "signOut": "退出登录",
       "signingOut": "退出中...",
       "sending": "发送中..."
+    },
+    "unified": {
+      "welcome": "欢迎使用 Kortix",
+      "tagline": "您的 AI 指挥中心",
+      "email": "邮箱",
+      "emailPlaceholder": "您的邮箱地址",
+      "password": "密码",
+      "showPassword": "显示密码",
+      "hidePassword": "隐藏密码",
+      "changeEmail": "更换邮箱",
+      "edit": "编辑",
+      "continue": "继续",
+      "sending": "发送中…",
+      "oneMoment": "请稍候…",
+      "useDifferentEmail": "使用其他邮箱",
+      "usePasswordInstead": "改用密码",
+      "emailCodeInstead": "通过邮箱发送验证码",
+      "forgotPassword": "忘记密码？",
+      "automaticAccount": "还没有账户？点击“继续”即可自动创建账户。",
+      "sso": {
+        "title": "使用单点登录",
+        "description": "<address>{email}</address> 可通过您所在组织的身份提供商登录。",
+        "continue": "使用 SSO 继续",
+        "enterWorkEmail": "请在上方输入您的工作邮箱，然后选择单点登录。",
+        "notConfigured": "“{domain}”尚未设置单点登录。请联系管理员进行配置，或继续使用邮箱登录。",
+        "lookingUp": "正在查找您的身份提供商…",
+        "use": "使用单点登录（SSO）"
+      },
+      "code": {
+        "title": "查看您的邮箱",
+        "description": "我们已向 <address>{email}</address> 发送验证码",
+        "verifying": "验证中…",
+        "notReceived": "没收到验证码？",
+        "resendIn": "{seconds} 秒后重新发送",
+        "resend": "重新发送"
+      },
+      "credentials": {
+        "signin": {
+          "title": "欢迎回来",
+          "description": "输入密码以继续。",
+          "passwordPlaceholder": "您的密码"
+        },
+        "signup": {
+          "title": "创建您的账户",
+          "description": "设置密码即可开始使用。",
+          "passwordPlaceholder": "创建密码"
+        },
+        "unknown": {
+          "title": "输入您的密码",
+          "passwordPlaceholder": "您的密码"
+        }
+      },
+      "errors": {
+        "unexpected": "发生意外错误",
+        "signupsClosed": "当前已关闭注册。请联系管理员或申请访问权限。",
+        "ssoRequired": "您的组织要求使用单点登录。请改用 SSO 继续。",
+        "incorrectPassword": "密码错误。请重试，或通过“忘记密码？”重置密码。",
+        "existingAccountWrongPassword": "您已有账户——请输入现有密码登录。",
+        "confirmAccount": "请查看您的邮箱以确认账户",
+        "invalidCode": "验证码无效或已过期"
+      }
     }
   },
   "onboarding": {

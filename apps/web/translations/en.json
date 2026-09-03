@@ -1857,6 +1857,67 @@
       "signOut": "Sign out",
       "signingOut": "Signing out...",
       "sending": "Sending..."
+    },
+    "unified": {
+      "welcome": "Welcome to Kortix",
+      "tagline": "Your AI Command Center",
+      "email": "Email",
+      "emailPlaceholder": "Your email address",
+      "password": "Password",
+      "showPassword": "Show password",
+      "hidePassword": "Hide password",
+      "changeEmail": "Change email",
+      "edit": "Edit",
+      "continue": "Continue",
+      "sending": "Sending…",
+      "oneMoment": "One moment…",
+      "useDifferentEmail": "Use a different email",
+      "usePasswordInstead": "Use a password instead",
+      "emailCodeInstead": "Email me a code instead",
+      "forgotPassword": "Forgot your password?",
+      "automaticAccount": "New here? Continue creates your account automatically.",
+      "sso": {
+        "title": "Use single sign-on",
+        "description": "<address>{email}</address> can sign in through your organization's identity provider.",
+        "continue": "Continue with SSO",
+        "enterWorkEmail": "Enter your work email above, then choose single sign-on.",
+        "notConfigured": "Single sign-on isn't set up for “{domain}”. Ask your admin to configure it, or continue with email.",
+        "lookingUp": "Looking up your identity provider…",
+        "use": "Use single sign-on (SSO)"
+      },
+      "code": {
+        "title": "Check your email",
+        "description": "We sent a code to <address>{email}</address>",
+        "verifying": "Verifying…",
+        "notReceived": "Didn't receive a code?",
+        "resendIn": "Resend in {seconds}",
+        "resend": "Resend"
+      },
+      "credentials": {
+        "signin": {
+          "title": "Welcome back",
+          "description": "Enter your password to continue.",
+          "passwordPlaceholder": "Your password"
+        },
+        "signup": {
+          "title": "Create your account",
+          "description": "Choose a password to get started.",
+          "passwordPlaceholder": "Create a password"
+        },
+        "unknown": {
+          "title": "Enter your password",
+          "passwordPlaceholder": "Your password"
+        }
+      },
+      "errors": {
+        "unexpected": "An unexpected error occurred",
+        "signupsClosed": "Signups are currently closed. Contact your administrator or request access.",
+        "ssoRequired": "Your organization requires single sign-on. Continue with SSO instead.",
+        "incorrectPassword": "Incorrect password. Try again, or reset it via “Forgot your password?”.",
+        "existingAccountWrongPassword": "You already have an account — enter your existing password to sign in.",
+        "confirmAccount": "Check your email to confirm your account",
+        "invalidCode": "Invalid or expired code"
+      }
     }
   },
   "onboarding": {

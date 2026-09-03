@@ -1854,6 +1854,67 @@
       "signOut": "Esci",
       "signingOut": "Uscita in corso...",
       "sending": "Invio..."
+    },
+    "unified": {
+      "welcome": "Benvenuto su Kortix",
+      "tagline": "Il tuo centro di comando IA",
+      "email": "Email",
+      "emailPlaceholder": "Il tuo indirizzo email",
+      "password": "Password",
+      "showPassword": "Mostra password",
+      "hidePassword": "Nascondi password",
+      "changeEmail": "Cambia email",
+      "edit": "Modifica",
+      "continue": "Continua",
+      "sending": "Invio…",
+      "oneMoment": "Un momento…",
+      "useDifferentEmail": "Usa un'altra email",
+      "usePasswordInstead": "Usa invece una password",
+      "emailCodeInstead": "Inviami invece un codice via email",
+      "forgotPassword": "Hai dimenticato la password?",
+      "automaticAccount": "È la prima volta qui? Continuando, il tuo account verrà creato automaticamente.",
+      "sso": {
+        "title": "Usa il single sign-on",
+        "description": "<address>{email}</address> può accedere tramite il provider di identità della tua organizzazione.",
+        "continue": "Continua con SSO",
+        "enterWorkEmail": "Inserisci qui sopra la tua email di lavoro, quindi scegli il single sign-on.",
+        "notConfigured": "Il single sign-on non è configurato per “{domain}”. Chiedi all'amministratore di configurarlo oppure continua con l'email.",
+        "lookingUp": "Ricerca del provider di identità…",
+        "use": "Usa il single sign-on (SSO)"
+      },
+      "code": {
+        "title": "Controlla la tua email",
+        "description": "Abbiamo inviato un codice a <address>{email}</address>",
+        "verifying": "Verifica in corso…",
+        "notReceived": "Non hai ricevuto il codice?",
+        "resendIn": "Invia di nuovo tra {seconds}",
+        "resend": "Invia di nuovo"
+      },
+      "credentials": {
+        "signin": {
+          "title": "Bentornato",
+          "description": "Inserisci la password per continuare.",
+          "passwordPlaceholder": "La tua password"
+        },
+        "signup": {
+          "title": "Crea il tuo account",
+          "description": "Scegli una password per iniziare.",
+          "passwordPlaceholder": "Crea una password"
+        },
+        "unknown": {
+          "title": "Inserisci la tua password",
+          "passwordPlaceholder": "La tua password"
+        }
+      },
+      "errors": {
+        "unexpected": "Si è verificato un errore imprevisto",
+        "signupsClosed": "Le registrazioni sono momentaneamente chiuse. Contatta l'amministratore o richiedi l'accesso.",
+        "ssoRequired": "La tua organizzazione richiede il single sign-on. Continua invece con SSO.",
+        "incorrectPassword": "Password errata. Riprova oppure reimpostala tramite “Hai dimenticato la password?”.",
+        "existingAccountWrongPassword": "Hai già un account: inserisci la password esistente per accedere.",
+        "confirmAccount": "Controlla la tua email per confermare l'account",
+        "invalidCode": "Codice non valido o scaduto"
+      }
     }
   },
   "onboarding": {

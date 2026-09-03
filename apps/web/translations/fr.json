@@ -1857,6 +1857,67 @@
       "signOut": "Se déconnecter",
       "signingOut": "Déconnexion...",
       "sending": "Envoi..."
+    },
+    "unified": {
+      "welcome": "Bienvenue sur Kortix",
+      "tagline": "Votre centre de commande IA",
+      "email": "E-mail",
+      "emailPlaceholder": "Votre adresse e-mail",
+      "password": "Mot de passe",
+      "showPassword": "Afficher le mot de passe",
+      "hidePassword": "Masquer le mot de passe",
+      "changeEmail": "Modifier l’e-mail",
+      "edit": "Modifier",
+      "continue": "Continuer",
+      "sending": "Envoi…",
+      "oneMoment": "Un instant…",
+      "useDifferentEmail": "Utiliser une autre adresse e-mail",
+      "usePasswordInstead": "Utiliser un mot de passe",
+      "emailCodeInstead": "M’envoyer un code par e-mail",
+      "forgotPassword": "Mot de passe oublié ?",
+      "automaticAccount": "Nouveau ici ? Continuer crée automatiquement votre compte.",
+      "sso": {
+        "title": "Utiliser l’authentification unique",
+        "description": "<address>{email}</address> peut se connecter via le fournisseur d’identité de votre organisation.",
+        "continue": "Continuer avec le SSO",
+        "enterWorkEmail": "Saisissez votre adresse e-mail professionnelle ci-dessus, puis choisissez l’authentification unique.",
+        "notConfigured": "L’authentification unique n’est pas configurée pour « {domain} ». Demandez à votre administrateur de la configurer ou continuez avec votre e-mail.",
+        "lookingUp": "Recherche de votre fournisseur d’identité…",
+        "use": "Utiliser l’authentification unique (SSO)"
+      },
+      "code": {
+        "title": "Consultez votre boîte e-mail",
+        "description": "Nous avons envoyé un code à <address>{email}</address>",
+        "verifying": "Vérification…",
+        "notReceived": "Vous n’avez pas reçu de code ?",
+        "resendIn": "Renvoyer dans {seconds}",
+        "resend": "Renvoyer"
+      },
+      "credentials": {
+        "signin": {
+          "title": "Bon retour parmi nous",
+          "description": "Saisissez votre mot de passe pour continuer.",
+          "passwordPlaceholder": "Votre mot de passe"
+        },
+        "signup": {
+          "title": "Créer votre compte",
+          "description": "Choisissez un mot de passe pour commencer.",
+          "passwordPlaceholder": "Créez un mot de passe"
+        },
+        "unknown": {
+          "title": "Saisissez votre mot de passe",
+          "passwordPlaceholder": "Votre mot de passe"
+        }
+      },
+      "errors": {
+        "unexpected": "Une erreur inattendue s’est produite",
+        "signupsClosed": "Les inscriptions sont actuellement fermées. Contactez votre administrateur ou demandez un accès.",
+        "ssoRequired": "Votre organisation exige l’authentification unique. Continuez plutôt avec le SSO.",
+        "incorrectPassword": "Mot de passe incorrect. Réessayez ou réinitialisez-le via « Mot de passe oublié ? ».",
+        "existingAccountWrongPassword": "Vous avez déjà un compte — saisissez votre mot de passe existant pour vous connecter.",
+        "confirmAccount": "Consultez votre boîte e-mail pour confirmer votre compte",
+        "invalidCode": "Code invalide ou expiré"
+      }
     }
   },
   "onboarding": {

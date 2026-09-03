@@ -1854,6 +1854,67 @@
       "signOut": "Terminar sessão",
       "signingOut": "A terminar sessão...",
       "sending": "A enviar..."
+    },
+    "unified": {
+      "welcome": "Bem-vindo ao Kortix",
+      "tagline": "Seu centro de comando de IA",
+      "email": "E-mail",
+      "emailPlaceholder": "Seu endereço de e-mail",
+      "password": "Senha",
+      "showPassword": "Mostrar senha",
+      "hidePassword": "Ocultar senha",
+      "changeEmail": "Alterar e-mail",
+      "edit": "Editar",
+      "continue": "Continuar",
+      "sending": "Enviando…",
+      "oneMoment": "Aguarde um momento…",
+      "useDifferentEmail": "Usar outro e-mail",
+      "usePasswordInstead": "Usar uma senha",
+      "emailCodeInstead": "Enviar um código por e-mail",
+      "forgotPassword": "Esqueceu sua senha?",
+      "automaticAccount": "É novo por aqui? Ao continuar, sua conta será criada automaticamente.",
+      "sso": {
+        "title": "Usar login único",
+        "description": "<address>{email}</address> pode entrar usando o provedor de identidade da sua organização.",
+        "continue": "Continuar com SSO",
+        "enterWorkEmail": "Digite seu e-mail corporativo acima e escolha o login único.",
+        "notConfigured": "O login único não está configurado para “{domain}”. Peça ao administrador para configurá-lo ou continue com seu e-mail.",
+        "lookingUp": "Buscando seu provedor de identidade…",
+        "use": "Usar login único (SSO)"
+      },
+      "code": {
+        "title": "Verifique seu e-mail",
+        "description": "Enviamos um código para <address>{email}</address>",
+        "verifying": "Verificando…",
+        "notReceived": "Não recebeu um código?",
+        "resendIn": "Reenviar em {seconds}",
+        "resend": "Reenviar"
+      },
+      "credentials": {
+        "signin": {
+          "title": "Que bom ter você de volta",
+          "description": "Digite sua senha para continuar.",
+          "passwordPlaceholder": "Sua senha"
+        },
+        "signup": {
+          "title": "Crie sua conta",
+          "description": "Escolha uma senha para começar.",
+          "passwordPlaceholder": "Crie uma senha"
+        },
+        "unknown": {
+          "title": "Digite sua senha",
+          "passwordPlaceholder": "Sua senha"
+        }
+      },
+      "errors": {
+        "unexpected": "Ocorreu um erro inesperado",
+        "signupsClosed": "As inscrições estão fechadas no momento. Entre em contato com o administrador ou solicite acesso.",
+        "ssoRequired": "Sua organização exige login único. Continue com SSO.",
+        "incorrectPassword": "Senha incorreta. Tente novamente ou redefina-a em “Esqueceu sua senha?”.",
+        "existingAccountWrongPassword": "Você já tem uma conta — digite sua senha atual para entrar.",
+        "confirmAccount": "Verifique seu e-mail para confirmar sua conta",
+        "invalidCode": "Código inválido ou expirado"
+      }
     }
   },
   "onboarding": {

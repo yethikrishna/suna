@@ -4,6 +4,7 @@ import { useLayoutEffect, useState, type ReactNode } from 'react';
 
 import { IdentityConfetti } from '@/components/ui/identity-confetti';
 import { SessionWelcome } from '@/features/session/session-welcome';
+import { resolveConfettiFace } from '@/lib/confetti-identity';
 import { useProjectIcon, useProjectName } from '@kortix/sdk/react';
 import {
   HOME_GREETINGS,
@@ -61,6 +62,12 @@ import {
  * of the word itself. It is the one playful thing on this screen, and it is
  * deliberately silent at rest — see the button's own comment for why it carries
  * no hover treatment.
+ *
+ * ONLY when the workspace wears an icon someone picked — an emoji or a glyph.
+ * With neither, `resolveConfettiFace` degrades to the chalk initial tile, and
+ * throwing thirty-eight copies of the letter already sitting in the heading is
+ * not a celebration. Those workspaces render the name as plain text, so there
+ * is no pointer and no tooltip offering a payoff that would fall flat.
  */
 export function ProjectHomeWelcomeBody({
   projectId,
@@ -79,6 +86,16 @@ export function ProjectHomeWelcomeBody({
   // the name in this heading and the icon thrown out of it cannot come from
   // two caches that have diverged — and it costs no extra request.
   const icon = useProjectIcon(projectId);
+  // Only an icon someone CHOSE is worth throwing. `resolveConfettiFace` falls
+  // through to the chalk initial tile when a project has neither emoji nor
+  // glyph, and a burst of the same letter the heading is already showing reads
+  // as noise, not as a celebration. Those projects get plain text instead — no
+  // pointer, no tooltip promising a payoff that would not land. Gated on the
+  // resolver rather than on `icon?.icon` so this can never disagree with the
+  // face `EntityAvatar` draws, including the unknown-glyph fall-through.
+  const wearsChosenIcon =
+    resolveConfettiFace({ glyph: icon?.icon_glyph, emoji: icon?.icon, label: name }).kind !==
+    'initial';
   // `id` is the remount key: `IdentityConfetti` fires on mount, so a second
   // press needs a second mount. `origin` is captured per press rather than
   // fixed, because the word moves — the heading rewraps with the viewport and
@@ -175,27 +192,33 @@ export function ProjectHomeWelcomeBody({
               noise on every load for a control nobody needs to find. The
               pointer cursor and the tooltip are the whole invitation.
             */}
-            <button
-              type="button"
-              title="Throw some confetti"
-              onClick={(event) => {
-                const rect = event.currentTarget.getBoundingClientRect();
-                setBurst((current) => ({
-                  id: (current?.id ?? 0) + 1,
-                  // Canvas fractions, measured against the viewport, because
-                  // the confetti canvas is portalled to <body> at `fixed
-                  // inset-0`. Centre of the word, so the burst comes out of the
-                  // name rather than from somewhere near it.
-                  origin: {
-                    x: (rect.left + rect.width / 2) / window.innerWidth,
-                    y: (rect.top + rect.height / 2) / window.innerHeight,
-                  },
-                }));
-              }}
-              className="text-foreground focus-visible:ring-ring inline cursor-pointer rounded-sm focus-visible:ring-2 focus-visible:outline-none"
-            >
-              {displayName}
-            </button>
+            {wearsChosenIcon ? (
+              <button
+                type="button"
+                title="Throw some confetti"
+                onClick={(event) => {
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  setBurst((current) => ({
+                    id: (current?.id ?? 0) + 1,
+                    // Canvas fractions, measured against the viewport, because
+                    // the confetti canvas is portalled to <body> at `fixed
+                    // inset-0`. Centre of the word, so the burst comes out of
+                    // the name rather than from somewhere near it.
+                    origin: {
+                      x: (rect.left + rect.width / 2) / window.innerWidth,
+                      y: (rect.top + rect.height / 2) / window.innerHeight,
+                    },
+                  }));
+                }}
+                className="text-foreground focus-visible:ring-ring inline cursor-pointer rounded-sm focus-visible:ring-2 focus-visible:outline-none"
+              >
+                {displayName}
+              </button>
+            ) : (
+              // Same colour, no affordance: the name still carries the
+              // sentence's one highlight, it just is not pressable.
+              <span className="text-foreground">{displayName}</span>
+            )}
             {spaceBefore(greeting.after) ? ' ' : ''}
             {greeting.after}
           </h1>

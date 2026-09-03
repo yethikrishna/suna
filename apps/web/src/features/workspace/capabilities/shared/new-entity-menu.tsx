@@ -33,10 +33,26 @@ export function NewEntityMenu({
   /** A configure session is being created — the trigger shows a spinner. */
   pending?: boolean;
   onChat: () => void;
-  manual: { label?: string; description?: string } & (
+  /** Absent = there is no manual flow for this thing (Skills, Marko
+   *  2026-09-03): the control is a plain button that goes straight to chat. */
+  manual?: { label?: string; description?: string } & (
     { onSelect: () => void; href?: never } | { href: string; onSelect?: never }
   );
 }) {
+  if (!manual) {
+    return (
+      <Button
+        variant="secondary"
+        size={size}
+        className="gap-1.5"
+        disabled={pending}
+        onClick={onChat}
+      >
+        {pending ? <Loading className="size-4 shrink-0" /> : <PlusIcon className="size-4" />}
+        {label}
+      </Button>
+    );
+  }
   const manualLabel = manual.label ?? 'Set up manually';
   const manualBody = (
     <>

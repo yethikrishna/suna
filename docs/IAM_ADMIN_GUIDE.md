@@ -731,7 +731,7 @@ Per-trigger scope: `trigger.read/update/delete/fire`.
 | Group detail | `/accounts/{accountId}/groups/{groupId}` |
 | Member detail | `/accounts/{accountId}/members/{userId}` |
 | Project members / group grants / custom-role bindings / resource access | `/accounts/{accountId}?tab=access-projects&project={id}` (the **Members** link in the Customize tab bar) |
-| Agent access scope, triggers, grants, who can use it | `/projects/{id}/agent/{agentName}` (Customize → Agents → the agent) |
+| Agent access scope, triggers, grants, who can use it | `/projects/{id}/customize/agents/{agentName}` (Customize → Agents → the agent) |
 | Repo files (gated `project.file.read`) | `/projects/{id}/files` |
 | Sign-in (SSO domain routing) | `/auth` |
 

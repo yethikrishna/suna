@@ -21,7 +21,7 @@ const keysFor = (flags: ProjectSettingsSectionFlags) =>
   projectSettingsSections(flags).map((s) => s.key);
 
 /**
- * The four sections of `/projects/[id]/config` — the Customize bar's Settings
+ * The four sections of `/projects/[id]/customize/settings` — the Customize bar's Settings
  * tab. Two always-on, two flag-gated. They arrived here from the settings
  * overlay's `Workspace` and `Agent` rail groups, plus its pinned Upgrades row
  * and its `experimental` row; `rail.test.ts` pins that they left there.
@@ -134,14 +134,14 @@ describe('parseProjectSettingsSection', () => {
 describe('projectSettingsSectionHref', () => {
   test('the default section carries no query, so /config is a stable link', () => {
     expect(projectSettingsSectionHref('p1', DEFAULT_PROJECT_SETTINGS_SECTION)).toBe(
-      '/projects/p1/config',
+      '/projects/p1/customize/settings',
     );
   });
 
   test('every other section names itself in the query', () => {
-    expect(projectSettingsSectionHref('p1', 'sandbox')).toBe('/projects/p1/config?section=sandbox');
+    expect(projectSettingsSectionHref('p1', 'sandbox')).toBe('/projects/p1/customize/settings?section=sandbox');
     expect(projectSettingsSectionHref('p1', 'feature-flags')).toBe(
-      '/projects/p1/config?section=feature-flags',
+      '/projects/p1/customize/settings?section=feature-flags',
     );
   });
 

@@ -49,7 +49,7 @@ describe('CAPABILITY_TABS', () => {
     // The one URL. `/projects/<id>/channels` redirects to it, `GRADUATED`
     // points at it, and the project-home Slack tile opens it — all through
     // this function, so none of them can drift from the param the page parses.
-    expect(channelsHref('p1')).toBe('/projects/p1/connectors?scope=channels');
+    expect(channelsHref('p1')).toBe('/projects/p1/customize/connectors?scope=channels');
   });
 
 
@@ -74,39 +74,39 @@ describe('the Settings tab', () => {
 
 describe('capabilityTabHref', () => {
   test('builds a project-scoped path', () => {
-    expect(capabilityTabHref('p1', 'skills')).toBe('/projects/p1/skills');
-    expect(capabilityTabHref('p1', 'agent')).toBe('/projects/p1/agent');
-    expect(capabilityTabHref('p1', 'triggers')).toBe('/projects/p1/triggers');
-    expect(capabilityTabHref('p1', 'review')).toBe('/projects/p1/review');
+    expect(capabilityTabHref('p1', 'skills')).toBe('/projects/p1/customize/skills');
+    expect(capabilityTabHref('p1', 'agent')).toBe('/projects/p1/customize/agents');
+    expect(capabilityTabHref('p1', 'triggers')).toBe('/projects/p1/customize/triggers');
+    expect(capabilityTabHref('p1', 'review')).toBe('/projects/p1/customize/review');
   });
 });
 
 describe('agentHref', () => {
   test('nests one agent under the Agents tab and encodes the manifest key', () => {
-    expect(agentHref('p1', 'churn')).toBe('/projects/p1/agent/churn');
-    expect(agentHref('p1', 'a b/c')).toBe('/projects/p1/agent/a%20b%2Fc');
+    expect(agentHref('p1', 'churn')).toBe('/projects/p1/customize/agents/churn');
+    expect(agentHref('p1', 'a b/c')).toBe('/projects/p1/customize/agents/a%20b%2Fc');
   });
 });
 
 describe('activeCapabilityTab', () => {
   test("lights Agents on one agent's page, and only there among deeper paths", () => {
     expect(activeCapabilityTab(agentHref('p1', 'churn'))).toBe('agent');
-    expect(activeCapabilityTab('/projects/p1/agent/churn/')).toBe('agent');
+    expect(activeCapabilityTab('/projects/p1/customize/agents/churn/')).toBe('agent');
     // Only the third segment `agent` earns the deeper match — a skill or a
     // trigger one level down is not a route and must not light a tab.
-    expect(activeCapabilityTab('/projects/p1/skills/foo')).toBeNull();
-    expect(activeCapabilityTab('/projects/p1/agent/a/b')).toBeNull();
+    expect(activeCapabilityTab('/projects/p1/customize/skills/foo')).toBeNull();
+    expect(activeCapabilityTab('/projects/p1/customize/agents/a/b')).toBeNull();
   });
   test('matches the tab segment', () => {
-    expect(activeCapabilityTab('/projects/p1/agent')).toBe('agent');
-    expect(activeCapabilityTab('/projects/p1/connectors')).toBe('connectors');
-    expect(activeCapabilityTab('/projects/p1/skills')).toBe('skills');
-    expect(activeCapabilityTab('/projects/p1/triggers')).toBe('triggers');
-    expect(activeCapabilityTab('/projects/p1/review')).toBe('review');
+    expect(activeCapabilityTab('/projects/p1/customize/agents')).toBe('agent');
+    expect(activeCapabilityTab('/projects/p1/customize/connectors')).toBe('connectors');
+    expect(activeCapabilityTab('/projects/p1/customize/skills')).toBe('skills');
+    expect(activeCapabilityTab('/projects/p1/customize/triggers')).toBe('triggers');
+    expect(activeCapabilityTab('/projects/p1/customize/review')).toBe('review');
   });
   test('ignores a trailing slash', () => {
-    expect(activeCapabilityTab('/projects/p1/skills/')).toBe('skills');
-    expect(activeCapabilityTab('/projects/p1/agent/')).toBe('agent');
+    expect(activeCapabilityTab('/projects/p1/customize/skills/')).toBe('skills');
+    expect(activeCapabilityTab('/projects/p1/customize/agents/')).toBe('agent');
   });
   test('returns null off the capability routes', () => {
     expect(activeCapabilityTab('/projects/p1/files')).toBeNull();
@@ -122,12 +122,11 @@ describe('activeCapabilityTab', () => {
     // inside Settings.
     expect(activeCapabilityTab('/projects/p1/settings/schedules')).toBeNull();
     expect(activeCapabilityTab('/projects/p1/settings/webhooks')).toBeNull();
-    expect(activeCapabilityTab('/projects/p1/customize/skills')).toBeNull();
     // A tab key one level deeper under the overlay route is the overlay's
     // redirect, not this bar's tab.
     expect(activeCapabilityTab('/projects/p1/settings/review')).toBeNull();
     // The Settings tab's own path IS its tab; one level deeper is not.
-    expect(activeCapabilityTab('/projects/p1/config')).toBe('config');
-    expect(activeCapabilityTab('/projects/p1/config/general')).toBeNull();
+    expect(activeCapabilityTab('/projects/p1/customize/settings')).toBe('config');
+    expect(activeCapabilityTab('/projects/p1/customize/settings/general')).toBeNull();
   });
 });

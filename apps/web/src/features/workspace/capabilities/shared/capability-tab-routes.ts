@@ -53,9 +53,10 @@ export interface CapabilityTab {
  * resources an agent draws on — Skills first among them — follow behind a
  * seam. `PRIMARY_TABS` below names the leading group so the bar can draw it.
  *
- * The Agents key is singular because a key IS its URL segment
- * (`/projects/<id>/agent`); only the label is plural. One agent lives one
- * level deeper, at `agentHref` (`/projects/<id>/agent/<name>`).
+ * Every tab lives under `/projects/<id>/customize/<segment>` (Marko,
+ * 2026-09-03); `CAPABILITY_SEGMENT` maps a key to its segment. The Agents key
+ * stays singular for stability, its segment is `agents`, and one agent lives
+ * one level deeper, at `agentHref` (`/projects/<id>/customize/agents/<name>`).
  *
  * There is no Settings tab. `/projects/<id>/config` — the bar's trailing
  * "Settings" tab, a sub-nav over General / Sandbox templates / Review /
@@ -87,8 +88,34 @@ export const CAPABILITY_TABS: readonly CapabilityTab[] = [
  */
 export const PRIMARY_TABS: readonly CapabilityTab['key'][] = ['agent'];
 
+/**
+ * A tab's URL segment. Keys are stable identifiers used across the app
+ * (`TAB_PREFERENCE`, the palette, tests); segments are what a person reads in
+ * the address bar. The two differ where the key predates the URL: `agent`
+ * (singular key, kept so nothing keyed on it moves) lives at `agents`, and
+ * `config` — named to dodge the Preferences overlay's `/settings` route back
+ * when tabs sat directly under the project — lives at `settings` now that
+ * every tab sits under `/customize/`.
+ */
+export const CAPABILITY_SEGMENT: Record<CapabilityTab['key'], string> = {
+  agent: 'agents',
+  skills: 'skills',
+  connectors: 'connectors',
+  triggers: 'triggers',
+  review: 'review',
+  models: 'models',
+  secrets: 'secrets',
+  config: 'settings',
+};
+
+/** The root every capability tab hangs off (Marko, 2026-09-03: "always
+ *  /customize/agents, /customize/skills"). */
+export function customizeHref(projectId: string): string {
+  return `/projects/${projectId}/customize`;
+}
+
 export function capabilityTabHref(projectId: string, key: CapabilityTab['key']): string {
-  return `/projects/${projectId}/${key}`;
+  return `${customizeHref(projectId)}/${CAPABILITY_SEGMENT[key]}`;
 }
 
 /**
@@ -120,9 +147,10 @@ export function channelsHref(projectId: string): string {
 
 /**
  * The tab a pathname is on, matched against the shape `capabilityTabHref`
- * builds — `/projects/<id>/<key>` exactly — plus the ONE deeper shape this
- * group owns, `agentHref`'s `/projects/<id>/agent/<name>`, which lights the
- * Agents tab: an agent's page is the Agents tab, opened on one agent.
+ * builds — `/projects/<id>/customize/<segment>` exactly — plus the ONE deeper
+ * shape this group owns, `agentHref`'s `/projects/<id>/customize/agents/<name>`,
+ * which lights the Agents tab: an agent's page is the Agents tab, opened on
+ * one agent.
  *
  * The shape check is load-bearing, not defensive tidying. This used to match on
  * the LAST segment alone, which was harmless while every key was unique to this
@@ -135,9 +163,9 @@ export function channelsHref(projectId: string): string {
  */
 export function activeCapabilityTab(pathname: string): CapabilityTab['key'] | null {
   const segments = pathname.split('/').filter(Boolean);
-  if (segments[0] !== 'projects') return null;
-  if (segments.length === 4 && segments[2] === 'agent') return 'agent';
-  if (segments.length !== 3) return null;
-  const hit = CAPABILITY_TABS.find((t) => t.key === segments[2]);
+  if (segments[0] !== 'projects' || segments[2] !== 'customize') return null;
+  if (segments.length === 5 && segments[3] === CAPABILITY_SEGMENT.agent) return 'agent';
+  if (segments.length !== 4) return null;
+  const hit = CAPABILITY_TABS.find((t) => CAPABILITY_SEGMENT[t.key] === segments[3]);
   return hit ? hit.key : null;
 }

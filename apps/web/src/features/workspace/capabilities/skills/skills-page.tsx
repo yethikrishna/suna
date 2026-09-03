@@ -125,10 +125,6 @@ export function SkillsPage({ projectId }: { projectId: string }) {
         label={label}
         pending={configure.pending}
         onChat={() => configure.start(newConfigPrompt('skill'))}
-        manual={{
-          description: 'Add a SKILL.md under .kortix/opencode/skills in Files.',
-          href: `/projects/${projectId}/files`,
-        }}
       />
     ) : null;
 

@@ -2,12 +2,13 @@ import {
   ArrowCircleUpIcon as ArrowUpCircle,
   ShippingContainerIcon as Container,
   FlaskIcon as Flask,
+  GitBranchIcon as GitBranch,
   TrayIcon as Inbox,
   GearSixIcon as Settings,
   type Icon,
-  GitBranchIcon as GitBranch,
 } from '@phosphor-icons/react';
 
+import { capabilityTabHref } from '@/features/workspace/capabilities/shared/capability-tab-routes';
 import type { CustomizeSection } from '@/lib/project-actions';
 
 /**
@@ -49,12 +50,7 @@ import type { CustomizeSection } from '@/lib/project-actions';
  * at the key below that replaced it.
  */
 export type ProjectSettingsSectionKey =
-  | 'general'
-  | 'git'
-  | 'sandbox'
-  | 'review'
-  | 'feature-flags'
-  | 'upgrades';
+  'general' | 'git' | 'sandbox' | 'review' | 'feature-flags' | 'upgrades';
 
 /**
  * **One flat list, no headings.** The sub-nav used to carry the rail's three
@@ -196,8 +192,8 @@ export function projectSettingsSectionHref(
   key: ProjectSettingsSectionKey,
 ): string {
   return key === DEFAULT_PROJECT_SETTINGS_SECTION
-    ? `/projects/${projectId}/config`
-    : `/projects/${projectId}/config?section=${key}`;
+    ? capabilityTabHref(projectId, 'config')
+    : `${capabilityTabHref(projectId, 'config')}?section=${key}`;
 }
 
 /** The copy for one section, independent of any flag — used by pane headings. */

@@ -32,7 +32,7 @@ import type { RailItem } from './type';
  *
  * **The overlay is three tabs now.** Twenty-one rows left it: eight
  * account-scoped ones for `/accounts/[id]`, and thirteen project-scoped ones
- * for the Customize bar's Settings tab, `/projects/[id]/config`. What remains
+ * for the Customize bar's Settings tab, `/projects/[id]/customize/settings`. What remains
  * is Profile, Preferences and Connected accounts — the tabs that belong to the
  * signed-in PERSON. Every assertion below is derived from `railGroups()` or
  * `SETTINGS_TABS` rather than hard-coded counts, so the next arrival or
@@ -97,7 +97,7 @@ describe('SettingsPanelShell — desktop rail', () => {
   test('renders one TabsList per rail group — Radix cannot mix a group Label into one shared list', () => {
     const html = render();
     // One list per group, and no pinned extra: the Upgrades footer went to
-    // `/projects/[id]/config` with the rest of project configuration.
+    // `/projects/[id]/customize/settings` with the rest of project configuration.
     expect((html.match(/role="tablist"/g) ?? []).length).toBe(allGroups.length);
   });
 
@@ -287,7 +287,7 @@ describe('SettingsPanelShell — pane wiring', () => {
  * future Radix upgrade changes that internal.
  *
  * The thirteen project-scoped cases that used to sit here moved with their
- * tabs to `/projects/[id]/config`; the eight account-scoped ones moved to
+ * tabs to `/projects/[id]/customize/settings`; the eight account-scoped ones moved to
  * `/accounts/[id]`. Neither set is asserted here any more, because neither
  * mounts here any more.
  */
@@ -418,7 +418,7 @@ describe('SettingsPanelShell — mobile', () => {
  * rather than mocking it.
  *
  * The overlay is one of TWO hosts of that context now. The other is
- * `/projects/[id]/config`, whose adapter (`buildProjectSettingsNav`) is
+ * `/projects/[id]/customize/settings`, whose adapter (`buildProjectSettingsNav`) is
  * covered in `capabilities/project-settings/project-settings-page.test.ts`.
  */
 describe('buildSettingsPanelSettingsNav', () => {
@@ -482,7 +482,7 @@ describe('buildSettingsPanelSettingsNav', () => {
  * rows the rail may show on each, and — for the two Workspace rows that
  * mount config-page panes — whether the caller's project capabilities admit
  * the row, over the identical `CUSTOMIZE_SECTION_GATE_ACTIONS` leaves
- * `/projects/[id]/config` reads.
+ * `/projects/[id]/customize/settings` reads.
  */
 describe('isSettingsTabAllowed — project scope (JAY-547)', () => {
   function paramsFor(overrides: Partial<SettingsTabAllowedParams> = {}): SettingsTabAllowedParams {

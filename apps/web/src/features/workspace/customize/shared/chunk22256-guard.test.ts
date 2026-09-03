@@ -16,7 +16,7 @@ import { describe, expect, test } from 'bun:test';
 // `.filter` / `.map` (the connectors-view Slack test uses the same pattern).
 
 // The agents surface moved from this overlay section to the standalone
-// `/projects/[id]/agent` page; the guard follows the code, because the config
+// `/projects/[id]/customize/agents` page; the guard follows the code, because the config
 // fields it reads (and the ways they can come back undefined) did not change.
 const capabilities = join(
   import.meta.dir,

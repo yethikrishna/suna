@@ -26,7 +26,10 @@
  * legacy section/tab name and redirect them where applicable.
  */
 
-import { channelsHref } from '@/features/workspace/capabilities/shared/capability-tab-routes';
+import {
+  capabilityTabHref,
+  channelsHref,
+} from '@/features/workspace/capabilities/shared/capability-tab-routes';
 
 export type SettingsTab =
   | 'profile'
@@ -167,23 +170,23 @@ const GRADUATED: Record<string, (projectId: string) => string> = {
   // The overlay section was `agents`; the route segment is `agent`. Both
   // spellings redirect, because every bookmark and stale href in the wild
   // points at the plural one.
-  agent: (p) => `/projects/${p}/agent`,
-  agents: (p) => `/projects/${p}/agent`,
-  connectors: (p) => `/projects/${p}/connectors`,
+  agent: (p) => capabilityTabHref(p, 'agent'),
+  agents: (p) => capabilityTabHref(p, 'agent'),
+  connectors: (p) => capabilityTabHref(p, 'connectors'),
   // Computers graduated out of settings on `main` (#6313): device pairing and
   // per-capability grants are a connector now (`ComputerTunnelManager` in
   // `capabilities/connectors/`), so a bookmarked `/customize/computers` or
   // `/settings/computers` lands on the Connectors page instead of a tab that
   // no longer exists.
-  computers: (p) => `/projects/${p}/connectors`,
-  skills: (p) => `/projects/${p}/skills`,
+  computers: (p) => capabilityTabHref(p, 'connectors'),
+  skills: (p) => capabilityTabHref(p, 'skills'),
   // Schedules and Webhooks graduated out of the overlay, merged into one
   // Triggers capability page (a trigger is one resource with two ways to
   // start it). Every `/settings/schedules`, `/settings/webhooks`,
   // `/customize/schedules` and `/customize/webhooks` bookmark in the wild
   // lands on the merged page instead of a tab that no longer exists.
-  schedules: (p) => `/projects/${p}/triggers`,
-  webhooks: (p) => `/projects/${p}/triggers`,
+  schedules: (p) => capabilityTabHref(p, 'triggers'),
+  webhooks: (p) => capabilityTabHref(p, 'triggers'),
 
   // ── Project configuration → the Customize bar's Settings tab ────────────
   // `/projects/<id>/config` holds General, Sandbox templates, Feature flags
@@ -192,24 +195,24 @@ const GRADUATED: Record<string, (projectId: string) => string> = {
   // — so every id that ever named one of these sections, the overlay's own
   // tab ids included, lands on the page. Review, the one section that was an
   // inbox rather than configuration, is a capability tab of its own.
-  workspace: (p) => `/projects/${p}/config`,
-  general: (p) => `/projects/${p}/config`,
-  settings: (p) => `/projects/${p}/config`,
+  workspace: (p) => `${capabilityTabHref(p, 'config')}`,
+  general: (p) => `${capabilityTabHref(p, 'config')}`,
+  settings: (p) => `${capabilityTabHref(p, 'config')}`,
   // Repositories and its pre-rename `git` are the Git repo section — its own
   // section of the Settings tab since 2026-09-03.
-  repositories: (p) => `/projects/${p}/config?section=git`,
-  git: (p) => `/projects/${p}/config?section=git`,
-  sandbox: (p) => `/projects/${p}/config?section=sandbox`,
+  repositories: (p) => `${capabilityTabHref(p, 'config')}?section=git`,
+  git: (p) => `${capabilityTabHref(p, 'config')}?section=git`,
+  sandbox: (p) => `${capabilityTabHref(p, 'config')}?section=sandbox`,
   // Snapshots merged into Sandbox templates — a snapshot is a template's
   // build history.
-  snapshots: (p) => `/projects/${p}/config?section=sandbox`,
-  'feature-flags': (p) => `/projects/${p}/config?section=feature-flags`,
+  snapshots: (p) => `${capabilityTabHref(p, 'config')}?section=sandbox`,
+  'feature-flags': (p) => `${capabilityTabHref(p, 'config')}?section=feature-flags`,
   // `experimental` was renamed Feature flags on the way.
-  experimental: (p) => `/projects/${p}/config?section=feature-flags`,
-  upgrades: (p) => `/projects/${p}/config?section=upgrades`,
+  experimental: (p) => `${capabilityTabHref(p, 'config')}?section=feature-flags`,
+  upgrades: (p) => `${capabilityTabHref(p, 'config')}?section=upgrades`,
   // `upgrade`, singular, is the old Customize id for the Upgrades pane.
-  upgrade: (p) => `/projects/${p}/config?section=upgrades`,
-  review: (p) => `/projects/${p}/review`,
+  upgrade: (p) => `${capabilityTabHref(p, 'config')}?section=upgrades`,
+  review: (p) => capabilityTabHref(p, 'review'),
   // Secrets, Channels, and Models graduated a SECOND time — off the Settings
   // sub-nav entirely and onto their own top-level Customize tab. `models` and
   // every `llm-*` sub-section (the old Models pane's own sub-tabs) all land
@@ -221,20 +224,20 @@ const GRADUATED: Record<string, (projectId: string) => string> = {
   // membership configures the ACCOUNT, not the project, the same reasoning
   // that moved Organization/Billing/Groups/Roles/Identity/Audit/API keys to
   // `ACCOUNT_GRADUATED` below. `members` lives there now, not here.
-  secrets: (p) => `/projects/${p}/secrets`,
+  secrets: (p) => capabilityTabHref(p, 'secrets'),
   // Channels graduated a second time and then came back down: it is a scope of
   // the Connectors page now, not a tab of its own. `channelsHref` is that one
   // URL, shared with the retired `/projects/<id>/channels` route so the two
   // cannot disagree about the param.
   channels: (p) => channelsHref(p),
-  models: (p) => `/projects/${p}/models`,
-  'llm-management': (p) => `/projects/${p}/models`,
-  'llm-overview': (p) => `/projects/${p}/models`,
-  'llm-providers': (p) => `/projects/${p}/models`,
-  'llm-logs': (p) => `/projects/${p}/models`,
-  'llm-budgets': (p) => `/projects/${p}/models`,
-  'llm-keys': (p) => `/projects/${p}/models`,
-  'llm-api': (p) => `/projects/${p}/models`,
+  models: (p) => capabilityTabHref(p, 'models'),
+  'llm-management': (p) => capabilityTabHref(p, 'models'),
+  'llm-overview': (p) => capabilityTabHref(p, 'models'),
+  'llm-providers': (p) => capabilityTabHref(p, 'models'),
+  'llm-logs': (p) => capabilityTabHref(p, 'models'),
+  'llm-budgets': (p) => capabilityTabHref(p, 'models'),
+  'llm-keys': (p) => capabilityTabHref(p, 'models'),
+  'llm-api': (p) => capabilityTabHref(p, 'models'),
   // Marketplace was removed from the product outright, not relocated. The
   // closest honest destination for a stale bookmark is the Customize index —
   // it lists every surface that replaced it, rather than a 404 or a pane that
@@ -426,6 +429,10 @@ export type SettingsOverlayMatch =
  * `{ opensOverlay: false }`.
  */
 export function resolveSettingsOverlayHref(href: string): SettingsOverlayMatch {
+  // The Customize bar's Settings TAB lives at `/customize/settings` (2026-09-03)
+  // and is a page, not the Preferences overlay — its segment must not trip
+  // the overlay matcher below.
+  if (/\/customize\/settings(?:[/?#]|$)/.test(href)) return { opensOverlay: false };
   const match = href.match(/\/settings(?:\/([^/?#]+))?/);
   if (!match) return { opensOverlay: false };
   if (!match[1]) return { opensOverlay: true, tab: undefined };

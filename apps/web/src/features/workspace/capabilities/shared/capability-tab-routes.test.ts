@@ -27,8 +27,10 @@ describe('CAPABILITY_TABS', () => {
     ]);
   });
 
-  test('the primary group is Agents then Skills, and it is a prefix of the bar', () => {
-    expect(PRIMARY_TABS).toEqual(['agent', 'skills']);
+  test('the primary group is Agents alone, and it is a prefix of the bar', () => {
+    // Skills moved to the right of the seam (Marko, 2026-09-03): it is
+    // something an agent draws on, like the rest of the library.
+    expect(PRIMARY_TABS).toEqual(['agent']);
     expect(CAPABILITY_TABS.slice(0, PRIMARY_TABS.length).map((t) => t.key)).toEqual([
       ...PRIMARY_TABS,
     ]);

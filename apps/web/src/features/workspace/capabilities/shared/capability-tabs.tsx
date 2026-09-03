@@ -157,8 +157,8 @@ function MembersLaunchLink({ projectId }: { projectId: string }) {
  * element.
  */
 /**
- * The hairline between the two objects you build (Agents, Skills) and the
- * resources they draw on (Connectors through Secrets). One `TabsList` still —
+ * The hairline between Agents and everything an agent draws on (Skills
+ * through Secrets). One `TabsList` still —
  * this is a `span`, not a second list, so the underline indicator and the
  * keyboard roving stay unified. It is `aria-hidden` because the grouping is
  * visual: a screen reader walks seven tabs either way.
@@ -204,7 +204,7 @@ export function CapabilityTabs({ projectId }: { projectId: string }) {
         >
           {primary.map(renderTab)}
           {/* The seam only earns its pixel when both groups are drawn — a
-              role that holds only Agents and Skills gets no dangling bar. */}
+              role that holds only Agents gets no dangling bar. */}
           {primary.length > 0 && library.length > 0 ? <GroupSeam /> : null}
           {library.map(renderTab)}
           <MembersLaunchLink projectId={projectId} />

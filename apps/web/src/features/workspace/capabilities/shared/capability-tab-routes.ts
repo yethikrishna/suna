@@ -41,7 +41,7 @@ export interface CapabilityTab {
  * `project-sidebar/project-settings-nav.tsx` mirrors it and is asserted
  * against it, so reordering here moves the landing tab too.
  *
- * ## Agents lead, Skills second, everything else is their library
+ * ## Agents lead, everything else is their library
  *
  * Customize is agent-centric (Marko, 2026-09-01). An agent is the only
  * object a project manager grants a person or a group access to — the object
@@ -49,9 +49,9 @@ export interface CapabilityTab {
  * (`apps/api/src/iam/authorize.ts`) — so it is the primitive every other
  * decision hangs off: which model it thinks with, which skills it loads,
  * which connectors and secrets it may reach, when a trigger starts it. The
- * bar is ordered the way that decision is made: the two objects you BUILD
- * (Agents, Skills) lead, the resources they draw on follow. `PRIMARY_TABS`
- * below names the first group so the bar can draw the seam between them.
+ * bar is ordered the way that decision is made: Agents leads, alone, and the
+ * resources an agent draws on — Skills first among them — follow behind a
+ * seam. `PRIMARY_TABS` below names the leading group so the bar can draw it.
  *
  * The Agents key is singular because a key IS its URL segment
  * (`/projects/<id>/agent`); only the label is plural. One agent lives one
@@ -79,10 +79,12 @@ export const CAPABILITY_TABS: readonly CapabilityTab[] = [
 ];
 
 /**
- * The tabs a person builds things on. The rest of the bar is what those
- * things draw on — the tab bar draws a hairline seam after the last of these.
+ * The tab the bar is built around. Agents alone (Marko, 2026-09-03): the
+ * agent is the object a person is granted, and everything to the right of
+ * the seam — Skills included — is what an agent draws on. The bar draws a
+ * hairline seam after it, and it is the landing tab.
  */
-export const PRIMARY_TABS: readonly CapabilityTab['key'][] = ['agent', 'skills'];
+export const PRIMARY_TABS: readonly CapabilityTab['key'][] = ['agent'];
 
 export function capabilityTabHref(projectId: string, key: CapabilityTab['key']): string {
   return `/projects/${projectId}/${key}`;

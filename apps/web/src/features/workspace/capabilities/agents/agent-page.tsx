@@ -131,7 +131,6 @@ import { useIsMobile } from '@/hooks/utils';
 
 import { EditorSectionStyleProvider } from '@/features/workspace/customize/sections/view/agent-editor-primitives';
 
-import { AgentColorMark } from './agent-color-mark';
 import { AgentModel, AgentScope } from './agent-detail-aside';
 import { AgentPeopleSection } from './agent-people-section';
 import { AgentTriggersSection } from './agent-triggers-section';
@@ -281,7 +280,7 @@ function AgentPageFrame({
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      <div className="border-border/60 shrink-0 border-b px-6 pt-5 pb-4 lg:px-8">{header}</div>
+      <div className="border-border/60 shrink-0 border-b px-4 pt-5 pb-4">{header}</div>
       <div
         className={cn(
           'min-h-0 flex-1',
@@ -340,7 +339,7 @@ function CenteredState({ children }: { children: ReactNode }) {
 function AgentPageSkeleton() {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      <div className="border-border/60 shrink-0 space-y-4 border-b px-6 pt-5 pb-4 lg:px-8">
+      <div className="border-border/60 shrink-0 space-y-4 border-b px-4 pt-5 pb-4">
         <Skeleton className="h-4 w-32 rounded-sm" />
         <Skeleton className="h-8 w-56 rounded-sm" />
       </div>
@@ -533,16 +532,12 @@ function AgentHeader({
   agent,
   config,
   canWrite,
-  color,
   children,
 }: {
   projectId: string;
   agent: Agent;
   config: ProjectConfigSummary;
   canWrite: boolean;
-  /** The badge colour to draw — the draft's while editing, so a swatch click
-   *  under Basics recolours the mark up here before it is saved. */
-  color: string | null | undefined;
   children?: ReactNode;
 }) {
   return (
@@ -566,12 +561,9 @@ function AgentHeader({
 
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <span className="flex items-center gap-2.5">
-            <AgentColorMark color={color} size="md" />
-            <h1 className="text-foreground text-2xl font-semibold tracking-tight text-balance">
-              {capitalizeWords(agent.name)}
-            </h1>
-          </span>
+          <h1 className="text-foreground text-2xl font-semibold tracking-tight text-balance">
+            {capitalizeWords(agent.name)}
+          </h1>
           <AgentChips agent={agent} config={config} size="sm" />
         </div>
         {children}
@@ -592,14 +584,12 @@ function CompactBar({
   agent,
   config,
   canWrite,
-  color,
 }: {
   visible: boolean;
   projectId: string;
   agent: Agent;
   config: ProjectConfigSummary;
   canWrite: boolean;
-  color: string | null | undefined;
 }) {
   return (
     <div className="sticky top-0 z-10 h-0">
@@ -615,7 +605,6 @@ function CompactBar({
           >
             <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-6 py-2 lg:px-10">
               <span className="flex min-w-0 items-center gap-2.5">
-                <AgentColorMark color={color} />
                 <span className="text-foreground truncate text-sm font-medium">
                   {capitalizeWords(agent.name)}
                 </span>
@@ -787,15 +776,7 @@ function EditableAgentPage({
 
   return (
     <AgentPageFrame
-      header={
-        <AgentHeader
-          projectId={projectId}
-          agent={agent}
-          config={config}
-          canWrite
-          color={editor.oc.color}
-        />
-      }
+      header={<AgentHeader projectId={projectId} agent={agent} config={config} canWrite />}
       section={section}
       sections={EDITABLE_SECTIONS}
       sectionHref={sectionHrefFor(pathname)}
@@ -1180,13 +1161,7 @@ function ReadOnlyAgentPage({
   return (
     <AgentPageFrame
       header={
-        <AgentHeader
-          projectId={projectId}
-          agent={agent}
-          config={config}
-          canWrite={canWrite}
-          color={agent.color}
-        >
+        <AgentHeader projectId={projectId} agent={agent} config={config} canWrite={canWrite}>
           {agent.description ? (
             <p className="text-muted-foreground max-w-2xl text-sm text-pretty">
               {agent.description}

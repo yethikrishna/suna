@@ -18,7 +18,6 @@
 
 import { Button } from '@/components/ui/button';
 import { Disclosure, DisclosureContent, DisclosureTrigger } from '@/components/ui/disclosure';
-import Hint from '@/components/ui/hint';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -32,18 +31,16 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { ModelSelector } from '@/features/session/model-selector';
 import { flattenModels } from '@/features/session/session-chat-input';
-import { cn } from '@/lib/utils';
-import type { AgentConfigBlock, RuntimeAgentConfig } from '@kortix/sdk';
-import { useState } from 'react';
-import { modelKeyToWire, useFeatureFlag, useKortixRouteProjectId, useRuntimeProviders } from '@kortix/sdk/react';
 import { storedModelRefToKey } from '@/lib/llm-gateway';
+import type { AgentConfigBlock, RuntimeAgentConfig } from '@kortix/sdk';
 import {
-  AGENT_MODE_HELP,
-  AGENT_MODE_LABEL,
-  AGENT_MODES,
-  THEME_COLOR_SWATCH,
-  THEME_COLORS,
-} from './agent-editor-catalog';
+  modelKeyToWire,
+  useFeatureFlag,
+  useKortixRouteProjectId,
+  useRuntimeProviders,
+} from '@kortix/sdk/react';
+import { useState } from 'react';
+import { AGENT_MODE_HELP, AGENT_MODE_LABEL, AGENT_MODES } from './agent-editor-catalog';
 import { EditorSection, InlineAction, SettingBlock, SettingRow } from './agent-editor-primitives';
 
 /** Matches the access section's inherit sentinel — Radix forbids `""`. */
@@ -141,114 +138,7 @@ export function BasicsSection({
           />
         </div>
       </SettingRow>
-
-      {/* A block, not a row: eight swatches plus the custom well are wider
-          than a row's control slot and wrapped into two ragged lines. */}
-      <SettingBlock
-        label="Badge color"
-        help={
-          oc.color ? (
-            <>
-              <span className="font-mono">{oc.color}</span> ·{' '}
-              <InlineAction onClick={() => setOc('color', undefined)}>Clear</InlineAction>
-            </>
-          ) : (
-            "Tints this agent's badge in session lists."
-          )
-        }
-      >
-        <ColorSwatches value={oc.color} onChange={(v) => setOc('color', v)} />
-      </SettingBlock>
     </EditorSection>
-  );
-}
-
-/**
- * Seven named theme colours as swatches, plus a custom hex well.
- *
- * This replaced seven text pills reading "primary secondary accent success
- * warning error info", a colour input, and a mono badge echoing the value —
- * nine controls for a badge tint. A colour picker should show colour.
- */
-function ColorSwatches({
-  value,
-  onChange,
-}: {
-  value: string | undefined;
-  onChange: (v: string | undefined) => void;
-}) {
-  const isHex = /^#[0-9a-fA-F]{6}$/.test(value ?? '');
-  // Eight size-7 targets at gap-0.5 is 238px — two under the row's 240px
-  // control slot. `flex-wrap` is the safety net for a zoom or font change that
-  // pushes it over, rather than letting one swatch clip.
-  return (
-    <div className="flex flex-wrap items-center gap-0.5">
-      {THEME_COLORS.map((c) => {
-        const active = value === c;
-        return (
-          <Hint key={c} label={c} side="bottom">
-            <button
-              type="button"
-              aria-label={c}
-              aria-pressed={active}
-              onClick={() => onChange(active ? undefined : c)}
-              className={cn(
-                // size-7 keeps the tap target honest while the dot stays size-4.
-                'flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-sm transition-transform active:scale-[0.96]',
-                'focus-visible:ring-ring/50 focus-visible:ring-2 focus-visible:outline-none',
-              )}
-            >
-              <span
-                className={cn(
-                  'size-5 rounded-sm transition-shadow',
-                  THEME_COLOR_SWATCH[c],
-                  active
-                    ? 'ring-foreground ring-offset-popover ring-1 ring-offset-1'
-                    : 'ring-border ring-[1px] ring-inset',
-                )}
-              />
-            </button>
-          </Hint>
-        );
-      })}
-      <Hint label="Custom color" side="bottom">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-sm">
-          {/* Native color inputs only paint a solid hex. When nothing custom is
-              selected, cover the well with a rainbow wheel so the control reads
-              as "pick any colour" rather than a fixed purple seed. */}
-          <span
-            className={cn(
-              'relative size-5 overflow-hidden rounded-sm transition-shadow',
-              isHex
-                ? 'ring-foreground ring-offset-popover ring-1 ring-offset-1'
-                : 'ring-border ring-[1px] ring-inset',
-            )}
-          >
-            {!isHex && (
-              <span
-                aria-hidden
-                className="pointer-events-none absolute inset-0"
-                style={{
-                  background:
-                    'conic-gradient(from 0deg, #ff0040, #ff9a00, #ffe600, #00e676, #00d4ff, #2979ff, #d500f9, #ff0040)',
-                }}
-              />
-            )}
-            <input
-              type="color"
-              aria-label="Custom color"
-              value={isHex ? value : '#7c5cff'}
-              onChange={(e) => onChange(e.target.value)}
-              className={cn(
-                'absolute inset-0 size-full cursor-pointer appearance-none bg-transparent p-0',
-                '[&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0',
-                !isHex && 'opacity-0',
-              )}
-            />
-          </span>
-        </span>
-      </Hint>
-    </div>
   );
 }
 
@@ -386,33 +276,36 @@ export function ModelSection({
       {/* A wall of text most agents never set — collapsed, like the tool
           permissions at the foot of the editor. */}
       {showPrompt ? (
-      <SettingBlock label="System prompt" help="Replaces the default instructions for this agent.">
-        <Disclosure variant="outline" className="overflow-hidden rounded-md">
-          <DisclosureTrigger variant="outline">
-            <Button
-              variant="popover"
-              className="flex w-full items-center justify-between gap-3 rounded-none text-sm font-normal"
-            >
-              <span className="min-w-0 truncate">
-                {oc.prompt ? firstLine(oc.prompt) : 'Not set — using the default instructions'}
-              </span>
-              <span className="text-muted-foreground shrink-0 text-xs">
-                {oc.prompt ? 'Edit' : 'Write one'}
-              </span>
-            </Button>
-          </DisclosureTrigger>
-          <DisclosureContent variant="outline" contentClassName="border-border border-t">
-            <Textarea
-              aria-label="System prompt"
-              value={oc.prompt ?? ''}
-              placeholder="You are…"
-              minHeight={160}
-              className="rounded-none border-0 font-mono text-xs focus-visible:border-0 focus-visible:ring-0"
-              onChange={(e) => setOc('prompt', e.target.value)}
-            />
-          </DisclosureContent>
-        </Disclosure>
-      </SettingBlock>
+        <SettingBlock
+          label="System prompt"
+          help="Replaces the default instructions for this agent."
+        >
+          <Disclosure variant="outline" className="overflow-hidden rounded-md">
+            <DisclosureTrigger variant="outline">
+              <Button
+                variant="popover"
+                className="flex w-full items-center justify-between gap-3 rounded-none text-sm font-normal"
+              >
+                <span className="min-w-0 truncate">
+                  {oc.prompt ? firstLine(oc.prompt) : 'Not set — using the default instructions'}
+                </span>
+                <span className="text-muted-foreground shrink-0 text-xs">
+                  {oc.prompt ? 'Edit' : 'Write one'}
+                </span>
+              </Button>
+            </DisclosureTrigger>
+            <DisclosureContent variant="outline" contentClassName="border-border border-t">
+              <Textarea
+                aria-label="System prompt"
+                value={oc.prompt ?? ''}
+                placeholder="You are…"
+                minHeight={160}
+                className="rounded-none border-0 font-mono text-xs focus-visible:border-0 focus-visible:ring-0"
+                onChange={(e) => setOc('prompt', e.target.value)}
+              />
+            </DisclosureContent>
+          </Disclosure>
+        </SettingBlock>
       ) : null}
     </EditorSection>
   );

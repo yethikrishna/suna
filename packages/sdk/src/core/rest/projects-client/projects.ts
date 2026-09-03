@@ -148,10 +148,6 @@ export interface ProjectConfigSummary {
     path: string;
     description: string | null;
     mode: string | null;
-    /** The agent's `color:` frontmatter — a named theme colour or a hex —
-     *  so lists can draw the mark its session badge wears. Absent on older
-     *  servers, null when the file sets none. */
-    color?: string | null;
     /** The agent's `model:` frontmatter (`provider/model`); absent on older
      *  servers, null when it follows the project default. */
     model?: string | null;

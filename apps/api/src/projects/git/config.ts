@@ -184,7 +184,6 @@ export function resolveConfigAgents(
           path: spec.file ?? native?.path ?? spec.path,
           description: native?.description ?? null,
           mode: native?.mode ?? null,
-          color: native?.color ?? null,
           model: native?.model ?? null,
           source: 'kortix.yaml' as const,
           enabled: spec.enabled,
@@ -269,7 +268,6 @@ export async function loadProjectConfig(
         path,
         description: meta.description || null,
         mode: meta.mode || null,
-        color: meta.color || null,
         model: meta.model || null,
       };
     }),

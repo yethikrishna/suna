@@ -56,7 +56,6 @@ import {
 } from '@/features/workspace/capabilities/shared/catalog/catalog-empty-state';
 import { CatalogGrid } from '@/features/workspace/capabilities/shared/catalog/catalog-grid';
 
-import { AgentColorMark } from './agent-color-mark';
 import { filterAgents } from './agent-filter';
 
 type Agent = ProjectConfigSummary['agents'][number];
@@ -246,7 +245,6 @@ export function AgentsPage({ projectId }: { projectId: string }) {
           <CatalogCard
             key={agent.path}
             href={agentHref(projectId, agent.name)}
-            leading={<AgentColorMark color={agent.color} className="mt-[7px]" />}
             title={capitalizeWords(agent.name)}
             description={agent.description}
             badges={<AgentCardBadges agent={agent} isDefault={defaultAgent === agent.name} />}

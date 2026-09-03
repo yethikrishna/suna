@@ -460,6 +460,19 @@
       },
       "testNotificationTitle": "Testbenachrichtigung",
       "testNotificationBody": "Benachrichtigungen funktionieren korrekt!"
+    },
+    "connected": {
+      "checking": "Dieses Konto wird auf eine GitHub-App-Installation geprüft.",
+      "connectedAs": "Verbunden als {name} — für dieses Konto installiert und von allen Projekten gemeinsam genutzt.",
+      "unavailable": "Der GitHub-Status ist für dieses Konto nicht verfügbar.",
+      "install": "Installieren Sie die GitHub App für dieses Konto, damit alle Projekte Repositorys importieren können.",
+      "disconnect": "Trennen",
+      "connect": "Verbinden",
+      "github": "GitHub",
+      "moreInstallations": "+{count, plural, one {# weitere Installation} other {# weitere Installationen}} in diesem Konto — alle verwalten",
+      "adminOnly": "Nur Kontoinhaber oder Administratoren können GitHub für dieses Konto verbinden.",
+      "disconnectedToast": "GitHub-Verbindung getrennt",
+      "disconnectFailed": "GitHub-Verbindung konnte nicht getrennt werden"
     }
   },
   "triggers": {

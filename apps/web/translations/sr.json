@@ -454,6 +454,19 @@
       },
       "testNotificationTitle": "Пробно обавештење",
       "testNotificationBody": "Обавештења раде исправно!"
+    },
+    "connected": {
+      "checking": "Провера GitHub App инсталације за овај налог.",
+      "connectedAs": "Повезано као {name} — инсталирано за овај налог и дељено са свим пројектима.",
+      "unavailable": "GitHub статус није доступан за овај налог.",
+      "install": "Инсталирајте GitHub App за овај налог да би сви пројекти могли да увозе репозиторијуме.",
+      "disconnect": "Прекини везу",
+      "connect": "Повежи",
+      "github": "GitHub",
+      "moreInstallations": "+{count, plural, one {# додатна инсталација} few {# додатне инсталације} other {# додатних инсталација}} на овом налогу — управљај свима",
+      "adminOnly": "Само власник или администратор може да повеже GitHub за овај налог.",
+      "disconnectedToast": "GitHub веза је прекинута",
+      "disconnectFailed": "Прекид GitHub везе није успео"
     }
   },
   "triggers": {

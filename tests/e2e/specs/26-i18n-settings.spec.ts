@@ -81,6 +81,11 @@ interface LocaleMessages {
       volume: string;
       soundEvents: Record<string, { label: string; description: string }>;
     };
+    connected: {
+      github: string;
+      install: string;
+      connect: string;
+    };
   };
 }
 
@@ -354,6 +359,27 @@ test.describe("26 — Settings localization", () => {
               page.getByText(eventCopy.description, { exact: true }).first(),
             ).toBeVisible();
           }
+
+          await page
+            .getByRole("tab", {
+              name: copy.settings.rail.items.connected.label,
+              exact: true,
+            })
+            .click();
+          for (const connectedText of [
+            copy.settings.connected.github,
+            copy.settings.connected.install,
+          ]) {
+            await expect(
+              page.getByText(connectedText, { exact: true }).first(),
+            ).toBeVisible();
+          }
+          await expect(
+            page.getByRole("button", {
+              name: `Github ${copy.settings.connected.connect}`,
+              exact: true,
+            }),
+          ).toBeVisible();
 
           await page
             .getByRole("tab", {

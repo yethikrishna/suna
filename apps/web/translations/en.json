@@ -275,6 +275,19 @@
       "testNotificationTitle": "Test Notification",
       "testNotificationBody": "Notifications are working correctly!"
     },
+    "connected": {
+      "checking": "Checking this account for a GitHub App installation.",
+      "connectedAs": "Connected as {name} — installed for this account, shared by every project.",
+      "unavailable": "GitHub status unavailable for this account.",
+      "install": "Install the GitHub App for this account so every project can import its repositories.",
+      "disconnect": "Disconnect",
+      "connect": "Connect",
+      "github": "GitHub",
+      "moreInstallations": "+{count, plural, one {# more installation} other {# more installations}} on this account — manage all",
+      "adminOnly": "Only an account owner or admin can connect GitHub for this account.",
+      "disconnectedToast": "GitHub disconnected",
+      "disconnectFailed": "Failed to disconnect GitHub"
+    },
     "preferences": {
       "title": "Language & shortcuts",
       "description": "Language and keyboard shortcuts.",

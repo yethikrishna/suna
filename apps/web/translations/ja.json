@@ -454,6 +454,19 @@
       },
       "testNotificationTitle": "テスト通知",
       "testNotificationBody": "通知は正常に動作しています！"
+    },
+    "connected": {
+      "checking": "このアカウントの GitHub App インストールを確認しています。",
+      "connectedAs": "{name} として接続済み — このアカウントにインストールされ、すべてのプロジェクトで共有されます。",
+      "unavailable": "このアカウントの GitHub ステータスを取得できません。",
+      "install": "すべてのプロジェクトでリポジトリをインポートできるように、このアカウントへ GitHub App をインストールします。",
+      "disconnect": "接続を解除",
+      "connect": "接続",
+      "github": "GitHub",
+      "moreInstallations": "{count, plural, other {このアカウントに他 # 件のインストール — すべて管理}}",
+      "adminOnly": "このアカウントの所有者または管理者だけが GitHub を接続できます。",
+      "disconnectedToast": "GitHub の接続を解除しました",
+      "disconnectFailed": "GitHub の接続を解除できませんでした"
     }
   },
   "triggers": {

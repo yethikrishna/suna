@@ -463,6 +463,19 @@
       },
       "testNotificationTitle": "Notification de test",
       "testNotificationBody": "Les notifications fonctionnent correctement !"
+    },
+    "connected": {
+      "checking": "Recherche d'une installation GitHub App pour ce compte.",
+      "connectedAs": "Connecté en tant que {name} — installé pour ce compte et partagé par tous les projets.",
+      "unavailable": "Le statut GitHub n'est pas disponible pour ce compte.",
+      "install": "Installez GitHub App pour ce compte afin que tous les projets puissent importer des dépôts.",
+      "disconnect": "Déconnecter",
+      "connect": "Connecter",
+      "github": "GitHub",
+      "moreInstallations": "+{count, plural, one {# autre installation} other {# autres installations}} sur ce compte — tout gérer",
+      "adminOnly": "Seul le propriétaire ou un administrateur peut connecter GitHub pour ce compte.",
+      "disconnectedToast": "GitHub déconnecté",
+      "disconnectFailed": "Impossible de déconnecter GitHub"
     }
   },
   "triggers": {

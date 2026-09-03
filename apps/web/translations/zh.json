@@ -439,6 +439,19 @@
       },
       "testNotificationTitle": "测试通知",
       "testNotificationBody": "通知功能运行正常！"
+    },
+    "connected": {
+      "checking": "正在检查此帐户的 GitHub App 安装。",
+      "connectedAs": "已连接为 {name} — 安装在此帐户中，由所有项目共享。",
+      "unavailable": "无法获取此帐户的 GitHub 状态。",
+      "install": "为此帐户安装 GitHub App，以便所有项目都能导入其仓库。",
+      "disconnect": "断开连接",
+      "connect": "连接",
+      "github": "GitHub",
+      "moreInstallations": "{count, plural, other {此帐户中还有 # 个安装 — 管理全部}}",
+      "adminOnly": "只有帐户所有者或管理员才能为此帐户连接 GitHub。",
+      "disconnectedToast": "已断开 GitHub 连接",
+      "disconnectFailed": "无法断开 GitHub 连接"
     }
   },
   "triggers": {

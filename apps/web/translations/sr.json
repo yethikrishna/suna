@@ -374,6 +374,32 @@
       "unverified": "Непотврђено",
       "signedOutOtherDevices": "Одјављени сте са других уређаја",
       "signOutOtherDevicesFailed": "Није могуће одјавити се са других уређаја"
+    },
+    "appearance": {
+      "theme": "Тема",
+      "themeDescription": "Изаберите изглед Kortix-а на овом уређају.",
+      "conversationDensity": "Густина разговора",
+      "conversationDensityDescription": "Изаберите колико детаља агент приказује у разговору док ради.",
+      "wallpaper": "Позадина",
+      "wallpaperDescription": "Позадина вашег радног простора.",
+      "defaultWallpaper": "Подразумевано",
+      "themes": { "light": "Светла", "dark": "Тамна", "system": "Системска" },
+      "densities": {
+        "normal": {
+          "label": "Нормално",
+          "description": "Кораци и размишљање се приказују уживо док Kortix ради."
+        },
+        "minimal": { "label": "Минимално", "description": "Један ред статуса док га не проширите." }
+      },
+      "wallpapers": {
+        "dither": "Дитеринг",
+        "brandmark": "Знак бренда",
+        "nebula": "Пикселски зраци",
+        "silk": "Свила",
+        "grain": "Зрно",
+        "neuro": "Неуро",
+        "blank": "Празно"
+      }
     }
   },
   "triggers": {

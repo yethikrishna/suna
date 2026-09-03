@@ -192,6 +192,32 @@
       "signedOutOtherDevices": "Signed out of your other devices",
       "signOutOtherDevicesFailed": "Could not sign out other devices"
     },
+    "appearance": {
+      "theme": "Theme",
+      "themeDescription": "Choose how Kortix looks on this device.",
+      "conversationDensity": "Conversation density",
+      "conversationDensityDescription": "How much detail the agent shows in the conversation while it works.",
+      "wallpaper": "Wallpaper",
+      "wallpaperDescription": "The background behind your workspace.",
+      "defaultWallpaper": "Default",
+      "themes": { "light": "Light", "dark": "Dark", "system": "System" },
+      "densities": {
+        "normal": {
+          "label": "Normal",
+          "description": "Steps and thinking stream live while Kortix works."
+        },
+        "minimal": { "label": "Minimal", "description": "One status line until you expand it." }
+      },
+      "wallpapers": {
+        "dither": "Dither",
+        "brandmark": "Brandmark",
+        "nebula": "Pixel Beams",
+        "silk": "Silk",
+        "grain": "Grain",
+        "neuro": "Neuro",
+        "blank": "Blank"
+      }
+    },
     "preferences": {
       "title": "Language & shortcuts",
       "description": "Language and keyboard shortcuts.",

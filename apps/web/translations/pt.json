@@ -374,6 +374,32 @@
       "unverified": "Não verificado",
       "signedOutOtherDevices": "Desconectado dos seus outros dispositivos",
       "signOutOtherDevicesFailed": "Não foi possível desconectar outros dispositivos"
+    },
+    "appearance": {
+      "theme": "Tema",
+      "themeDescription": "Escolha a aparência do Kortix neste dispositivo.",
+      "conversationDensity": "Densidade da conversa",
+      "conversationDensityDescription": "Escolha quantos detalhes o agente mostra na conversa enquanto trabalha.",
+      "wallpaper": "Papel de parede",
+      "wallpaperDescription": "O fundo da sua área de trabalho.",
+      "defaultWallpaper": "Padrão",
+      "themes": { "light": "Claro", "dark": "Escuro", "system": "Sistema" },
+      "densities": {
+        "normal": {
+          "label": "Normal",
+          "description": "As etapas e o raciocínio aparecem em tempo real enquanto o Kortix trabalha."
+        },
+        "minimal": { "label": "Mínima", "description": "Uma linha de status até você expandi-la." }
+      },
+      "wallpapers": {
+        "dither": "Pontilhado",
+        "brandmark": "Marca",
+        "nebula": "Feixes de pixels",
+        "silk": "Seda",
+        "grain": "Granulado",
+        "neuro": "Neuro",
+        "blank": "Vazio"
+      }
     }
   },
   "triggers": {

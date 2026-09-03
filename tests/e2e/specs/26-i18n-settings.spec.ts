@@ -56,6 +56,15 @@ interface LocaleMessages {
       devices: string;
       signOutOtherDevices: string;
     };
+    appearance: {
+      theme: string;
+      conversationDensity: string;
+      wallpaper: string;
+      defaultWallpaper: string;
+      themes: Record<string, string>;
+      densities: Record<string, { label: string }>;
+      wallpapers: Record<string, string>;
+    };
   };
 }
 
@@ -221,6 +230,40 @@ test.describe("26 — Settings localization", () => {
           ]) {
             await expect(
               page.getByText(securityText, { exact: true }).first(),
+            ).toBeVisible();
+          }
+
+          await page
+            .getByRole("tab", {
+              name: copy.settings.rail.items.appearance.label,
+              exact: true,
+            })
+            .click();
+          for (const appearanceText of [
+            copy.settings.appearance.theme,
+            copy.settings.appearance.conversationDensity,
+            copy.settings.appearance.wallpaper,
+            copy.settings.appearance.defaultWallpaper,
+            ...Object.values(copy.settings.appearance.themes),
+            ...Object.values(copy.settings.appearance.densities).map(
+              (density) => density.label,
+            ),
+          ]) {
+            await expect(
+              page.getByText(appearanceText, { exact: true }).first(),
+            ).toBeVisible();
+          }
+          for (const [wallpaperId, wallpaperName] of Object.entries(
+            copy.settings.appearance.wallpapers,
+          )) {
+            await expect(
+              page.getByRole("button", {
+                name:
+                  wallpaperId === "dither"
+                    ? `${wallpaperName} ${copy.settings.appearance.defaultWallpaper}`
+                    : wallpaperName,
+                exact: true,
+              }),
             ).toBeVisible();
           }
 

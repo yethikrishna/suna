@@ -374,6 +374,35 @@
       "unverified": "未検証",
       "signedOutOtherDevices": "他のデバイスからサインアウトしました",
       "signOutOtherDevicesFailed": "他のデバイスからサインアウトできませんでした"
+    },
+    "appearance": {
+      "theme": "テーマ",
+      "themeDescription": "このデバイスでの Kortix の外観を選択します。",
+      "conversationDensity": "会話の表示密度",
+      "conversationDensityDescription": "エージェントの作業中に会話へ表示する詳細の量を選択します。",
+      "wallpaper": "壁紙",
+      "wallpaperDescription": "ワークスペースの背景です。",
+      "defaultWallpaper": "デフォルト",
+      "themes": { "light": "ライト", "dark": "ダーク", "system": "システム" },
+      "densities": {
+        "normal": {
+          "label": "標準",
+          "description": "Kortix の作業中に手順と思考をリアルタイムで表示します。"
+        },
+        "minimal": {
+          "label": "最小",
+          "description": "展開するまで 1 行のステータスだけを表示します。"
+        }
+      },
+      "wallpapers": {
+        "dither": "ディザー",
+        "brandmark": "ブランドマーク",
+        "nebula": "ピクセルビーム",
+        "silk": "シルク",
+        "grain": "グレイン",
+        "neuro": "ニューロ",
+        "blank": "なし"
+      }
     }
   },
   "triggers": {

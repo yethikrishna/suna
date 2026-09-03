@@ -1514,7 +1514,19 @@
     "title": "スレッド",
     "newThread": "新しいスレッド",
     "sendMessage": "メッセージを送信",
-    "placeholder": "メッセージを入力..."
+    "placeholder": "メッセージを入力...",
+    "messageInput": "メッセージ入力",
+    "attachFiles": "ファイルを添付",
+    "selectAgent": "エージェントを選択",
+    "noModel": "モデルなし",
+    "thinkingEffort": "思考レベル",
+    "sessionOverrides": "セッションの上書き",
+    "auto": "自動",
+    "sending": "送信中",
+    "stop": "停止",
+    "startingSession": "セッションを開始しています…",
+    "sessionStarted": "セッションを開始しました",
+    "failedToStartSession": "セッションを開始できませんでした"
   },
   "billing": {
     "plan": {
@@ -9163,5 +9175,13 @@
       "firstMessage": "最初のメッセージ",
       "bookCall": "Marko との 20 分間のセットアップ コールを予約する"
     }
+  },
+  "commandPalette": {
+    "title": "コマンドパレット",
+    "description": "実行するコマンドを検索..."
+  },
+  "personalWelcome": {
+    "dismiss": "閉じる",
+    "emailCopied": "メールアドレスをコピーしました"
   }
 }

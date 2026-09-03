@@ -8,6 +8,7 @@ import { ResetAxisButton } from '@/features/session/scope/session-scope-control'
 import { cn } from '@/lib/utils';
 import type { Icon } from '@phosphor-icons/react';
 import { GearSixIcon } from '@phosphor-icons/react';
+import { useTranslations } from 'next-intl';
 import { type ReactNode, useState } from 'react';
 
 /**
@@ -80,6 +81,7 @@ export function SessionOverridesControlContent({
   notice,
   onSave,
 }: SessionOverridesControlProps) {
+  const t = useTranslations('threads');
   const [focusedId, setFocusedId] = useState<string | null>(rows[0]?.id ?? null);
   const focused = rows.find((row) => row.id === focusedId) ?? rows[0];
   const controlsDisabled = disabled || saving;
@@ -94,7 +96,7 @@ export function SessionOverridesControlContent({
       <div className="border-border flex min-h-0 flex-1 flex-col sm:flex-row">
         <ul
           className="border-border flex max-h-[45%] shrink-0 flex-col gap-0.5 overflow-y-auto border-b p-1.5 sm:max-h-none sm:w-[212px] sm:border-r sm:border-b-0"
-          aria-label="Session overrides"
+          aria-label={t('sessionOverrides')}
         >
           {rows.map((row) => {
             const RowIcon = row.icon;
@@ -176,6 +178,7 @@ export function SessionOverridesControlContent({
 }
 
 export function SessionOverridesControl({ onSave, ...contentProps }: SessionOverridesControlProps) {
+  const t = useTranslations('threads');
   const [open, setOpen] = useState(false);
   // Closing the panel is the visible result of a successful Save. A failed
   // save keeps it open — the error toast plus a still-open panel says
@@ -196,7 +199,7 @@ export function SessionOverridesControl({ onSave, ...contentProps }: SessionOver
           variant="ghost"
           size="icon"
           disabled={contentProps.disabled || contentProps.saving}
-          aria-label="Session overrides"
+          aria-label={t('sessionOverrides')}
           className="text-muted-foreground hover:text-foreground data-[state=open]:text-foreground"
         >
           <GearSixIcon className="size-4 shrink-0" />

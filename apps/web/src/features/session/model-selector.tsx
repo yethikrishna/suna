@@ -19,7 +19,6 @@ import type { ProviderModalTab } from '@/stores/provider-modal-store';
 import { useProviderModalStore } from '@/stores/provider-modal-store';
 import { getProjectDetail } from '@kortix/sdk';
 import { contract, qk, useModelStore, type ProviderListResponse } from '@kortix/sdk/react';
-import { modelInDefaultView } from './model-picker-default-view';
 import {
   CheckIcon as Check,
   CaretDownIcon as ChevronDown,
@@ -35,6 +34,7 @@ import { useParams } from 'next/navigation';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { resolveAvailableSelectedModel } from './model-availability';
 import { modelItemValue, pickerGroupId, pickerGroupLabel, splitModelLabel } from './model-grouping';
+import { modelInDefaultView } from './model-picker-default-view';
 import { shouldShowFreeTag } from './model-tags';
 import type { FlatModel } from './session-chat-input';
 import { useModelConnectionGate } from './use-model-connection-gate';
@@ -342,7 +342,7 @@ export function ModelSelector({
   selectedModel,
   onSelect,
   defaultControls,
-  unsetLabel = 'No model',
+  unsetLabel,
   disabled = false,
   modelsLoading = false,
   triggerLabelClassName,
@@ -350,6 +350,7 @@ export function ModelSelector({
   onOpenChange,
 }: ModelSelectorProps) {
   const tHardcodedUi = useTranslations('hardcodedUi');
+  const t = useTranslations('threads');
 
   // Controlled when `open` is supplied, uncontrolled otherwise — Radix's own
   // rule. `setOpen` below is the single write path every internal caller
@@ -398,7 +399,7 @@ export function ModelSelector({
       m.providerID === availableSelectedModel?.providerID &&
       m.modelID === availableSelectedModel?.modelID,
   );
-  const displayName = current?.modelName || unsetLabel;
+  const displayName = current?.modelName || unsetLabel || t('noModel');
 
   useEffect(() => {
     if (!open) {
@@ -433,10 +434,7 @@ export function ModelSelector({
   /** Is there anything to pick AT ALL, ignoring the search box? The empty
    *  state below branches on this: "no models match your search" and "you have
    *  no models" are different problems with different ways out. */
-  const hasAnyModel = useMemo(
-    () => baseModels.some((m) => m.enabled !== false),
-    [baseModels],
-  );
+  const hasAnyModel = useMemo(() => baseModels.some((m) => m.enabled !== false), [baseModels]);
 
   const grouped = useMemo(() => {
     const groups = new Map<
@@ -735,4 +733,3 @@ export function ModelSelector({
     </>
   );
 }
-

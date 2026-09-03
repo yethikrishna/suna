@@ -1517,7 +1517,19 @@
     "title": "Fils",
     "newThread": "Nouveau Fil",
     "sendMessage": "Envoyer un message",
-    "placeholder": "Tape ton message..."
+    "placeholder": "Tape ton message...",
+    "messageInput": "Champ de message",
+    "attachFiles": "Joindre des fichiers",
+    "selectAgent": "Sélectionner un agent",
+    "noModel": "Aucun modèle",
+    "thinkingEffort": "Effort de raisonnement",
+    "sessionOverrides": "Remplacements de session",
+    "auto": "Automatique",
+    "sending": "Envoi en cours",
+    "stop": "Arrêter",
+    "startingSession": "Démarrage de la session…",
+    "sessionStarted": "Session démarrée",
+    "failedToStartSession": "Impossible de démarrer la session"
   },
   "billing": {
     "plan": {
@@ -9166,5 +9178,13 @@
       "firstMessage": "Votre premier message",
       "bookCall": "Réservez un appel de configuration de 20 minutes avec Marko"
     }
+  },
+  "commandPalette": {
+    "title": "Palette de commandes",
+    "description": "Rechercher une commande à exécuter..."
+  },
+  "personalWelcome": {
+    "dismiss": "Fermer",
+    "emailCopied": "Adresse e-mail copiée"
   }
 }

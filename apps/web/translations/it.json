@@ -1514,7 +1514,19 @@
     "title": "Thread",
     "newThread": "Nuovo thread",
     "sendMessage": "Invia messaggio",
-    "placeholder": "Digita il tuo messaggio..."
+    "placeholder": "Digita il tuo messaggio...",
+    "messageInput": "Campo messaggio",
+    "attachFiles": "Allega file",
+    "selectAgent": "Seleziona agente",
+    "noModel": "Nessun modello",
+    "thinkingEffort": "Livello di ragionamento",
+    "sessionOverrides": "Override della sessione",
+    "auto": "Automatico",
+    "sending": "Invio in corso",
+    "stop": "Interrompi",
+    "startingSession": "Avvio della sessione…",
+    "sessionStarted": "Sessione avviata",
+    "failedToStartSession": "Impossibile avviare la sessione"
   },
   "billing": {
     "plan": {
@@ -9163,5 +9175,13 @@
       "firstMessage": "Il tuo primo messaggio",
       "bookCall": "Prenota una chiamata di configurazione di 20 minuti con Marko"
     }
+  },
+  "commandPalette": {
+    "title": "Tavolozza dei comandi",
+    "description": "Cerca un comando da eseguire..."
+  },
+  "personalWelcome": {
+    "dismiss": "Chiudi",
+    "emailCopied": "Indirizzo email copiato"
   }
 }

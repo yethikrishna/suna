@@ -1514,7 +1514,19 @@
     "title": "Hilos",
     "newThread": "Nuevo Hilo",
     "sendMessage": "Enviar mensaje",
-    "placeholder": "Escribe tu mensaje..."
+    "placeholder": "Escribe tu mensaje...",
+    "messageInput": "Campo de mensaje",
+    "attachFiles": "Adjuntar archivos",
+    "selectAgent": "Seleccionar agente",
+    "noModel": "Sin modelo",
+    "thinkingEffort": "Nivel de razonamiento",
+    "sessionOverrides": "Ajustes de la sesión",
+    "auto": "Automático",
+    "sending": "Enviando",
+    "stop": "Detener",
+    "startingSession": "Iniciando sesión…",
+    "sessionStarted": "Sesión iniciada",
+    "failedToStartSession": "No se pudo iniciar la sesión"
   },
   "billing": {
     "plan": {
@@ -9163,5 +9175,13 @@
       "firstMessage": "Tu primer mensaje",
       "bookCall": "Reserve una llamada de configuración de 20 minutos con Marko"
     }
+  },
+  "commandPalette": {
+    "title": "Paleta de comandos",
+    "description": "Busca un comando para ejecutar..."
+  },
+  "personalWelcome": {
+    "dismiss": "Cerrar",
+    "emailCopied": "Dirección de correo copiada"
   }
 }

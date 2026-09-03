@@ -6,6 +6,7 @@ import { Kbd } from '@/components/ui/kbd';
 import Loading from '@/components/ui/loading';
 import { ArrowUpIcon as ArrowUp, SquareIcon } from '@phosphor-icons/react';
 import { AnimatePresence, m } from 'motion/react';
+import { useTranslations } from 'next-intl';
 import { NO_MODEL_AVAILABLE_ACTION_MESSAGE } from '../model-availability';
 import { NO_AGENT_ACCESS_MESSAGE } from './composer-agent-access';
 
@@ -64,6 +65,7 @@ export function SendStopControl({
   agentUnavailable = false,
   onSubmit,
 }: SendStopControlProps) {
+  const t = useTranslations('threads');
   // One line, the same one the agent picker's tooltip carries — the two
   // controls are refusing for one reason and must not word it two ways.
   const refusal = agentUnavailable
@@ -74,7 +76,7 @@ export function SendStopControl({
 
   if (isSending && !lockForQuestion) {
     return (
-      <Button size="icon-base" aria-label="Sending" disabled className={ICON_BUTTON}>
+      <Button size="icon-base" aria-label={t('sending')} disabled className={ICON_BUTTON}>
         <AnimatePresence mode="popLayout" initial={false}>
           <m.span key="pending" className="flex items-center" {...ICON_SWAP}>
             <Loading className="size-4" />
@@ -111,7 +113,7 @@ export function SendStopControl({
         >
           <Button
             size="icon-base"
-            aria-label="Stop"
+            aria-label={t('stop')}
             onClick={onStop}
             disabled={stopDisabled || !onStop}
             className={ICON_BUTTON}
@@ -141,7 +143,7 @@ export function SendStopControl({
   }
 
   return (
-    <Hint side="top" label={refusal ?? 'Send message'}>
+    <Hint side="top" label={refusal ?? t('sendMessage')}>
       {/* The span, not the button, carries the tooltip trigger: a disabled
           button takes no pointer events, so the reason the send is off would
           never open — which is exactly the state where the reason matters
@@ -159,7 +161,7 @@ export function SendStopControl({
           // refusal is a `aria-describedby`-style detail, not an identity —
           // swapping the name for it made a screen reader announce the button
           // as "No agent available", with nothing left saying what it does.
-          aria-label="Send message"
+          aria-label={t('sendMessage')}
           title={refusal ?? undefined}
           className={ICON_BUTTON}
         >

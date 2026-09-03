@@ -1517,7 +1517,19 @@
     "title": "Threads",
     "newThread": "New Thread",
     "sendMessage": "Send message",
-    "placeholder": "Type your message..."
+    "placeholder": "Type your message...",
+    "messageInput": "Message input",
+    "attachFiles": "Attach files",
+    "selectAgent": "Select agent",
+    "noModel": "No model",
+    "thinkingEffort": "Thinking effort",
+    "sessionOverrides": "Session overrides",
+    "auto": "Auto",
+    "sending": "Sending",
+    "stop": "Stop",
+    "startingSession": "Starting session…",
+    "sessionStarted": "Session started",
+    "failedToStartSession": "Failed to start session"
   },
   "billing": {
     "plan": {
@@ -9166,5 +9178,13 @@
       "firstMessage": "Your first message",
       "bookCall": "Book a 20-minute setup call with Marko"
     }
+  },
+  "commandPalette": {
+    "title": "Command Palette",
+    "description": "Search for a command to run..."
+  },
+  "personalWelcome": {
+    "dismiss": "Dismiss",
+    "emailCopied": "Email address copied"
   }
 }

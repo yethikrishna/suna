@@ -1514,7 +1514,19 @@
     "title": "Conversas",
     "newThread": "Nova Thread",
     "sendMessage": "Enviar mensagem",
-    "placeholder": "Digite tua mensagem..."
+    "placeholder": "Digite tua mensagem...",
+    "messageInput": "Campo de mensagem",
+    "attachFiles": "Anexar arquivos",
+    "selectAgent": "Selecionar agente",
+    "noModel": "Nenhum modelo",
+    "thinkingEffort": "Esforço de raciocínio",
+    "sessionOverrides": "Substituições da sessão",
+    "auto": "Automático",
+    "sending": "Enviando",
+    "stop": "Parar",
+    "startingSession": "A iniciar a sessão…",
+    "sessionStarted": "Sessão iniciada",
+    "failedToStartSession": "Não foi possível iniciar a sessão"
   },
   "billing": {
     "plan": {
@@ -9163,5 +9175,13 @@
       "firstMessage": "Sua primeira mensagem",
       "bookCall": "Agende uma chamada de configuração de 20 minutos com Marko"
     }
+  },
+  "commandPalette": {
+    "title": "Paleta de comandos",
+    "description": "Pesquise um comando para executar..."
+  },
+  "personalWelcome": {
+    "dismiss": "Fechar",
+    "emailCopied": "Endereço de e-mail copiado"
   }
 }

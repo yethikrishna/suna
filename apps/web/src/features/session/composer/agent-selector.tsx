@@ -54,6 +54,7 @@ export function AgentSelector({
   unavailableHint?: string | null;
 }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
+  const t = useTranslations('threads');
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
 
@@ -204,7 +205,7 @@ export function AgentSelector({
           type="button"
           variant="ghost"
           size="sm"
-          aria-label="Select agent"
+          aria-label={t('selectAgent')}
           className="text-foreground/70 rounded-lg"
         >
           {metaSelected && <MetaFolder className="size-3.5 shrink-0" weight="fill" />}

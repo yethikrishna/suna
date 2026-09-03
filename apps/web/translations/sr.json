@@ -1517,7 +1517,19 @@
     "title": "Тхреадс",
     "newThread": "Нова тема",
     "sendMessage": "Пошаљи поруку",
-    "placeholder": "Упишите своју поруку..."
+    "placeholder": "Упишите своју поруку...",
+    "messageInput": "Унос поруке",
+    "attachFiles": "Приложи датотеке",
+    "selectAgent": "Изабери агента",
+    "noModel": "Нема модела",
+    "thinkingEffort": "Ниво размишљања",
+    "sessionOverrides": "Измене сесије",
+    "auto": "Аутоматски",
+    "sending": "Слање",
+    "stop": "Заустави",
+    "startingSession": "Покретање сесије…",
+    "sessionStarted": "Сесија је покренута",
+    "failedToStartSession": "Сесија није могла да се покрене"
   },
   "billing": {
     "plan": {
@@ -8690,7 +8702,7 @@
     "autoComponentsProjectsPersonalOnboardingWelcomeJsxAttrAriaLabelWelcome436613af": "Добро дошао од Марка",
     "autoComponentsProjectsPersonalOnboardingWelcomeJsxTextHeyIMe9d73cdb": "Хеј, ја сам Марко",
     "autoComponentsProjectsPersonalOnboardingWelcomeJsxTextFounderCEOKortix4be58c34": "Оснивач и извршни директор, Kortix",
-    "autoComponentsProjectsPersonalOnboardingWelcomeJsxTextWantAHandf0a0c56c": "Желите да рукујете са подешавањем АИ командног центра ваше компаније?",
+    "autoComponentsProjectsPersonalOnboardingWelcomeJsxTextWantAHandf0a0c56c": "Треба ли вам помоћ при подешавању AI командног центра ваше компаније?",
     "autoComponentsProjectsPersonalOnboardingWelcomeJsxTextBookADemo7f3fc2d5": "Резервирајте демо",
     "autoComponentsProjectsPersonalOnboardingWelcomeJsxAttrTitleBookA33a960c8": "Закажите позив са Марком",
     "autoComponentsProjectsPersonalOnboardingWelcomeJsxAttrDescriptionACouple5d67eddc": "Пар брзих детаља како би Марко могао да прилагоди позив.",
@@ -9166,5 +9178,13 @@
       "firstMessage": "Ваша прва порука",
       "bookCall": "Закажите 20-минутни позив за подешавање са Марком"
     }
+  },
+  "commandPalette": {
+    "title": "Палета команди",
+    "description": "Потражите команду за покретање..."
+  },
+  "personalWelcome": {
+    "dismiss": "Затвори",
+    "emailCopied": "Адреса е-поште је копирана"
   }
 }

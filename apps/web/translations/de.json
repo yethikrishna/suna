@@ -1514,7 +1514,19 @@
     "title": "Konversationen",
     "newThread": "Neuer Thread",
     "sendMessage": "Nachricht senden",
-    "placeholder": "Gib deine Nachricht ein..."
+    "placeholder": "Gib deine Nachricht ein...",
+    "messageInput": "Nachrichteneingabe",
+    "attachFiles": "Dateien anhängen",
+    "selectAgent": "Agent auswählen",
+    "noModel": "Kein Modell",
+    "thinkingEffort": "Denkaufwand",
+    "sessionOverrides": "Sitzungsüberschreibungen",
+    "auto": "Automatisch",
+    "sending": "Wird gesendet",
+    "stop": "Stoppen",
+    "startingSession": "Sitzung wird gestartet…",
+    "sessionStarted": "Sitzung gestartet",
+    "failedToStartSession": "Sitzung konnte nicht gestartet werden"
   },
   "billing": {
     "plan": {
@@ -8726,7 +8738,7 @@
     "autoComponentsProjectsPersonalOnboardingWelcomeJsxAttrAriaLabelWelcome436613af": "Willkommen von Marko",
     "autoComponentsProjectsPersonalOnboardingWelcomeJsxTextHeyIMe9d73cdb": "Hey, ich bin Marko",
     "autoComponentsProjectsPersonalOnboardingWelcomeJsxTextFounderCEOKortix4be58c34": "Gründer und CEO, Kortix",
-    "autoComponentsProjectsPersonalOnboardingWelcomeJsxTextWantAHandf0a0c56c": "Möchten Sie beim Einrichten der KI-Kommandozentrale Ihres Unternehmens mithelfen?",
+    "autoComponentsProjectsPersonalOnboardingWelcomeJsxTextWantAHandf0a0c56c": "Möchten Sie Hilfe beim Einrichten der KI-Kommandozentrale Ihres Unternehmens?",
     "autoComponentsProjectsPersonalOnboardingWelcomeJsxTextBookADemo7f3fc2d5": "Buchen Sie eine Demo",
     "autoComponentsProjectsPersonalOnboardingWelcomeJsxAttrTitleBookA33a960c8": "Vereinbaren Sie einen Anruf mit Marko",
     "autoComponentsProjectsPersonalOnboardingWelcomeJsxAttrDescriptionACouple5d67eddc": "Ein paar kurze Details, damit Marko den Anruf individuell gestalten kann.",
@@ -9163,5 +9175,13 @@
       "firstMessage": "Ihre erste Nachricht",
       "bookCall": "Buchen Sie ein 20-minütiges Setup-Gespräch mit Marko"
     }
+  },
+  "commandPalette": {
+    "title": "Befehlspalette",
+    "description": "Nach einem auszuführenden Befehl suchen..."
+  },
+  "personalWelcome": {
+    "dismiss": "Schließen",
+    "emailCopied": "E-Mail-Adresse kopiert"
   }
 }

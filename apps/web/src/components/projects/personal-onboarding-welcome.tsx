@@ -36,6 +36,8 @@ const enterTransition = { type: 'spring' as const, duration: 0.3, bounce: 0 };
 
 export function PersonalOnboardingWelcome({ projectId }: { projectId?: string } = {}) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
+  const t = useTranslations('personalWelcome');
+  const tProfile = useTranslations('settings.profile');
   const { user } = useAuth();
   const tier = usePersonalContactTier();
   const reduceMotion = useReducedMotion();
@@ -68,7 +70,7 @@ export function PersonalOnboardingWelcome({ projectId }: { projectId?: string } 
   const copyEmail = async () => {
     try {
       await navigator.clipboard.writeText(MARKO_EMAIL);
-      successToast('Email copied');
+      successToast(t('emailCopied'));
     } catch {
       window.location.href = `mailto:${MARKO_EMAIL}`;
     }
@@ -123,13 +125,13 @@ export function PersonalOnboardingWelcome({ projectId }: { projectId?: string } 
               </div>
             </m.div>
             <CardAction>
-              <Hint label="Dismiss" side="top" align="end">
+              <Hint label={t('dismiss')} side="top" align="end">
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
                   onClick={dismiss}
-                  aria-label="Dismiss"
+                  aria-label={t('dismiss')}
                   className="text-muted-foreground hover:text-foreground hit-area-1 active:scale-[0.96]"
                 >
                   <XIcon className="size-4" />
@@ -184,7 +186,7 @@ export function PersonalOnboardingWelcome({ projectId }: { projectId?: string } 
                       className="w-full active:scale-[0.96]"
                     >
                       <EnvelopeIcon className="size-3.5 shrink-0" />
-                      Email
+                      {tProfile('email')}
                     </Button>
                   </Hint>
                 </div>

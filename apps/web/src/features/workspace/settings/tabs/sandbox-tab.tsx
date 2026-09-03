@@ -175,7 +175,6 @@ import { EmptyState } from '@/features/layout/section/empty-state';
 import { ErrorState } from '@/features/layout/section/error-state';
 import { useProjectManifestVersion } from '@/features/workspace/customize/migrate-to-v2/manifest-version';
 import { PROJECT_ACTIONS } from '@/lib/project-actions';
-import { relativeTime } from '@/lib/relative-time';
 import { useProjectCans } from '@/lib/use-project-can';
 import { cn } from '@/lib/utils';
 import {
@@ -210,7 +209,7 @@ import {
   XCircleIcon,
 } from '@phosphor-icons/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import {
   type SandboxProvider,
   SandboxProviderBadge,
@@ -354,12 +353,19 @@ export function describeRouting(
   };
 }
 
-/** Matches `snapshots-tab.tsx`'s own `formatRelative` (both wrap
- *  `relativeTime`) — needed here for the runtime footer's "Checked …" stamp,
- *  which this tab uses independently of anything build- or snapshot-log
- *  related. */
-function formatRelative(input: string | null | undefined): string {
-  return relativeTime(input) || '—';
+/** Locale-aware age for the runtime footer's "Checked …" stamp. */
+function formatRelative(input: string | null | undefined, locale = 'en'): string {
+  if (!input) return '—';
+  const then = new Date(input).getTime();
+  if (!Number.isFinite(then)) return '—';
+  const minutes = Math.trunc((Date.now() - then) / 60_000);
+  const formatter = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+  if (minutes < 60) return formatter.format(-Math.max(minutes, 0), 'minute');
+  const hours = Math.trunc(minutes / 60);
+  if (hours < 24) return formatter.format(-hours, 'hour');
+  const days = Math.trunc(hours / 24);
+  if (days < 30) return formatter.format(-days, 'day');
+  return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }).format(then);
 }
 
 /**
@@ -504,6 +510,7 @@ function TemplateCard({
   selectedProvider: SandboxProvider | null;
 }) {
   const t = useTranslations('settings.sandbox');
+  const locale = useLocale();
   const queryClient = useQueryClient();
   const { version: manifestVersion } = useProjectManifestVersion(projectId);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -678,6 +685,7 @@ function TemplateCard({
           selectedProvider={selectedProvider}
           runtimeLabel={t('runtime')}
           checkedLabel={(value) => t('checked', { value })}
+          formatObservedAt={(observedAt) => formatRelative(observedAt, locale)}
           badgeCopy={{
             states: {
               ready: t('coverage.ready'),

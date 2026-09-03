@@ -2,7 +2,14 @@ import { readFileSync } from "node:fs";
 
 import { expect, test, type Page } from "@playwright/test";
 
+import { resolvePersonalAccountId } from "../helpers/accounts";
 import { queryDatabaseRows, runDatabaseSql } from "../helpers/database";
+import { createApiJsonClient, createApiResultClient } from "../helpers/http";
+import {
+  createManifestProject,
+  isDeployedTarget,
+  type ManifestProject,
+} from "../helpers/manifest-project";
 import {
   createAuthUser,
   deleteAuthUser,
@@ -36,6 +43,7 @@ interface LocaleMessages {
   settings: {
     rail: {
       settings: string;
+      projectTitle: string;
       backToApp: string;
       groups: Record<string, string>;
       items: Record<string, { label: string; description?: string }>;
@@ -120,6 +128,37 @@ interface LocaleMessages {
       historyDescription: string;
       openLedger: string;
     };
+    workspace: {
+      icon: string;
+      name: string;
+      dangerZone: string;
+      deleteWorkspace: string;
+    };
+    git: { title: string; retry: string };
+    sandbox: {
+      routing: { title: string; automatic: string };
+      provider: { label: string };
+      descriptionStart: string;
+      actions: { new: string };
+      facts: { processor: string; memory: string; storage: string };
+      defaultBadge: string;
+    };
+    snapshots: {
+      environment: { notBuilt: { title: string } };
+      view: { logTitle: string; empty: string };
+      faq: { title: string };
+    };
+    featureFlags: {
+      search: string;
+      flags: { marketplace: { name: string; description: string } };
+      stability: { beta: string };
+    };
+    upgrades: {
+      available: string;
+      upToDate: string;
+      oneOff: string;
+      runUpgrade: string;
+    };
   };
 }
 
@@ -171,6 +210,31 @@ test.describe("26 — Settings localization", () => {
     const authOptions = { supabaseUrl, password };
     const user = await createAuthUser(email, authOptions);
     const session = await signIn(email, authOptions);
+    const apiBase = process.env.E2E_API_URL || "http://localhost:8008/v1";
+    const resultApi = createApiResultClient(apiBase);
+    const jsonApi = createApiJsonClient(apiBase);
+    const accountId = await resolvePersonalAccountId(
+      resultApi,
+      session.access_token,
+    );
+    const databaseUrl =
+      process.env.KE2E_DATABASE_URL ||
+      process.env.E2E_DATABASE_URL ||
+      process.env.DATABASE_URL ||
+      "";
+    if (isDeployedTarget() && !databaseUrl) {
+      throw new Error("A database URL is required for a deployed i18n run");
+    }
+    const projectName = `e2e-i18n-${runId}`;
+    let project: ManifestProject | null = await createManifestProject({
+      api: jsonApi,
+      accessToken: session.access_token,
+      accountId,
+      userId: user.id,
+      name: projectName,
+      databaseUrl,
+    });
+    const projectId = project.id;
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
 
@@ -184,7 +248,7 @@ test.describe("26 — Settings localization", () => {
       await installBrowserSessionDirect(
         page,
         session,
-        "/settings/preferences",
+        `/projects/${projectId}/settings/preferences`,
         authOptions,
       );
       await expect(page.getByRole("combobox").first()).toBeVisible();
@@ -197,7 +261,10 @@ test.describe("26 — Settings localization", () => {
           await expect(page.locator("html")).toHaveAttribute("lang", locale);
           await expect(
             page.getByRole("heading", {
-              name: copy.settings.rail.settings,
+              name: copy.settings.rail.projectTitle.replace(
+                "{projectName}",
+                projectName,
+              ),
               exact: true,
             }),
           ).toBeVisible();
@@ -540,6 +607,111 @@ test.describe("26 — Settings localization", () => {
 
           await page
             .getByRole("tab", {
+              name: copy.settings.rail.items.workspace.label,
+              exact: true,
+            })
+            .click();
+          for (const workspaceText of [
+            copy.settings.workspace.icon,
+            copy.settings.workspace.name,
+            copy.settings.workspace.dangerZone,
+            copy.settings.workspace.deleteWorkspace,
+            copy.settings.git.title,
+          ]) {
+            await expect(
+              page.getByText(workspaceText, { exact: true }).first(),
+            ).toBeVisible();
+          }
+
+          await page
+            .getByRole("tab", {
+              name: copy.settings.rail.items.sandbox.label,
+              exact: true,
+            })
+            .click();
+          await expect(
+            page.getByRole("heading", {
+              name: copy.settings.rail.items.sandbox.label,
+              exact: true,
+            }),
+          ).toBeVisible();
+          for (const sandboxText of [
+            copy.settings.sandbox.routing.title,
+            copy.settings.sandbox.actions.new,
+            copy.settings.sandbox.facts.processor,
+            copy.settings.sandbox.facts.memory,
+            copy.settings.sandbox.facts.storage,
+            copy.settings.sandbox.defaultBadge,
+            copy.settings.snapshots.view.logTitle,
+            copy.settings.snapshots.faq.title,
+          ]) {
+            await expect(
+              page.getByText(sandboxText, { exact: true }).first(),
+            ).toBeVisible({ timeout: 30_000 });
+          }
+          await expect(
+            page.getByText(copy.settings.sandbox.descriptionStart, {
+              exact: false,
+            }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole("combobox", {
+              name: copy.settings.sandbox.provider.label,
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(
+            page
+              .getByText(copy.settings.snapshots.environment.notBuilt.title, {
+                exact: true,
+              })
+              .or(
+                page.getByText(copy.settings.snapshots.view.empty, {
+                  exact: true,
+                }),
+              )
+              .first(),
+          ).toBeVisible();
+
+          await page
+            .getByRole("tab", {
+              name: copy.settings.rail.items["feature-flags"].label,
+              exact: true,
+            })
+            .click();
+          await expect(
+            page.getByPlaceholder(copy.settings.featureFlags.search, {
+              exact: true,
+            }),
+          ).toBeVisible();
+          for (const featureText of [
+            copy.settings.featureFlags.flags.marketplace.name,
+            copy.settings.featureFlags.flags.marketplace.description,
+            copy.settings.featureFlags.stability.beta,
+          ]) {
+            await expect(
+              page.getByText(featureText, { exact: true }).first(),
+            ).toBeVisible();
+          }
+
+          await page
+            .getByRole("tab", {
+              name: copy.settings.rail.items.upgrades.label,
+              exact: true,
+            })
+            .click();
+          for (const upgradeText of [
+            copy.settings.upgrades.available,
+            copy.settings.upgrades.oneOff,
+            copy.settings.upgrades.runUpgrade,
+          ]) {
+            await expect(
+              page.getByText(upgradeText, { exact: true }).first(),
+            ).toBeVisible();
+          }
+
+          await page
+            .getByRole("tab", {
               name: copy.settings.rail.items.preferences.label,
               exact: true,
             })
@@ -550,6 +722,8 @@ test.describe("26 — Settings localization", () => {
 
       expect(pageErrors).toEqual([]);
     } finally {
+      await project?.dispose();
+      project = null;
       const accounts = await queryDatabaseRows<AccountRow>(
         "select distinct account_id::text from kortix.account_members where user_id = $1::uuid",
         [user.id],

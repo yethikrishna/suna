@@ -188,6 +188,33 @@
     "connectors": {
       "opening": "正在打开连接器",
       "redirecting": "正在重定向到连接器页面..."
+    },
+    "preferences": {
+      "title": "语言和快捷键",
+      "description": "语言和键盘快捷键。",
+      "languageTitle": "语言",
+      "languageDescription": "应用程序中随处显示语言 Kortix。",
+      "keyboardTitle": "键盘快捷键",
+      "keyboardDescription": "用于选项卡切换的修饰键以及应用程序中的每个快捷方式。",
+      "modifierKey": "修饰键",
+      "shortcuts": {
+        "newTab": "新标签页",
+        "closeActiveTab": "关闭活动选项卡",
+        "reopenClosedTab": "重新打开关闭的选项卡",
+        "nextTab": "下一个选项卡",
+        "previousTab": "上一个选项卡",
+        "nextTabAlt": "下一个选项卡（替代）",
+        "previousTabAlt": "上一个选项卡（替代）",
+        "switchToTabRange": "切换到选项卡 1-8",
+        "switchToLastTab": "切换到最后一个选项卡",
+        "newSession": "新会议",
+        "commandPalette": "命令面板",
+        "switchWorkspace": "切换工作空间",
+        "settings": "设置",
+        "toggleLeftSidebar": "切换左侧边栏",
+        "toggleRightSidebar": "切换右侧边栏",
+        "toggleSessionActionPanel": "切换会话操作面板"
+      }
     }
   },
   "triggers": {
@@ -325,15 +352,8 @@
         "早安！今天想做什么？",
         "早上好！准备好大干一场了吗？"
       ],
-      "afternoon": [
-        "下午好！需要什么帮助？",
-        "下午好！接下来做什么？"
-      ],
-      "evening": [
-        "晚上好！还在加班吗？",
-        "晚上好！今晚在做什么？",
-        "晚上好！开始吧。"
-      ],
+      "afternoon": ["下午好！需要什么帮助？", "下午好！接下来做什么？"],
+      "evening": ["晚上好！还在加班吗？", "晚上好！今晚在做什么？", "晚上好！开始吧。"],
       "random": [
         "欢迎回来！",
         "嘿！Kortix能为你做什么？",
@@ -884,7 +904,8 @@
     "ja": "日本語",
     "pt": "Português",
     "fr": "Français",
-    "es": "Español"
+    "es": "Español",
+    "sr": "Српски"
   },
   "notifications": {
     "title": "通知",
@@ -1897,13 +1918,7 @@
           "eyebrow": "分流客户信号",
           "title": "把杂乱的客户信号转成有优先级的行动",
           "description": "智能体从工单、Slack 和你的 CRM 中提取信号，然后分类、去重，并带着完整上下文路由给合适团队。每一步都在隔离沙箱中运行，未经审查不会触达客户。",
-          "log": [
-            "Ingesting 340 signals from 4 sources.",
-            "Classified: 12 critical, 45 high, 283 routine",
-            "Deduplicated 67 signals → 28 unique issues",
-            "Routed to 3 teams with context attached",
-            "12 critical issues escalated · avg response 4min"
-          ]
+          "log": ["拉票+客户历史记录", "文档起草的回复", "标记退款以待批准", "发送、记录到审计跟踪"]
         },
         "shipBacklogTickets": {
           "tabTitle": "交付待办工单",
@@ -1911,13 +1926,7 @@
           "eyebrow": "交付待办工单",
           "title": "从待办工单到经过审查的变更请求",
           "description": "把编码智能体指向你的待办列表。它会阅读 issue，在自己的沙箱和分支中工作，并打开带预览的变更请求，让每一行代码都通过审查合入 main，而不是黑箱落地。",
-          "log": [
-            "Picked up 8 tickets from the backlog",
-            "Spun up 8 isolated sandboxes in parallel",
-            "Wrote code + tests · 6 ready, 2 need input",
-            "Opened 6 change requests with previews",
-            "Awaiting human review before merge to main"
-          ]
+          "log": ["审查沙盒中的差异", "重现了该错误", "打开修复分支", "已提交变更请求"]
         },
         "fillThePipeline": {
           "tabTitle": "填充销售管线",
@@ -1925,13 +1934,7 @@
           "eyebrow": "填充销售管线",
           "title": "调研每个客户，起草每次触达",
           "description": "智能体会补全并排序客户，起草个性化外联内容，并保持 CRM 整洁，让团队带着准备进入每次通话，而不是临时忙乱。",
-          "log": [
-            "Enriched 1,200 accounts from 5 sources",
-            "Ranked and scored by fit and intent",
-            "Drafted 340 personalized outreach sequences",
-            "Updated 1,200 CRM records · 0 duplicates",
-            "18 call briefs ready for tomorrow"
-          ]
+          "log": ["从批准的来源收集", "反复核对事实", "写了简报", "为团队发布"]
         },
         "closeTheBooks": {
           "tabTitle": "完成结账",
@@ -1939,13 +1942,7 @@
           "eyebrow": "完成结账",
           "title": "完成对账和结账，并留下可审计轨迹",
           "description": "智能体会采集发票、核对账户并标记策略异常，为每个数字留下可审查的运行日志，让结账更快且完全可审计。",
-          "log": [
-            "Captured 482 invoices · matched 461",
-            "Reconciled 14 accounts · 21 exceptions flagged",
-            "Drafted board report from consolidated data",
-            "Every figure linked to its source document",
-            "Ready for controller sign-off"
-          ]
+          "log": ["匹配交易", "标记了 3 个异常", "起草摘要", "等待签字"]
         },
         "briefToCampaign": {
           "tabTitle": "从简报到营销活动",
@@ -1953,13 +1950,7 @@
           "eyebrow": "从简报到营销活动",
           "title": "把简报变成可上线的营销活动",
           "description": "把简报和品牌资料交给智能体。它们会调研、起草，并把页面、帖子和广告变体按品牌要求串联起来，最后交回成品，由人工批准后再上线。",
-          "log": [
-            "Read brief + brand guidelines",
-            "Researched 24 keywords and 6 competitors",
-            "Drafted 12 posts, 4 pages, 30 ad variations",
-            "Checked every asset against brand voice",
-            "Queued for review · publish on approval"
-          ]
+          "log": ["阅读简介", "起草资产", "检查品牌规则", "送审"]
         },
         "runTheBackOffice": {
           "tabTitle": "运营后台事务",
@@ -1967,13 +1958,7 @@
           "eyebrow": "运营后台事务",
           "title": "把操作手册变成自动运行的工作流",
           "description": "智能体会跨供应商跟踪订单、监控供应商表现，并把你的 SOP 变成由计划任务或 webhook 触发的工作流，让业务在团队休息时也持续运转。",
-          "log": [
-            "Tracked 96 orders across 11 suppliers",
-            "Flagged 4 delayed shipments · opened actions",
-            "Ran 7 SOPs on schedule overnight",
-            "Logged every action to an audit trail",
-            "2 exceptions routed for human decision"
-          ]
+          "log": ["加载SOP", "在沙箱中运行每一步", "在审批关口暂停", "关闭了任务"]
         }
       },
       "line149JsxTextTalkToSales": "联系销售",
@@ -2272,7 +2257,77 @@
       "storyUseCaseAnalyticsTrigger": "Someone asks a business question in plain English.",
       "storyUseCaseAnalyticsOutput": "A result table, chart, query, and explanation your team can share or keep refining.",
       "storyUseCaseCompetitiveTrigger": "A competitor launches, changes pricing, or comes up in a deal.",
-      "storyUseCaseCompetitiveOutput": "A battlecard with positioning, objections, proof points, and recommended next messaging."
+      "storyUseCaseCompetitiveOutput": "A battlecard with positioning, objections, proof points, and recommended next messaging.",
+      "heroEyebrow": "开源人工智能管理系统",
+      "heroTrustStrip": "开源 · 任何模型，您的密钥 · 自托管、VPC 或本地部署",
+      "problemEyebrow": "人工智能差距",
+      "problemTitle": "您最优秀的人员拥有人工智能超能力。你们公司的其他人则不然。",
+      "problemDescription": "每个团队中都有少数人构建了人工智能循环来为他们完成工作。其他人都不确定何时使用什么。这些知识一直被锁在一个人的桶里——而公司永远不会复合它。",
+      "problemTurn": "Kortix 采用您最优秀的人员构建的内容并与每个人共享 - 与整个公司使用的文件相同的代理、技能和内存。",
+      "problemCard1Title": "锁定1%",
+      "problemCard1Body": "一名高级用户的工作流程，其他人都看不到。",
+      "problemCard2Title": "分散在不同的工具中",
+      "problemCard2Body": "一个应用程序中的上下文，另一个应用程序中的代理，每次都会重建胶水。",
+      "problemCard3Title": "租回给你",
+      "problemCard3Body": "您公司的大脑位于您无法控制的模型实验室中。",
+      "codeEyebrow": "一切都是您拥有的代码",
+      "codeTitle": "您的整个公司，作为文件。",
+      "codeDescription": "Kortix 将您的公司视为 Git 存储库。每个代理、技能、连接器、策略和内存都是整个公司共享的文件 - 一个配置，一个事实来源，因此每个人都使用相同的代理和技能工作，并且公司的内存复合在一个地方而不是分散。 grep 它，diff 它，完全拥有它。",
+      "codePoint1Title": "适合每项工作的技能",
+      "codePoint1Body": "您的公司如何开展工作，写下来并在各处重复使用。",
+      "codePoint2Title": "座席与他们的环境一起生活",
+      "codePoint2Body": "每个代理都是与其所需技能位于同一存储库中的一个文件。",
+      "codePoint3Title": "全公司共享",
+      "codePoint3Body": "每个人都使用一种配置 — 不是 12 个 SaaS 工具，每个工具都占有一席之地。",
+      "codePoint4Title": "记忆复合",
+      "codePoint4Body": "每个经过审查的变更都会落在主要内容中，因此技能和背景会不断增长而不是迷失。",
+      "workforceEyebrow": "组织规模并行",
+      "workforceTitle": "没有一个助手。整个劳动力。",
+      "workforceDescription": "每项技能都可以成为代理，并且代理作为劳动力运行——同时数千人，每个代理都在自己分支上的独立沙箱中。他们在真实机器上进行实际工作并返回完成的可交付成果，然后通过经过审查的变更请求将其返回到一个蜂巢思维主机。",
+      "workforcePoint1Title": "你只要问",
+      "workforcePoint1Body": "没有人记得哪个特工做了什么。用通俗易懂的语言提问，就能找到合适的技能。",
+      "workforcePoint2Title": "真正的工作，而不是聊天",
+      "workforcePoint2Body": "代理在您的工具中执行操作并返回报告、演示文稿、修复程序、回复，而不是告诉您如何操作的段落。",
+      "workforcePoint3Title": "隔离和并行",
+      "workforcePoint3Body": "每个会话都被隔离在自己的沙箱中。零交叉一次运行五十个；持久变更作为可审查的变更请求返回。",
+      "openTitle": "打开。可自行托管。你的一切都是金属的。",
+      "openSubtitle": "大多数人工智能都会给你一个玩具或一个笼子。 Kortix 都不是。",
+      "openRow1Title": "开源",
+      "openRow1Body": "最大的开放式人工智能工作平台之一。阅读每一行——没有什么是黑匣子。",
+      "openRow2Title": "任何型号，你的钥匙",
+      "openRow2Body": "带上任何提供商，或者您已付费的 Claude、ChatGPT 或 Cursor 订阅。",
+      "openRow3Title": "随时随地自行托管",
+      "openRow3Body": "托管云、您的 VPC、本地部署，甚至是气隙式的。没有打电话回家。",
+      "openRow4Title": "分叉整个公司",
+      "openRow4Body": "一键从另一家公司的操作系统开始 - 并发布您自己的操作系统。",
+      "openClosing": "你公司的大脑不应该存在于将其租回给你的十二种工具中。",
+      "problemOnePercentLabel": "1%",
+      "problemOnePercentTitle": "您的高级用户",
+      "problemOnePercentBody": "建立为他们工作的代理和技能——锁定在一个人的设置中，其他人看不见。",
+      "problemRestLabel": "99%",
+      "problemRestTitle": "其他人",
+      "problemRestBody": "不确定该使用什么或何时使用。公司从不将最优秀的员工已经想出的东西进行复合。",
+      "codeWindowTitle": "acme — 公司操作系统",
+      "codeBranchLabel": "主要的",
+      "runsEyebrow": "公司如何运作",
+      "runsTitle": "一问。劳动力。每个人都建立在一个共享的大脑之上。",
+      "runsDescription": "每个请求都分散到独立的会话中，每个会话都位于其自己分支上的自己的沙箱中。他们并行工作，然后通过经过审查的变更请求将其返回到一个共享主干 - 因此每个人的工作和公司的内存都集中在一个地方。",
+      "runsAsk": "你问——或者触发",
+      "runsSessionMeta": "隔离沙箱·自己的分支",
+      "runsSession1": "会议/外展",
+      "runsSession2": "会议/预审",
+      "runsSession3": "会议/闭月",
+      "runsChangeRequest": "变更请求",
+      "runsMain": "主要·全公司共享",
+      "runsPoint1Title": "隔离&并联",
+      "runsPoint1Body": "同时进行数千个会话，每个会话都隔离在自己的 microVM 沙箱中。",
+      "runsPoint2Title": "真正的工作，而不是聊天",
+      "runsPoint2Body": "代理在真实机器上执行操作并返回完成的可交付成果，而不是一个段落。",
+      "runsPoint3Title": "审查进入主要",
+      "runsPoint3Body": "持久的变更只有通过您可以比较的已批准的变更请求才能实现。",
+      "runsPoint4Title": "随着时间的推移化合物",
+      "runsPoint4Body": "每一项审查的变更都集中在一个共享的主体中，因此技能和记忆会增长而不是分散。",
+      "surfacesChips": "Slack · Microsoft 团队 · 网络工作区 · CLI · API 和 SDK · MCP · 触发器"
     },
     "appHomePartnershipsPartnershipsClient": {
       "line46JsxTextWeWorkWithAHandfulOfSelectedCompanies": "我们与少数精选公司合作，构建自主运营体系，就像我们为自己构建的一样。Kortix 的领导层和工程师会嵌入到你的团队中。",

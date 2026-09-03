@@ -188,6 +188,33 @@
     "connectors": {
       "opening": "Apertura connettori",
       "redirecting": "Reindirizzamento alla pagina delle connettori..."
+    },
+    "preferences": {
+      "title": "Lingua e scorciatoie",
+      "description": "Lingua e scorciatoie da tastiera.",
+      "languageTitle": "Lingua",
+      "languageDescription": "La lingua Kortix viene visualizzata ovunque nell'app.",
+      "keyboardTitle": "Scorciatoie da tastiera",
+      "keyboardDescription": "Il tasto modificatore utilizzato per cambiare scheda e ogni scorciatoia nell'app.",
+      "modifierKey": "Tasto modificatore",
+      "shortcuts": {
+        "newTab": "Nuova scheda",
+        "closeActiveTab": "Chiudi la scheda attiva",
+        "reopenClosedTab": "Riapri la scheda chiusa",
+        "nextTab": "Scheda successiva",
+        "previousTab": "Scheda precedente",
+        "nextTabAlt": "Scheda successiva (alt)",
+        "previousTabAlt": "Scheda precedente (alt)",
+        "switchToTabRange": "Passa alla scheda 1-8",
+        "switchToLastTab": "Passa all'ultima scheda",
+        "newSession": "Nuova sessione",
+        "commandPalette": "Tavolozza dei comandi",
+        "switchWorkspace": "Cambia area di lavoro",
+        "settings": "Impostazioni",
+        "toggleLeftSidebar": "Attiva/disattiva la barra laterale sinistra",
+        "toggleRightSidebar": "Attiva/disattiva la barra laterale destra",
+        "toggleSessionActionPanel": "Attiva/disattiva il pannello delle azioni della sessione"
+      }
     }
   },
   "triggers": {
@@ -325,10 +352,7 @@
         "Sveglia! Cosa costruiamo oggi?",
         "Buongiorno! Pronti a spaccare?"
       ],
-      "afternoon": [
-        "Buon pomeriggio! Come posso aiutare?",
-        "Come va? Cosa c'è da fare?"
-      ],
+      "afternoon": ["Buon pomeriggio! Come posso aiutare?", "Come va? Cosa c'è da fare?"],
       "evening": [
         "Buonasera! Lavoro notturno?",
         "Ciao! Su cosa lavoriamo stasera?",
@@ -884,7 +908,8 @@
     "ja": "日本語",
     "pt": "Português",
     "fr": "Français",
-    "es": "Español"
+    "es": "Español",
+    "sr": "Српски"
   },
   "notifications": {
     "title": "Notifiche",
@@ -1898,11 +1923,10 @@
           "title": "Turn customer noise into prioritized action",
           "description": "Agents pull signals from tickets, Slack, and your CRM — then classify, deduplicate, and route each to the right team with full context. Every step runs in an isolated sandbox, and nothing reaches a customer without review.",
           "log": [
-            "Ingesting 340 signals from 4 sources.",
-            "Classified: 12 critical, 45 high, 283 routine",
-            "Deduplicated 67 signals → 28 unique issues",
-            "Routed to 3 teams with context attached",
-            "12 critical issues escalated · avg response 4min"
+            "Biglietto estratto + storico cliente",
+            "Risposta redatta dai documenti",
+            "Rimborso contrassegnato per l'approvazione",
+            "Inviato, registrato nella traccia di controllo"
           ]
         },
         "shipBacklogTickets": {
@@ -1912,11 +1936,10 @@
           "title": "From backlog ticket to reviewed change request",
           "description": "Point a coding agent at your backlog. It reads the issue, works in its own sandbox on its own branch, and opens a change request with a preview — so every line lands on main through review, never a black box.",
           "log": [
-            "Picked up 8 tickets from the backlog",
-            "Spun up 8 isolated sandboxes in parallel",
-            "Wrote code + tests · 6 ready, 2 need input",
-            "Opened 6 change requests with previews",
-            "Awaiting human review before merge to main"
+            "Differenza rivista in sandbox",
+            "Riprodotto il bug",
+            "Ramo fisso aperto",
+            "Richiesta di modifica inviata"
           ]
         },
         "fillThePipeline": {
@@ -1926,11 +1949,10 @@
           "title": "Research every account, draft every touch",
           "description": "Agents enrich and rank your accounts, draft personalized outreach, and keep the CRM clean — so your team walks into every call prepped, not scrambling.",
           "log": [
-            "Enriched 1,200 accounts from 5 sources",
-            "Ranked and scored by fit and intent",
-            "Drafted 340 personalized outreach sequences",
-            "Updated 1,200 CRM records · 0 duplicates",
-            "18 call briefs ready for tomorrow"
+            "Raccolti da fonti approvate",
+            "Ho effettuato un controllo incrociato dei fatti",
+            "Ha scritto il brief",
+            "Inserito per la squadra"
           ]
         },
         "closeTheBooks": {
@@ -1940,11 +1962,10 @@
           "title": "Reconcile and close, with a trail you can audit",
           "description": "Agents capture invoices, tie out accounts, and flag policy exceptions — leaving a reviewable run log behind every number, so the close is fast and fully auditable.",
           "log": [
-            "Captured 482 invoices · matched 461",
-            "Reconciled 14 accounts · 21 exceptions flagged",
-            "Drafted board report from consolidated data",
-            "Every figure linked to its source document",
-            "Ready for controller sign-off"
+            "Transazioni abbinate",
+            "Segnalate 3 eccezioni",
+            "Riepilogo redatto",
+            "Trattenuto per la firma"
           ]
         },
         "briefToCampaign": {
@@ -1954,11 +1975,10 @@
           "title": "Turn a brief into a campaign that's ready to ship",
           "description": "Hand agents a brief and your brand. They research, draft, and interlink pages, posts, and ad variations on brand — and hand back finished work for a human to approve before anything goes live.",
           "log": [
-            "Read brief + brand guidelines",
-            "Researched 24 keywords and 6 competitors",
-            "Drafted 12 posts, 4 pages, 30 ad variations",
-            "Checked every asset against brand voice",
-            "Queued for review · publish on approval"
+            "Leggi il brief",
+            "Redatto il patrimonio",
+            "Regole del marchio controllate",
+            "Instradato per la revisione"
           ]
         },
         "runTheBackOffice": {
@@ -1968,11 +1988,10 @@
           "title": "Turn playbooks into workflows that run themselves",
           "description": "Agents track orders across suppliers, watch vendor performance, and turn your SOPs into workflows triggered on a schedule or a webhook — so the business keeps running while your team sleeps.",
           "log": [
-            "Tracked 96 orders across 11 suppliers",
-            "Flagged 4 delayed shipments · opened actions",
-            "Ran 7 SOPs on schedule overnight",
-            "Logged every action to an audit trail",
-            "2 exceptions routed for human decision"
+            "Caricata la SOP",
+            "Ho eseguito ogni passaggio nella sandbox",
+            "Sosta al cancello di approvazione",
+            "Chiuso l'attività"
           ]
         }
       },
@@ -2272,7 +2291,77 @@
       "storyUseCaseAnalyticsTrigger": "Someone asks a business question in plain English.",
       "storyUseCaseAnalyticsOutput": "A result table, chart, query, and explanation your team can share or keep refining.",
       "storyUseCaseCompetitiveTrigger": "A competitor launches, changes pricing, or comes up in a deal.",
-      "storyUseCaseCompetitiveOutput": "A battlecard with positioning, objections, proof points, and recommended next messaging."
+      "storyUseCaseCompetitiveOutput": "A battlecard with positioning, objections, proof points, and recommended next messaging.",
+      "heroEyebrow": "Il sistema di gestione dell'intelligenza artificiale open source",
+      "heroTrustStrip": "Open source · Qualsiasi modello, le tue chiavi · Self-host, VPC o on-prem",
+      "problemEyebrow": "Il divario dell'IA",
+      "problemTitle": "Le tue persone migliori hanno i superpoteri dell'intelligenza artificiale. Il resto della tua azienda no.",
+      "problemDescription": "Una manciata di persone in ogni team hanno creato circuiti IA che svolgono il loro lavoro per loro. Tutti gli altri non sono sicuri di cosa usare e quando. Quella conoscenza rimane chiusa nel secchio di una persona e l'azienda non la aggrava mai.",
+      "problemTurn": "Kortix prende ciò che costruiscono i tuoi migliori collaboratori e lo condivide con tutti: gli stessi agenti, competenze e memoria dei file utilizzati da tutta l'azienda.",
+      "problemCard1Title": "Bloccato nell'1%",
+      "problemCard1Body": "Il flusso di lavoro di un utente esperto, invisibile a tutti gli altri.",
+      "problemCard2Title": "Sparsi tra gli strumenti",
+      "problemCard2Body": "Contesto in un'app, agenti in un'altra, il collante viene ricostruito ogni volta.",
+      "problemCard3Title": "Riaffittato a te",
+      "problemCard3Body": "Il cervello della tua azienda vive in un laboratorio modello che non controlli.",
+      "codeEyebrow": "Tutto è un codice che possiedi",
+      "codeTitle": "Tutta la vostra azienda, sotto forma di file.",
+      "codeDescription": "Kortix tratta la tua azienda come un pronti contro termine Git. Ogni agente, competenza, connettore, policy e memoria è un file condiviso da tutta l'azienda: una configurazione, una fonte di verità, quindi tutti lavorano con gli stessi agenti e competenze e la memoria dell'azienda si accumula in un unico posto invece di disperdersi. grep, differenzialo, possedetelo a titolo definitivo.",
+      "codePoint1Title": "Una competenza per ogni lavoro",
+      "codePoint1Body": "Come svolge il lavoro la tua azienda, scritto una volta e riutilizzato ovunque.",
+      "codePoint2Title": "Gli agenti convivono con il loro contesto",
+      "codePoint2Body": "Ogni agente è un file nello stesso repository delle competenze di cui ha bisogno.",
+      "codePoint3Title": "Condiviso da tutta l'azienda",
+      "codePoint3Body": "Una configurazione da cui tutti lavorano, non dodici strumenti SaaS ciascuno con una porzione.",
+      "codePoint4Title": "La memoria che si accumula",
+      "codePoint4Body": "Ogni modifica esaminata arriva al main, quindi le competenze e il contesto crescono invece di perdersi.",
+      "workforceEyebrow": "Scala organizzativa, in parallelo",
+      "workforceTitle": "Nemmeno un assistente. Un'intera forza lavoro.",
+      "workforceDescription": "Ogni competenza può diventare un agente e gli agenti funzionano come una forza lavoro: migliaia contemporaneamente, ciascuno nella propria sandbox isolata sulla propria filiale. Svolgono un lavoro reale su macchine reali e restituiscono i risultati finali, quindi li riportano a una mente alveare principale attraverso una richiesta di modifica esaminata.",
+      "workforcePoint1Title": "Basta chiedere",
+      "workforcePoint1Body": "Nessuno ricorda quale agente fa cosa. Chiedi in un linguaggio semplice e indirizzerà alla giusta competenza.",
+      "workforcePoint2Title": "Lavoro vero, non chiacchiere",
+      "workforcePoint2Body": "Gli agenti agiscono nei tuoi strumenti e restituiscono un rapporto, una presentazione, una correzione, una risposta, non un paragrafo che ti spiega come.",
+      "workforcePoint3Title": "Isolato e parallelo",
+      "workforcePoint3Body": "Ogni sessione è rinchiusa nella propria sandbox. Esegui cinquanta alla volta con zero crossover; le modifiche durature vengono restituite come richieste di modifica rivedibili.",
+      "openTitle": "Apri. Auto-ospitale. Tuo fino in fondo.",
+      "openSubtitle": "La maggior parte delle IA ti regala un giocattolo o una gabbia. Kortix non è nessuno dei due.",
+      "openRow1Title": "Open source",
+      "openRow1Body": "Una delle più grandi piattaforme aperte di intelligenza artificiale per il lavoro. Leggi ogni riga: niente è una scatola nera.",
+      "openRow2Title": "Qualsiasi modello, le tue chiavi",
+      "openRow2Body": "Porta con te qualsiasi fornitore, oppure l'abbonamento Claude, ChatGPT o l'abbonamento Cursor che hai già pagato.",
+      "openRow3Title": "Ospita autonomamente ovunque",
+      "openRow3Body": "Cloud gestito, il tuo VPC, on-premise, anche air gap. Niente telefona a casa.",
+      "openRow4Title": "Forchetta un'intera azienda",
+      "openRow4Body": "Inizia dal sistema operativo di un'altra azienda con un clic e pubblica il tuo.",
+      "openClosing": "Il cervello della tua azienda non dovrebbe vivere in dodici strumenti che te lo restituiscono.",
+      "problemOnePercentLabel": "1%",
+      "problemOnePercentTitle": "I tuoi utenti esperti",
+      "problemOnePercentBody": "Costruito gli agenti e le competenze che svolgono il lavoro per loro, bloccati nella configurazione di una persona, invisibili a tutti gli altri.",
+      "problemRestLabel": "99%",
+      "problemRestTitle": "Tutti gli altri",
+      "problemRestBody": "Non so cosa usare o quando. L'azienda non complica mai ciò che i suoi migliori dipendenti hanno già capito.",
+      "codeWindowTitle": "acme: sistema operativo aziendale",
+      "codeBranchLabel": "principale",
+      "runsEyebrow": "Come funziona l'azienda",
+      "runsTitle": "Una domanda. Una forza lavoro. Un cervello condiviso su cui tutti si basano.",
+      "runsDescription": "Ogni richiesta si divide in sessioni isolate, ciascuna nella propria sandbox sul proprio ramo. Lavorano in parallelo, per poi riportarli a un'unica piattaforma condivisa tramite una richiesta di modifica esaminata, in modo che il lavoro di tutti e la memoria dell'azienda si riuniscano in un unico posto.",
+      "runsAsk": "Se lo chiedi, altrimenti si attiva il grilletto",
+      "runsSessionMeta": "sandbox isolato · filiale propria",
+      "runsSession1": "sessione/sensibilizzazione",
+      "runsSession2": "sessione/pr-revisione",
+      "runsSession3": "sessione/chiusura-mese",
+      "runsChangeRequest": "richiesta di modifica",
+      "runsMain": "principale · condiviso da tutta l'azienda",
+      "runsPoint1Title": "Isolato e parallelo",
+      "runsPoint1Body": "Migliaia di sessioni contemporaneamente, ciascuna racchiusa nella propria sandbox microVM.",
+      "runsPoint2Title": "Lavoro vero, non chiacchiere",
+      "runsPoint2Body": "Gli agenti agiscono su macchine reali e restituiscono risultati finiti, non un paragrafo.",
+      "runsPoint3Title": "Revisionato in main",
+      "runsPoint3Body": "Le modifiche durevoli arrivano solo attraverso una richiesta di modifica approvata che puoi differenziare.",
+      "runsPoint4Title": "Composti nel tempo",
+      "runsPoint4Body": "Ogni modifica rivista finisce in un'unica area principale condivisa, quindi competenze e memoria crescono invece di disperdersi.",
+      "surfacesChips": "Slack · Microsoft Teams · Area di lavoro Web · CLI · API & SDK · MCP · Trigger"
     },
     "appHomePartnershipsPartnershipsClient": {
       "line46JsxTextWeWorkWithAHandfulOfSelectedCompanies": "Lavoriamo con un ristretto numero di aziende selezionate per costruire operations autonome, nello stesso modo in cui le costruiamo per noi stessi. Leadership e ingegneri Kortix, integrati nel tuo team.",

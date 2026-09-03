@@ -1,10 +1,8 @@
 import { getRequestConfig } from 'next-intl/server';
 import { notFound } from 'next/navigation';
+import { locales, type Locale } from './catalog.mjs';
 
-export const locales = ['en', 'de', 'it', 'zh', 'ja', 'pt', 'fr', 'es'] as const;
-export type Locale = (typeof locales)[number];
-
-export const defaultLocale: Locale = 'en';
+export { defaultLocale, localeNames, locales, type Locale } from './catalog.mjs';
 
 export default getRequestConfig(async ({ locale }) => {
   // Validate that the incoming `locale` parameter is valid
@@ -14,6 +12,6 @@ export default getRequestConfig(async ({ locale }) => {
 
   return {
     locale: locale as string,
-    messages: (await import(`../../translations/${locale}.json`)).default
+    messages: (await import(`../../translations/${locale}.json`)).default,
   };
 });

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { defaultLocale } from './config';
+import { defaultLocale, localeNames, locales } from './config';
 import { getExplicitLocale, getUserLocale, normalizeLocale } from './locale';
 
 describe('explicit locale resolution', () => {
@@ -24,5 +24,12 @@ describe('explicit locale resolution', () => {
     expect(normalizeLocale('ja_JP')).toBe('ja');
     expect(normalizeLocale('Europe/Berlin')).toBeNull();
     expect(normalizeLocale(undefined)).toBeNull();
+  });
+
+  test('ships Serbian and normalizes both Serbian script tags', () => {
+    expect(locales).toContain('sr');
+    expect(localeNames.sr).toBe('Српски');
+    expect(normalizeLocale('sr-Latn')).toBe('sr');
+    expect(normalizeLocale('sr_Cyrl')).toBe('sr');
   });
 });

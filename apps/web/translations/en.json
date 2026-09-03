@@ -42,6 +42,33 @@
       "connectors": "Connectors",
       "envManager": "Env Manager"
     },
+    "preferences": {
+      "title": "Language & shortcuts",
+      "description": "Language and keyboard shortcuts.",
+      "languageTitle": "Language",
+      "languageDescription": "The language Kortix displays, everywhere in the app.",
+      "keyboardTitle": "Keyboard shortcuts",
+      "keyboardDescription": "The modifier key used for tab switching, and every shortcut in the app.",
+      "modifierKey": "Modifier key",
+      "shortcuts": {
+        "newTab": "New tab",
+        "closeActiveTab": "Close active tab",
+        "reopenClosedTab": "Reopen closed tab",
+        "nextTab": "Next tab",
+        "previousTab": "Previous tab",
+        "nextTabAlt": "Next tab (alt)",
+        "previousTabAlt": "Previous tab (alt)",
+        "switchToTabRange": "Switch to tab 1-8",
+        "switchToLastTab": "Switch to last tab",
+        "newSession": "New session",
+        "commandPalette": "Command palette",
+        "switchWorkspace": "Switch workspace",
+        "settings": "Settings",
+        "toggleLeftSidebar": "Toggle left sidebar",
+        "toggleRightSidebar": "Toggle right sidebar",
+        "toggleSessionActionPanel": "Toggle session action panel"
+      }
+    },
     "general": {
       "title": "General settings",
       "description": "Manage your account information",
@@ -884,7 +911,8 @@
     "ja": "日本語",
     "pt": "Português",
     "fr": "Français",
-    "es": "Español"
+    "es": "Español",
+    "sr": "Српски"
   },
   "notifications": {
     "title": "Notifications",

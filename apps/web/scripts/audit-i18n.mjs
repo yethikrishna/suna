@@ -1,21 +1,23 @@
 #!/usr/bin/env node
 
+import { IntlMessageFormat } from 'intl-messageformat';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import ts from 'typescript';
+import { defaultLocale, locales } from '../src/i18n/catalog.mts';
 
 const root = process.cwd();
 const srcDir = path.join(root, 'src');
 const translationsDir = path.join(root, 'translations');
-const locales = ['en', 'de', 'it', 'zh', 'ja', 'pt', 'fr', 'es'];
-const defaultLocale = 'en';
-
 const args = new Map(
-  process.argv.slice(2).filter((arg) => arg !== '--').map((arg) => {
-    const [key, value = 'true'] = arg.replace(/^--/, '').split('=');
-    return [key, value];
-  }),
+  process.argv
+    .slice(2)
+    .filter((arg) => arg !== '--')
+    .map((arg) => {
+      const [key, value = 'true'] = arg.replace(/^--/, '').split('=');
+      return [key, value];
+    }),
 );
 
 const maxHardcoded = args.has('max-hardcoded')
@@ -119,15 +121,90 @@ function readJson(file) {
 }
 
 function flatten(obj, prefix = '', out = {}) {
+  if (Array.isArray(obj)) {
+    obj.forEach((value, index) => flatten(value, `${prefix}[${index}]`, out));
+    return out;
+  }
+
+  if (!obj || typeof obj !== 'object') {
+    out[prefix] = obj;
+    return out;
+  }
+
   for (const [key, value] of Object.entries(obj)) {
     const next = prefix ? `${prefix}.${key}` : key;
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      flatten(value, next, out);
-    } else {
-      out[next] = value;
-    }
+    flatten(value, next, out);
   }
   return out;
+}
+
+function templateVariables(message) {
+  return [...message.matchAll(/\{\{\s*([\w.-]+)\s*\}\}/g)].map((match) => match[1]).sort();
+}
+
+function messageSignature(message, locale) {
+  const ast = new IntlMessageFormat(message, locale).getAst();
+  const tokens = [];
+
+  function visit(elements) {
+    for (const element of elements) {
+      if ([1, 2, 3, 4, 5, 6].includes(element.type)) {
+        tokens.push(`${element.type}:${element.value}`);
+      } else if (element.type === 8) {
+        tokens.push(`tag:${element.value}`);
+      }
+
+      if ('options' in element && element.options) {
+        for (const option of Object.values(element.options)) visit(option.value);
+      }
+      if ('children' in element && element.children) visit(element.children);
+    }
+  }
+
+  visit(ast);
+  return tokens.sort();
+}
+
+function messageIssues(english, messages, locale) {
+  const issues = [];
+
+  for (const [key, sourceValue] of Object.entries(english)) {
+    const targetValue = messages[key];
+    if (typeof sourceValue !== typeof targetValue) {
+      if (key in messages)
+        issues.push(`${key}: type ${typeof sourceValue} != ${typeof targetValue}`);
+      continue;
+    }
+    if (typeof sourceValue !== 'string') continue;
+
+    if (/[\uE000-\uF8FF]/.test(targetValue)) {
+      issues.push(`${key}: contains a private-use character`);
+    }
+
+    const sourceTemplates = templateVariables(sourceValue);
+    const targetTemplates = templateVariables(targetValue);
+    if (JSON.stringify(sourceTemplates) !== JSON.stringify(targetTemplates)) {
+      issues.push(`${key}: template variables differ`);
+    }
+
+    let sourceSignature;
+    try {
+      sourceSignature = messageSignature(sourceValue, defaultLocale);
+    } catch {
+      continue;
+    }
+
+    try {
+      const targetSignature = messageSignature(targetValue, locale);
+      if (JSON.stringify(sourceSignature) !== JSON.stringify(targetSignature)) {
+        issues.push(`${key}: ICU arguments or rich-text tags differ`);
+      }
+    } catch (error) {
+      issues.push(`${key}: invalid ICU message (${error.message})`);
+    }
+  }
+
+  return issues;
 }
 
 function walkFiles(dir, out = []) {
@@ -163,7 +240,13 @@ function getLine(sourceFile, pos) {
 
 function scanFile(file) {
   const source = fs.readFileSync(file, 'utf8');
-  const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const sourceFile = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
   const findings = [];
 
   function add(kind, node, text) {
@@ -222,13 +305,15 @@ function auditTranslations() {
     const messages = flatten(readJson(file));
     const missing = Object.keys(english).filter((key) => !(key in messages));
     const extra = Object.keys(messages).filter((key) => !(key in english));
+    const invalid = messageIssues(english, messages, locale);
 
-    if (missing.length > 0) failures += 1;
+    if (missing.length > 0 || extra.length > 0 || invalid.length > 0) failures += 1;
     report.push({
       locale,
       leafKeys: Object.keys(messages).length,
       missing,
       extra,
+      invalid,
     });
   }
 
@@ -254,10 +339,11 @@ for (const item of translationAudit.report) {
     continue;
   }
   console.log(
-    `- ${item.locale}: ${item.leafKeys} leaf keys, ${item.missing.length} missing, ${item.extra.length} extra`,
+    `- ${item.locale}: ${item.leafKeys} leaf keys, ${item.missing.length} missing, ${item.extra.length} extra, ${item.invalid.length} invalid`,
   );
   if (item.missing.length) console.log(`  missing: ${item.missing.slice(0, 30).join(', ')}`);
   if (item.extra.length) console.log(`  extra: ${item.extra.slice(0, 30).join(', ')}`);
+  if (item.invalid.length) console.log(`  invalid: ${item.invalid.slice(0, 30).join(', ')}`);
 }
 
 console.log('\nhardcoded UI text audit');

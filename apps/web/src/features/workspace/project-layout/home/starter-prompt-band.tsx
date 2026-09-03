@@ -54,6 +54,7 @@ export function StarterPromptBand({
   className?: string;
 }) {
   const t = useTranslations('projectHome');
+  const tPrompts = useTranslations('starterPrompts.items');
   /*
    * Today's five. The store resolves them at import time on the client
    * (`stores/starter-prompt-rotation-store.ts`), so this selector returns the
@@ -122,13 +123,15 @@ export function StarterPromptBand({
       <div className={BAND_LIST_CLASS}>
         {rows.map((prompt, index) => {
           const PromptIcon = prompt.icon;
-          const chalk = chalkColors(prompt.label);
+          const label = tPrompts(`${prompt.id}.label`);
+          const translatedPrompt = tPrompts(`${prompt.id}.prompt`);
+          const chalk = chalkColors(prompt.id);
 
           return (
             <button
               key={prompt.id}
               type="button"
-              onClick={() => onPick(prompt.prompt)}
+              onClick={() => onPick(translatedPrompt)}
               className={cn(
                 BAND_ROW_CLASS,
                 BAND_ROW_HOVER_CLASS,
@@ -166,7 +169,7 @@ export function StarterPromptBand({
                 style={{ color: chalk.foreground }}
               />
               <span className="font-kerning-normal text-foreground min-w-0 flex-1 truncate text-sm">
-                {prompt.label}
+                {label}
               </span>
             </button>
           );

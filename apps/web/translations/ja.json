@@ -31,6 +31,60 @@
     "basic": "ベーシック",
     "tryFree": "始める"
   },
+  "newWorkspace": {
+    "title": "ワークスペースを作成",
+    "description": "ワークスペースにはエージェント、ファイル、セッションが保存されます。",
+    "templateSeed": "このワークスペースは選択したテンプレートからセットアップされます。",
+    "account": {
+      "label": "アカウント",
+      "createIn": "{account} に作成",
+      "choose": "アカウントを選択"
+    },
+    "name": { "label": "ワークスペース名", "placeholder": "ワークスペース名" },
+    "validation": {
+      "nameRequired": "名前は必須です",
+      "nameCharacters": "文字、数字、スペース、ハイフン、アンダースコア、ピリオドのみ使用できます",
+      "nameTooLong": "名前は {max} 文字以内にしてください"
+    },
+    "permissions": {
+      "noCreatableAccount": "ワークスペースを作成するには、アカウントの所有者または管理者権限が必要です。",
+      "unknownAccountPrefix": "どのアカウントがあなたのものか確認できないため、自動選択しません。次の宛先にメールしてください：",
+      "unknownAccountSuffix": "。問題を修正します。"
+    },
+    "actions": {
+      "create": "ワークスペースを作成",
+      "tryAgain": "もう一度試す",
+      "logOut": "ログアウト",
+      "signingOut": "ログアウト中"
+    },
+    "repository": {
+      "label": "リポジトリ",
+      "defaultBranch": "デフォルトブランチ",
+      "noGitHubAccount": "このワークスペースのアカウントには、まだ GitHub アカウントが接続されていません。",
+      "connectGitHub": "GitHub アカウントを接続",
+      "connectGitHubSuffix": "すると、このオプションを使用できます。",
+      "loadingGitHubAccounts": "GitHub アカウントを読み込み中…",
+      "loadGitHubAccountsError": "GitHub アカウントを読み込めませんでした：{error}",
+      "githubAccount": "GitHub アカウント",
+      "selectGitHubAccount": "GitHub アカウントを選択",
+      "createsPath": "<path>{path}</path> を作成します",
+      "loadRepositoriesError": "リポジトリを読み込めませんでした：{error}",
+      "sources": {
+        "managed": {
+          "label": "Kortix が管理",
+          "description": "Kortix がこのワークスペース用のプライベートリポジトリを作成して管理します。"
+        },
+        "githubCreate": {
+          "label": "GitHub に作成",
+          "description": "Kortix が GitHub アカウントにプライベートリポジトリを作成します。"
+        },
+        "githubImport": {
+          "label": "GitHub からインポート",
+          "description": "GitHub アカウントから既存のリポジトリを選択します。"
+        }
+      }
+    }
+  },
   "settings": {
     "title": "設定",
     "tabs": {
@@ -824,11 +878,11 @@
           "description": "サンドボックスを1つ待機させ、すぐにセッションを開始します。待機中も計算資源と同時セッション枠を使います。"
         },
         "secrets_egress": {
-          "name": "シークレット送信制御",
+          "name": "ネットワーク強制シークレット",
           "description": "プロジェクトのシークレットを受け取れるツールと送信先を制御します。"
         },
         "pi_worker": {
-          "name": "Pi ワーカー",
+          "name": "Pi ワーカーランタイム（コンパイル済み）",
           "description": "試験運用中の Pi ワーカーランタイムでセッションを実行します。"
         }
       }

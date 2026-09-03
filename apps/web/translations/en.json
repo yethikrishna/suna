@@ -31,6 +31,60 @@
     "basic": "Basic",
     "tryFree": "My Kortix"
   },
+  "newWorkspace": {
+    "title": "Create a workspace",
+    "description": "A workspace is where your agents, files and sessions live.",
+    "templateSeed": "This workspace will be seeded from the template you picked.",
+    "account": {
+      "label": "Account",
+      "createIn": "Create in {account}",
+      "choose": "Choose an account"
+    },
+    "name": { "label": "Workspace name", "placeholder": "Workspace name" },
+    "validation": {
+      "nameRequired": "Name is required",
+      "nameCharacters": "Use only letters, numbers, spaces, hyphens, underscores or dots",
+      "nameTooLong": "Name must be {max} characters or fewer"
+    },
+    "permissions": {
+      "noCreatableAccount": "You need owner or admin access in an account to create a workspace.",
+      "unknownAccountPrefix": "We can't tell which of your accounts is yours, so we're not guessing. Email",
+      "unknownAccountSuffix": "and we'll get it fixed."
+    },
+    "actions": {
+      "create": "Create workspace",
+      "tryAgain": "Try again",
+      "logOut": "Log out",
+      "signingOut": "Signing out"
+    },
+    "repository": {
+      "label": "Repository",
+      "defaultBranch": "Default branch",
+      "noGitHubAccount": "No GitHub account is connected to this workspace's account yet.",
+      "connectGitHub": "Connect a GitHub account",
+      "connectGitHubSuffix": "to use this option.",
+      "loadingGitHubAccounts": "Loading GitHub accounts…",
+      "loadGitHubAccountsError": "Could not load GitHub accounts: {error}",
+      "githubAccount": "GitHub account",
+      "selectGitHubAccount": "Select a GitHub account",
+      "createsPath": "Creates <path>{path}</path>",
+      "loadRepositoriesError": "Could not load repositories: {error}",
+      "sources": {
+        "managed": {
+          "label": "Kortix managed",
+          "description": "Kortix creates and manages a private repository for this workspace."
+        },
+        "githubCreate": {
+          "label": "Create in GitHub",
+          "description": "Kortix creates a private repository in your GitHub account."
+        },
+        "githubImport": {
+          "label": "Import from GitHub",
+          "description": "Select an existing repository from your GitHub account."
+        }
+      }
+    }
+  },
   "settings": {
     "title": "Settings",
     "tabs": {
@@ -644,11 +698,11 @@
           "description": "Keep one sandbox ready for instant session starts. The idle sandbox uses compute and a concurrent-session slot."
         },
         "secrets_egress": {
-          "name": "Secret Egress Controls",
+          "name": "Network-Enforced Secrets",
           "description": "Control which tools and destinations can receive project secrets."
         },
         "pi_worker": {
-          "name": "Pi Worker",
+          "name": "Pi Worker Runtime (compiled)",
           "description": "Run sessions with the experimental Pi worker runtime."
         }
       }

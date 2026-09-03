@@ -31,6 +31,60 @@
     "basic": "Басиц",
     "tryFree": "Мој Kortix"
   },
+  "newWorkspace": {
+    "title": "Направи радни простор",
+    "description": "Радни простор садржи ваше агенте, датотеке и сесије.",
+    "templateSeed": "Овај радни простор ће бити постављен из изабраног шаблона.",
+    "account": {
+      "label": "Налог",
+      "createIn": "Направи у налогу {account}",
+      "choose": "Изаберите налог"
+    },
+    "name": { "label": "Назив радног простора", "placeholder": "Назив радног простора" },
+    "validation": {
+      "nameRequired": "Назив је обавезан",
+      "nameCharacters": "Користите само слова, бројеве, размаке, цртице, доње црте или тачке",
+      "nameTooLong": "Назив може имати највише {max} знакова"
+    },
+    "permissions": {
+      "noCreatableAccount": "Потребан вам је власнички или администраторски приступ налогу да бисте направили радни простор.",
+      "unknownAccountPrefix": "Не можемо да утврдимо који налог је ваш, па нећемо нагађати. Пошаљите поруку на",
+      "unknownAccountSuffix": "и решићемо проблем."
+    },
+    "actions": {
+      "create": "Направи радни простор",
+      "tryAgain": "Покушај поново",
+      "logOut": "Одјави се",
+      "signingOut": "Одјављивање"
+    },
+    "repository": {
+      "label": "Репозиторијум",
+      "defaultBranch": "Подразумевана грана",
+      "noGitHubAccount": "Ниједан GitHub налог још није повезан са налогом овог радног простора.",
+      "connectGitHub": "Повежи GitHub налог",
+      "connectGitHubSuffix": "да бисте користили ову опцију.",
+      "loadingGitHubAccounts": "Учитавање GitHub налога…",
+      "loadGitHubAccountsError": "GitHub налози нису могли да се учитају: {error}",
+      "githubAccount": "GitHub налог",
+      "selectGitHubAccount": "Изаберите GitHub налог",
+      "createsPath": "Прави <path>{path}</path>",
+      "loadRepositoriesError": "Репозиторијуми нису могли да се учитају: {error}",
+      "sources": {
+        "managed": {
+          "label": "Kortix управља",
+          "description": "Kortix прави и управља приватним репозиторијумом за овај радни простор."
+        },
+        "githubCreate": {
+          "label": "Направи на GitHub-у",
+          "description": "Kortix прави приватни репозиторијум на вашем GitHub налогу."
+        },
+        "githubImport": {
+          "label": "Увези са GitHub-а",
+          "description": "Изаберите постојећи репозиторијум са свог GitHub налога."
+        }
+      }
+    }
+  },
   "settings": {
     "title": "Подешавања",
     "tabs": {
@@ -828,11 +882,11 @@
           "description": "Држите један песковник спремним за тренутно покретање. Неактиван песковник троши рачунарске ресурсе и једно место за истовремену сесију."
         },
         "secrets_egress": {
-          "name": "Контрола излаза тајни",
+          "name": "Тајне заштићене на мрежи",
           "description": "Контролишите који алати и одредишта могу да приме тајне пројекта."
         },
         "pi_worker": {
-          "name": "Pi извршилац",
+          "name": "Pi окружење за извршавање (компајлирано)",
           "description": "Покрећите сесије помоћу експерименталног Pi окружења за извршавање."
         }
       }

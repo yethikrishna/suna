@@ -31,6 +31,60 @@
     "basic": "Basique",
     "tryFree": "Commencer"
   },
+  "newWorkspace": {
+    "title": "Créer un espace de travail",
+    "description": "Un espace de travail contient vos agents, fichiers et sessions.",
+    "templateSeed": "Cet espace de travail sera initialisé à partir du modèle choisi.",
+    "account": {
+      "label": "Compte",
+      "createIn": "Créer dans {account}",
+      "choose": "Choisir un compte"
+    },
+    "name": { "label": "Nom de l’espace de travail", "placeholder": "Nom de l’espace de travail" },
+    "validation": {
+      "nameRequired": "Le nom est obligatoire",
+      "nameCharacters": "Utilisez uniquement des lettres, des chiffres, des espaces, des tirets, des tirets bas ou des points",
+      "nameTooLong": "Le nom doit comporter au maximum {max} caractères"
+    },
+    "permissions": {
+      "noCreatableAccount": "Vous devez disposer d’un accès propriétaire ou administrateur à un compte pour créer un espace de travail.",
+      "unknownAccountPrefix": "Nous ne pouvons pas déterminer lequel de vos comptes vous appartient. Envoyez un e-mail à",
+      "unknownAccountSuffix": "et nous corrigerons le problème."
+    },
+    "actions": {
+      "create": "Créer l’espace de travail",
+      "tryAgain": "Réessayer",
+      "logOut": "Se déconnecter",
+      "signingOut": "Déconnexion"
+    },
+    "repository": {
+      "label": "Dépôt",
+      "defaultBranch": "Branche par défaut",
+      "noGitHubAccount": "Aucun compte GitHub n’est encore connecté au compte de cet espace de travail.",
+      "connectGitHub": "Connecter un compte GitHub",
+      "connectGitHubSuffix": "pour utiliser cette option.",
+      "loadingGitHubAccounts": "Chargement des comptes GitHub…",
+      "loadGitHubAccountsError": "Impossible de charger les comptes GitHub : {error}",
+      "githubAccount": "Compte GitHub",
+      "selectGitHubAccount": "Sélectionner un compte GitHub",
+      "createsPath": "Crée <path>{path}</path>",
+      "loadRepositoriesError": "Impossible de charger les dépôts : {error}",
+      "sources": {
+        "managed": {
+          "label": "Géré par Kortix",
+          "description": "Kortix crée et gère un dépôt privé pour cet espace de travail."
+        },
+        "githubCreate": {
+          "label": "Créer dans GitHub",
+          "description": "Kortix crée un dépôt privé dans votre compte GitHub."
+        },
+        "githubImport": {
+          "label": "Importer depuis GitHub",
+          "description": "Sélectionnez un dépôt existant dans votre compte GitHub."
+        }
+      }
+    }
+  },
   "settings": {
     "title": "Paramètres",
     "tabs": {
@@ -837,11 +891,11 @@
           "description": "Gardez une sandbox prête pour un démarrage immédiat. La sandbox inactive consomme du calcul et un emplacement de session simultanée."
         },
         "secrets_egress": {
-          "name": "Contrôle de sortie des secrets",
+          "name": "Secrets protégés par le réseau",
           "description": "Contrôlez les outils et destinations autorisés à recevoir les secrets du projet."
         },
         "pi_worker": {
-          "name": "Worker Pi",
+          "name": "Environnement du worker Pi (compilé)",
           "description": "Exécutez les sessions avec l’environnement expérimental du worker Pi."
         }
       }

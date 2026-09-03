@@ -31,6 +31,63 @@
     "basic": "Básico",
     "tryFree": "Comenzar"
   },
+  "newWorkspace": {
+    "title": "Crear un espacio de trabajo",
+    "description": "Un espacio de trabajo contiene tus agentes, archivos y sesiones.",
+    "templateSeed": "Este espacio de trabajo se iniciará con la plantilla que elegiste.",
+    "account": {
+      "label": "Cuenta",
+      "createIn": "Crear en {account}",
+      "choose": "Elegir una cuenta"
+    },
+    "name": {
+      "label": "Nombre del espacio de trabajo",
+      "placeholder": "Nombre del espacio de trabajo"
+    },
+    "validation": {
+      "nameRequired": "El nombre es obligatorio",
+      "nameCharacters": "Usa solo letras, números, espacios, guiones, guiones bajos o puntos",
+      "nameTooLong": "El nombre debe tener {max} caracteres o menos"
+    },
+    "permissions": {
+      "noCreatableAccount": "Necesitas acceso de propietario o administrador en una cuenta para crear un espacio de trabajo.",
+      "unknownAccountPrefix": "No podemos determinar cuál de tus cuentas te pertenece, así que no haremos suposiciones. Escribe a",
+      "unknownAccountSuffix": "y lo solucionaremos."
+    },
+    "actions": {
+      "create": "Crear espacio de trabajo",
+      "tryAgain": "Intentar de nuevo",
+      "logOut": "Cerrar sesión",
+      "signingOut": "Cerrando sesión"
+    },
+    "repository": {
+      "label": "Repositorio",
+      "defaultBranch": "Rama predeterminada",
+      "noGitHubAccount": "Todavía no hay una cuenta de GitHub conectada a la cuenta de este espacio de trabajo.",
+      "connectGitHub": "Conectar una cuenta de GitHub",
+      "connectGitHubSuffix": "para usar esta opción.",
+      "loadingGitHubAccounts": "Cargando cuentas de GitHub…",
+      "loadGitHubAccountsError": "No se pudieron cargar las cuentas de GitHub: {error}",
+      "githubAccount": "Cuenta de GitHub",
+      "selectGitHubAccount": "Selecciona una cuenta de GitHub",
+      "createsPath": "Crea <path>{path}</path>",
+      "loadRepositoriesError": "No se pudieron cargar los repositorios: {error}",
+      "sources": {
+        "managed": {
+          "label": "Gestionado por Kortix",
+          "description": "Kortix crea y gestiona un repositorio privado para este espacio de trabajo."
+        },
+        "githubCreate": {
+          "label": "Crear en GitHub",
+          "description": "Kortix crea un repositorio privado en tu cuenta de GitHub."
+        },
+        "githubImport": {
+          "label": "Importar desde GitHub",
+          "description": "Selecciona un repositorio existente de tu cuenta de GitHub."
+        }
+      }
+    }
+  },
   "settings": {
     "title": "Ajustes",
     "tabs": {
@@ -837,11 +894,11 @@
           "description": "Mantén un sandbox listo para iniciar sesiones al instante. El sandbox inactivo usa cómputo y un espacio de sesión simultánea."
         },
         "secrets_egress": {
-          "name": "Controles de salida de secretos",
+          "name": "Secretos protegidos por la red",
           "description": "Controla qué herramientas y destinos pueden recibir los secretos del proyecto."
         },
         "pi_worker": {
-          "name": "Worker Pi",
+          "name": "Entorno del worker Pi (compilado)",
           "description": "Ejecuta sesiones con el entorno experimental del worker Pi."
         }
       }

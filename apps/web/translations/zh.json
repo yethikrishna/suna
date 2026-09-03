@@ -31,6 +31,56 @@
     "basic": "基础版",
     "tryFree": "开始"
   },
+  "newWorkspace": {
+    "title": "创建工作区",
+    "description": "工作区用于存放您的智能体、文件和会话。",
+    "templateSeed": "此工作区将使用您选择的模板进行初始化。",
+    "account": { "label": "账户", "createIn": "在 {account} 中创建", "choose": "选择账户" },
+    "name": { "label": "工作区名称", "placeholder": "工作区名称" },
+    "validation": {
+      "nameRequired": "名称为必填项",
+      "nameCharacters": "只能使用字母、数字、空格、连字符、下划线或点",
+      "nameTooLong": "名称不得超过 {max} 个字符"
+    },
+    "permissions": {
+      "noCreatableAccount": "您需要拥有账户的所有者或管理员权限才能创建工作区。",
+      "unknownAccountPrefix": "我们无法确定哪个账户属于您，因此不会擅自选择。请发送电子邮件至",
+      "unknownAccountSuffix": "，我们会解决此问题。"
+    },
+    "actions": {
+      "create": "创建工作区",
+      "tryAgain": "重试",
+      "logOut": "退出登录",
+      "signingOut": "正在退出"
+    },
+    "repository": {
+      "label": "代码仓库",
+      "defaultBranch": "默认分支",
+      "noGitHubAccount": "此工作区的账户尚未连接 GitHub 账户。",
+      "connectGitHub": "连接 GitHub 账户",
+      "connectGitHubSuffix": "以使用此选项。",
+      "loadingGitHubAccounts": "正在加载 GitHub 账户…",
+      "loadGitHubAccountsError": "无法加载 GitHub 账户：{error}",
+      "githubAccount": "GitHub 账户",
+      "selectGitHubAccount": "选择 GitHub 账户",
+      "createsPath": "创建 <path>{path}</path>",
+      "loadRepositoriesError": "无法加载代码仓库：{error}",
+      "sources": {
+        "managed": {
+          "label": "由 Kortix 管理",
+          "description": "Kortix 为此工作区创建并管理私有代码仓库。"
+        },
+        "githubCreate": {
+          "label": "在 GitHub 中创建",
+          "description": "Kortix 在您的 GitHub 账户中创建私有代码仓库。"
+        },
+        "githubImport": {
+          "label": "从 GitHub 导入",
+          "description": "从您的 GitHub 账户中选择现有代码仓库。"
+        }
+      }
+    }
+  },
   "settings": {
     "title": "设置",
     "tabs": {
@@ -813,11 +863,11 @@
           "description": "保留一个沙盒以立即启动会话。空闲沙盒会占用计算资源和一个并发会话名额。"
         },
         "secrets_egress": {
-          "name": "机密外发控制",
+          "name": "网络强制保护的机密",
           "description": "控制哪些工具和目标可以接收项目机密。"
         },
         "pi_worker": {
-          "name": "Pi 工作器",
+          "name": "Pi 工作器运行时（已编译）",
           "description": "使用实验性 Pi 工作器运行时来运行会话。"
         }
       }

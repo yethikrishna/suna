@@ -273,7 +273,12 @@ function scanFile(file) {
       add('jsx-text', node, node.getText(sourceFile));
     }
 
-    if (ts.isJsxAttribute(node) && node.initializer && !ignoredAttributes.has(node.name.text)) {
+    if (
+      ts.isJsxAttribute(node) &&
+      node.initializer &&
+      !ignoredAttributes.has(node.name.text) &&
+      !node.name.text.endsWith('ClassName')
+    ) {
       if (ts.isStringLiteral(node.initializer)) {
         add(`jsx-attr:${node.name.text}`, node, node.initializer.text);
       }

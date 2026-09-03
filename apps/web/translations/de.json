@@ -31,6 +31,60 @@
     "basic": "Basis",
     "tryFree": "Loslegen"
   },
+  "newWorkspace": {
+    "title": "Arbeitsbereich erstellen",
+    "description": "In einem Arbeitsbereich befinden sich deine Agenten, Dateien und Sitzungen.",
+    "templateSeed": "Dieser Arbeitsbereich wird mit der ausgewählten Vorlage eingerichtet.",
+    "account": {
+      "label": "Konto",
+      "createIn": "Erstellen in {account}",
+      "choose": "Konto auswählen"
+    },
+    "name": { "label": "Name des Arbeitsbereichs", "placeholder": "Name des Arbeitsbereichs" },
+    "validation": {
+      "nameRequired": "Ein Name ist erforderlich",
+      "nameCharacters": "Verwende nur Buchstaben, Zahlen, Leerzeichen, Bindestriche, Unterstriche oder Punkte",
+      "nameTooLong": "Der Name darf höchstens {max} Zeichen lang sein"
+    },
+    "permissions": {
+      "noCreatableAccount": "Du benötigst Eigentümer- oder Administratorzugriff auf ein Konto, um einen Arbeitsbereich zu erstellen.",
+      "unknownAccountPrefix": "Wir können nicht feststellen, welches Konto dir gehört, und treffen daher keine Annahme. Sende eine E-Mail an",
+      "unknownAccountSuffix": "und wir beheben das Problem."
+    },
+    "actions": {
+      "create": "Arbeitsbereich erstellen",
+      "tryAgain": "Erneut versuchen",
+      "logOut": "Abmelden",
+      "signingOut": "Abmeldung läuft"
+    },
+    "repository": {
+      "label": "Repository",
+      "defaultBranch": "Standard-Branch",
+      "noGitHubAccount": "Mit dem Konto dieses Arbeitsbereichs ist noch kein GitHub-Konto verbunden.",
+      "connectGitHub": "GitHub-Konto verbinden",
+      "connectGitHubSuffix": "um diese Option zu verwenden.",
+      "loadingGitHubAccounts": "GitHub-Konten werden geladen…",
+      "loadGitHubAccountsError": "GitHub-Konten konnten nicht geladen werden: {error}",
+      "githubAccount": "GitHub-Konto",
+      "selectGitHubAccount": "GitHub-Konto auswählen",
+      "createsPath": "Erstellt <path>{path}</path>",
+      "loadRepositoriesError": "Repositories konnten nicht geladen werden: {error}",
+      "sources": {
+        "managed": {
+          "label": "Von Kortix verwaltet",
+          "description": "Kortix erstellt und verwaltet ein privates Repository für diesen Arbeitsbereich."
+        },
+        "githubCreate": {
+          "label": "In GitHub erstellen",
+          "description": "Kortix erstellt ein privates Repository in deinem GitHub-Konto."
+        },
+        "githubImport": {
+          "label": "Aus GitHub importieren",
+          "description": "Wähle ein vorhandenes Repository aus deinem GitHub-Konto aus."
+        }
+      }
+    }
+  },
   "settings": {
     "title": "Einstellungen",
     "tabs": {
@@ -834,11 +888,11 @@
           "description": "Halten Sie eine Sandbox für sofortige Sitzungsstarts bereit. Die inaktive Sandbox verbraucht Rechenleistung und einen Platz für gleichzeitige Sitzungen."
         },
         "secrets_egress": {
-          "name": "Kontrolle der Geheimnisweitergabe",
+          "name": "Netzwerkerzwungene Geheimnisse",
           "description": "Steuern Sie, welche Werkzeuge und Ziele Projektgeheimnisse empfangen dürfen."
         },
         "pi_worker": {
-          "name": "Pi-Worker",
+          "name": "Pi-Worker-Laufzeit (kompiliert)",
           "description": "Führen Sie Sitzungen mit der experimentellen Pi-Worker-Laufzeit aus."
         }
       }

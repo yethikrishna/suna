@@ -346,7 +346,7 @@ export function SettingsPanelView({
         )}
       >
         <ModalTitle className="sr-only">
-          {project ? `Settings — ${project.name}` : 'Settings'}
+          {project ? `Preferences — ${project.name}` : 'Preferences'}
         </ModalTitle>
 
         <SettingsPanelShell
@@ -429,7 +429,7 @@ export function SettingsPanelShell({
     >
       {isMobile ? (
         <nav
-          aria-label="Settings"
+          aria-label="Preferences"
           className="border-border/60 flex h-auto shrink-0 items-center border-b bg-inherit"
         >
           <FadedScrollArea
@@ -485,7 +485,7 @@ export function SettingsPanelShell({
           </div>
 
           <nav
-            aria-label="Settings"
+            aria-label="Preferences"
             className="flex min-h-0 flex-1 [scrollbar-width:none] flex-col gap-4 overflow-y-auto px-2 pb-2 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
           >
             {groups.map((group) => (
@@ -569,7 +569,7 @@ export function SettingsPanelShell({
             <Breadcrumb className="min-w-0 flex-1">
               <BreadcrumbList className="text-foreground flex-nowrap gap-1 text-sm font-medium sm:gap-1">
                 <BreadcrumbItem className="min-w-0">
-                  <span className="flex h-7 items-center px-2">Settings</span>
+                  <span className="flex h-7 items-center px-2">Preferences</span>
                 </BreadcrumbItem>
                 {activeItem ? (
                   <>

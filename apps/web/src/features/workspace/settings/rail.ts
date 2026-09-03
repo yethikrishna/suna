@@ -71,7 +71,10 @@ const STATIC_GROUPS: readonly RailGroup[] = [
       },
       {
         tab: 'preferences',
-        label: 'Preferences',
+        // "Language & shortcuts", not "Preferences": the overlay itself is called
+        // Preferences now (Marko, 2026-09-03), and a tab named after its own
+        // dialog says nothing.
+        label: 'Language & shortcuts',
         description: 'Language and keyboard shortcuts.',
         icon: SlidersHorizontal,
       },

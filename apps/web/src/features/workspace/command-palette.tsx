@@ -2632,7 +2632,7 @@ export function CommandPalette() {
                     {filteredSettingsGroups.map((group) => (
                       <CommandGroup
                         key={group.label}
-                        heading={`Settings · ${group.label}`}
+                        heading={`Preferences · ${group.label}`}
                         forceMount
                       >
                         {group.items.map((item) => {

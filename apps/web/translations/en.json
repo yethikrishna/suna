@@ -583,6 +583,92 @@
         "empty": "No builds recorded yet. The platform default builds once globally; custom templates build on first use."
       }
     },
+    "featureFlags": {
+      "stability": { "experimental": "Experimental", "beta": "Beta", "stable": "Stable" },
+      "origin": {
+        "overridden": "Overridden for this project",
+        "defaultOn": "Default on",
+        "defaultOff": "Default off"
+      },
+      "search": "Search features",
+      "loadFailed": "Failed to load project",
+      "retry": "Retry",
+      "noMatches": "No matches for {query}.",
+      "emptyTitle": "No experimental features",
+      "emptyDescription": "This deployment exposes no per-project feature flags.",
+      "permission": "You need the project's customize-write permission to change a feature flag.",
+      "updateFailed": "Failed to update {key}",
+      "flags": {
+        "marketplace": {
+          "name": "Marketplace",
+          "description": "Browse and install skills from community and vendor registries. Sources, updates, and team scopes are still changing."
+        },
+        "agent_tunnel": {
+          "name": "Agent Computer Tunnel",
+          "description": "Let agents securely access a local computer’s files, shell, and desktop through a permission-controlled tunnel."
+        },
+        "connectors_api_discover": {
+          "name": "Connectors API Discover",
+          "description": "Browse direct API, MCP, GraphQL, CLI, and Postman integrations alongside optional OAuth apps."
+        },
+        "agentmail_email": {
+          "name": "AgentMail Email",
+          "description": "Assign AgentMail inboxes so incoming email threads can start and continue Kortix sessions."
+        },
+        "teams": {
+          "name": "Microsoft Teams",
+          "description": "Connect a Microsoft Teams bot so chats and channels can start and continue Kortix sessions."
+        },
+        "llm_gateway": {
+          "name": "LLM Gateway",
+          "description": "Route this project through the managed Kortix LLM gateway for managed models, metering, and budgets."
+        },
+        "review_center": {
+          "name": "Review Center",
+          "description": "Review change requests, approvals, and agent outputs from one inbox on the web or in Slack."
+        },
+        "meta_agent": {
+          "name": "Meta Agent",
+          "description": "Add a coordinator agent that manages specialized sessions and multi-step work across the project."
+        },
+        "apps": {
+          "name": "Apps",
+          "description": "Deploy static sites, JavaScript bundles, Dockerfiles, and OCI images to stable serverless URLs."
+        },
+        "monitors": {
+          "name": "Monitors",
+          "description": "Run persistent watchers that observe logs, feeds, or APIs and start agent sessions from events."
+        },
+        "warm_sessions": {
+          "name": "Warm Sessions",
+          "description": "Keep one sandbox ready for instant session starts. The idle sandbox uses compute and a concurrent-session slot."
+        },
+        "secrets_egress": {
+          "name": "Secret Egress Controls",
+          "description": "Control which tools and destinations can receive project secrets."
+        },
+        "pi_worker": {
+          "name": "Pi Worker",
+          "description": "Run sessions with the experimental Pi worker runtime."
+        }
+      }
+    },
+    "upgrades": {
+      "available": "Available upgrades",
+      "readOnly": "Read-only — running an upgrade needs write access to this workspace.",
+      "none": "No upgrades available",
+      "upToDateDescription": "This workspace is already up to date.",
+      "upToDate": "Up to date",
+      "run": "Run",
+      "oneOff": "One-off upgrade",
+      "oneOffDescription": "Describe a single change instead. It runs the same way — a session makes it, validates it, and opens a change request.",
+      "oneOffPlaceholder": "e.g. Rename the release-bot agent to deploy-bot everywhere it's referenced",
+      "runUpgrade": "Run upgrade",
+      "manifestV2": {
+        "title": "Migrate manifest to v2 (kortix.yaml)",
+        "description": "Converts the v1 kortix.toml into the governance-first kortix.yaml, refreshes platform-managed skills to the latest marketplace baseline, and opens a change request for review."
+      }
+    },
     "plan": {
       "managedByAdmin": "Managed by an account admin",
       "adminOnly": "Only admins of this account can change its plan or buy credits.",

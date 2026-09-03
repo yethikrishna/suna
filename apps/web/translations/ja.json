@@ -763,6 +763,92 @@
         "empty": "ビルド履歴はまだありません。プラットフォームのデフォルトは全体で一度だけビルドされ、独自テンプレートは初回使用時にビルドされます。"
       }
     },
+    "featureFlags": {
+      "stability": { "experimental": "試験運用", "beta": "ベータ", "stable": "安定版" },
+      "origin": {
+        "overridden": "このプロジェクトで上書き",
+        "defaultOn": "デフォルトでオン",
+        "defaultOff": "デフォルトでオフ"
+      },
+      "search": "機能を検索",
+      "loadFailed": "プロジェクトを読み込めませんでした",
+      "retry": "再試行",
+      "noMatches": "{query} に一致する結果はありません。",
+      "emptyTitle": "試験運用機能はありません",
+      "emptyDescription": "この環境にはプロジェクト単位の機能フラグがありません。",
+      "permission": "機能フラグを変更するには、プロジェクトのカスタマイズ編集権限が必要です。",
+      "updateFailed": "{key} を更新できませんでした",
+      "flags": {
+        "marketplace": {
+          "name": "マーケットプレイス",
+          "description": "コミュニティやベンダーのレジストリからスキルを参照してインストールします。ソース、更新、チーム範囲は調整中です。"
+        },
+        "agent_tunnel": {
+          "name": "エージェント用コンピュータートンネル",
+          "description": "権限管理されたトンネルを通じて、ローカルコンピューターのファイル、シェル、デスクトップへ安全にアクセスできます。"
+        },
+        "connectors_api_discover": {
+          "name": "コネクター API 検索",
+          "description": "直接 API、MCP、GraphQL、CLI、Postman の統合と、任意の OAuth アプリを参照します。"
+        },
+        "agentmail_email": {
+          "name": "AgentMail メール",
+          "description": "AgentMail の受信箱を割り当て、受信メールから Kortix セッションを開始・継続できるようにします。"
+        },
+        "teams": {
+          "name": "Microsoft Teams",
+          "description": "Microsoft Teams ボットを接続し、チャットやチャンネルから Kortix セッションを開始・継続します。"
+        },
+        "llm_gateway": {
+          "name": "LLM ゲートウェイ",
+          "description": "管理モデル、計測、予算のために、Kortix の管理対象 LLM ゲートウェイ経由でこのプロジェクトを処理します。"
+        },
+        "review_center": {
+          "name": "レビューセンター",
+          "description": "変更リクエスト、承認、エージェント出力を Web または Slack の1つの受信箱で確認します。"
+        },
+        "meta_agent": {
+          "name": "メタエージェント",
+          "description": "専門セッションとプロジェクト内の複数手順の作業を管理するコーディネーターを追加します。"
+        },
+        "apps": {
+          "name": "アプリ",
+          "description": "静的サイト、JavaScript バンドル、Dockerfile、OCI イメージを安定したサーバーレス URL にデプロイします。"
+        },
+        "monitors": {
+          "name": "モニター",
+          "description": "ログ、フィード、API を監視し、イベントからエージェントセッションを開始する常駐ウォッチャーを実行します。"
+        },
+        "warm_sessions": {
+          "name": "ウォームセッション",
+          "description": "サンドボックスを1つ待機させ、すぐにセッションを開始します。待機中も計算資源と同時セッション枠を使います。"
+        },
+        "secrets_egress": {
+          "name": "シークレット送信制御",
+          "description": "プロジェクトのシークレットを受け取れるツールと送信先を制御します。"
+        },
+        "pi_worker": {
+          "name": "Pi ワーカー",
+          "description": "試験運用中の Pi ワーカーランタイムでセッションを実行します。"
+        }
+      }
+    },
+    "upgrades": {
+      "available": "利用可能なアップグレード",
+      "readOnly": "読み取り専用 — アップグレードの実行には、このワークスペースへの書き込み権限が必要です。",
+      "none": "利用可能なアップグレードはありません",
+      "upToDateDescription": "このワークスペースは最新です。",
+      "upToDate": "最新",
+      "run": "実行",
+      "oneOff": "一回限りのアップグレード",
+      "oneOffDescription": "代わりに1つの変更を記述できます。セッションが変更と検証を行い、変更リクエストを開きます。",
+      "oneOffPlaceholder": "例: release-bot エージェントをすべての参照で deploy-bot に変更する",
+      "runUpgrade": "アップグレードを実行",
+      "manifestV2": {
+        "title": "マニフェストを v2 (kortix.yaml) に移行",
+        "description": "v1 kortix.toml をガバナンス重視の kortix.yaml に変換し、プラットフォーム管理スキルを更新して、レビュー用の変更リクエストを開きます。"
+      }
+    },
     "plan": {
       "managedByAdmin": "アカウント管理者が管理",
       "adminOnly": "このアカウントの管理者のみがプランの変更やクレジットの購入を行えます。",

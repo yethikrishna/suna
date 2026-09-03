@@ -776,6 +776,92 @@
         "empty": "Non sono ancora registrate creazioni. Il modello predefinito della piattaforma viene creato una volta globalmente; i modelli personalizzati al primo utilizzo."
       }
     },
+    "featureFlags": {
+      "stability": { "experimental": "Sperimentale", "beta": "Beta", "stable": "Stabile" },
+      "origin": {
+        "overridden": "Sostituito per questo progetto",
+        "defaultOn": "Attivo per impostazione predefinita",
+        "defaultOff": "Disattivo per impostazione predefinita"
+      },
+      "search": "Cerca funzionalità",
+      "loadFailed": "Impossibile caricare il progetto",
+      "retry": "Riprova",
+      "noMatches": "Nessun risultato per {query}.",
+      "emptyTitle": "Nessuna funzionalità sperimentale",
+      "emptyDescription": "Questa installazione non espone funzionalità attivabili per progetto.",
+      "permission": "Per modificare una funzionalità serve l’autorizzazione a modificare la personalizzazione del progetto.",
+      "updateFailed": "Impossibile aggiornare {key}",
+      "flags": {
+        "marketplace": {
+          "name": "Marketplace",
+          "description": "Esplora e installa competenze dai registri della community e dei fornitori. Fonti, aggiornamenti e ambiti del team sono ancora in evoluzione."
+        },
+        "agent_tunnel": {
+          "name": "Tunnel computer dell’agente",
+          "description": "Consenti agli agenti di accedere in modo sicuro a file, shell e desktop di un computer locale tramite un tunnel con autorizzazioni."
+        },
+        "connectors_api_discover": {
+          "name": "Ricerca API dei connettori",
+          "description": "Esplora integrazioni API, MCP, GraphQL, CLI e Postman dirette insieme ad app OAuth facoltative."
+        },
+        "agentmail_email": {
+          "name": "Email AgentMail",
+          "description": "Assegna caselle AgentMail affinché le email in arrivo possano avviare e continuare sessioni Kortix."
+        },
+        "teams": {
+          "name": "Microsoft Teams",
+          "description": "Collega un bot Microsoft Teams affinché chat e canali possano avviare e continuare sessioni Kortix."
+        },
+        "llm_gateway": {
+          "name": "Gateway LLM",
+          "description": "Instrada il progetto tramite il gateway LLM gestito da Kortix per modelli, misurazione e budget."
+        },
+        "review_center": {
+          "name": "Centro revisioni",
+          "description": "Esamina richieste di modifica, approvazioni e risultati degli agenti da una casella unica sul Web o in Slack."
+        },
+        "meta_agent": {
+          "name": "Meta-agente",
+          "description": "Aggiungi un coordinatore che gestisce sessioni specializzate e attività in più passaggi nel progetto."
+        },
+        "apps": {
+          "name": "App",
+          "description": "Distribuisci siti statici, pacchetti JavaScript, Dockerfile e immagini OCI su URL serverless stabili."
+        },
+        "monitors": {
+          "name": "Monitor",
+          "description": "Esegui controlli permanenti su registri, feed o API che avviano sessioni agente in risposta agli eventi."
+        },
+        "warm_sessions": {
+          "name": "Sessioni preriscaldate",
+          "description": "Mantieni una sandbox pronta per avvii immediati. La sandbox inattiva usa risorse di calcolo e uno slot di sessione simultanea."
+        },
+        "secrets_egress": {
+          "name": "Controlli di uscita dei segreti",
+          "description": "Controlla quali strumenti e destinazioni possono ricevere i segreti del progetto."
+        },
+        "pi_worker": {
+          "name": "Worker Pi",
+          "description": "Esegui sessioni con il runtime sperimentale del worker Pi."
+        }
+      }
+    },
+    "upgrades": {
+      "available": "Aggiornamenti disponibili",
+      "readOnly": "Sola lettura — per eseguire un aggiornamento serve l’accesso in scrittura a questo spazio di lavoro.",
+      "none": "Nessun aggiornamento disponibile",
+      "upToDateDescription": "Questo spazio di lavoro è già aggiornato.",
+      "upToDate": "Aggiornato",
+      "run": "Esegui",
+      "oneOff": "Aggiornamento una tantum",
+      "oneOffDescription": "Descrivi invece una singola modifica. Una sessione la esegue, la convalida e apre una richiesta di modifica.",
+      "oneOffPlaceholder": "es. Rinomina ovunque l’agente release-bot in deploy-bot",
+      "runUpgrade": "Esegui aggiornamento",
+      "manifestV2": {
+        "title": "Migra il manifest a v2 (kortix.yaml)",
+        "description": "Converte kortix.toml v1 nel file kortix.yaml orientato alla governance, aggiorna le competenze gestite dalla piattaforma e apre una richiesta di modifica da esaminare."
+      }
+    },
     "plan": {
       "managedByAdmin": "Gestito da un amministratore dell'account",
       "adminOnly": "Solo gli amministratori di questo account possono modificare il piano o acquistare crediti.",

@@ -776,6 +776,92 @@
         "empty": "Aucune création enregistrée. Le modèle par défaut de la plateforme est créé une fois globalement ; les modèles personnalisés le sont à la première utilisation."
       }
     },
+    "featureFlags": {
+      "stability": { "experimental": "Expérimental", "beta": "Bêta", "stable": "Stable" },
+      "origin": {
+        "overridden": "Remplacé pour ce projet",
+        "defaultOn": "Activé par défaut",
+        "defaultOff": "Désactivé par défaut"
+      },
+      "search": "Rechercher des fonctionnalités",
+      "loadFailed": "Impossible de charger le projet",
+      "retry": "Réessayer",
+      "noMatches": "Aucun résultat pour {query}.",
+      "emptyTitle": "Aucune fonctionnalité expérimentale",
+      "emptyDescription": "Cette installation ne propose aucun indicateur de fonctionnalité par projet.",
+      "permission": "Vous devez disposer de l’autorisation de modification de la personnalisation du projet pour changer une fonctionnalité.",
+      "updateFailed": "Impossible de mettre à jour {key}",
+      "flags": {
+        "marketplace": {
+          "name": "Place de marché",
+          "description": "Parcourez et installez des compétences depuis des registres communautaires et fournisseurs. Les sources, mises à jour et portées d’équipe évoluent encore."
+        },
+        "agent_tunnel": {
+          "name": "Tunnel d’ordinateur pour agent",
+          "description": "Autorisez les agents à accéder en sécurité aux fichiers, au terminal et au bureau d’un ordinateur local via un tunnel contrôlé par autorisations."
+        },
+        "connectors_api_discover": {
+          "name": "Découverte des API de connecteurs",
+          "description": "Parcourez des intégrations API, MCP, GraphQL, CLI et Postman directes avec des applications OAuth facultatives."
+        },
+        "agentmail_email": {
+          "name": "E-mail AgentMail",
+          "description": "Affectez des boîtes AgentMail pour que les e-mails entrants puissent démarrer et poursuivre des sessions Kortix."
+        },
+        "teams": {
+          "name": "Microsoft Teams",
+          "description": "Connectez un bot Microsoft Teams pour que les conversations et canaux puissent démarrer et poursuivre des sessions Kortix."
+        },
+        "llm_gateway": {
+          "name": "Passerelle LLM",
+          "description": "Acheminez ce projet via la passerelle LLM gérée de Kortix pour les modèles, la mesure et les budgets."
+        },
+        "review_center": {
+          "name": "Centre de révision",
+          "description": "Examinez les demandes de modification, validations et résultats d’agents dans une boîte unique sur le Web ou dans Slack."
+        },
+        "meta_agent": {
+          "name": "Méta-agent",
+          "description": "Ajoutez un coordinateur qui gère les sessions spécialisées et les travaux en plusieurs étapes du projet."
+        },
+        "apps": {
+          "name": "Applications",
+          "description": "Déployez des sites statiques, paquets JavaScript, Dockerfiles et images OCI vers des URL serverless stables."
+        },
+        "monitors": {
+          "name": "Moniteurs",
+          "description": "Exécutez des observateurs persistants de journaux, flux ou API qui démarrent des sessions d’agent lors d’événements."
+        },
+        "warm_sessions": {
+          "name": "Sessions préchauffées",
+          "description": "Gardez une sandbox prête pour un démarrage immédiat. La sandbox inactive consomme du calcul et un emplacement de session simultanée."
+        },
+        "secrets_egress": {
+          "name": "Contrôle de sortie des secrets",
+          "description": "Contrôlez les outils et destinations autorisés à recevoir les secrets du projet."
+        },
+        "pi_worker": {
+          "name": "Worker Pi",
+          "description": "Exécutez les sessions avec l’environnement expérimental du worker Pi."
+        }
+      }
+    },
+    "upgrades": {
+      "available": "Mises à niveau disponibles",
+      "readOnly": "Lecture seule — l’exécution d’une mise à niveau nécessite un accès en écriture à cet espace de travail.",
+      "none": "Aucune mise à niveau disponible",
+      "upToDateDescription": "Cet espace de travail est déjà à jour.",
+      "upToDate": "À jour",
+      "run": "Exécuter",
+      "oneOff": "Mise à niveau ponctuelle",
+      "oneOffDescription": "Décrivez plutôt une seule modification. Une session l’effectue, la valide et ouvre une demande de modification.",
+      "oneOffPlaceholder": "p. ex. Renommer partout l’agent release-bot en deploy-bot",
+      "runUpgrade": "Exécuter la mise à niveau",
+      "manifestV2": {
+        "title": "Migrer le manifeste vers v2 (kortix.yaml)",
+        "description": "Convertit le fichier kortix.toml v1 en kortix.yaml orienté gouvernance, actualise les compétences gérées par la plateforme et ouvre une demande de modification à examiner."
+      }
+    },
     "plan": {
       "managedByAdmin": "Géré par un administrateur du compte",
       "adminOnly": "Seuls les administrateurs de ce compte peuvent modifier son forfait ou acheter des crédits.",

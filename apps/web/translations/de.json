@@ -773,6 +773,92 @@
         "empty": "Noch keine Erstellungen aufgezeichnet. Der Plattformstandard wird einmal global erstellt; eigene Vorlagen werden bei der ersten Verwendung erstellt."
       }
     },
+    "featureFlags": {
+      "stability": { "experimental": "Experimentell", "beta": "Beta", "stable": "Stabil" },
+      "origin": {
+        "overridden": "Für dieses Projekt überschrieben",
+        "defaultOn": "Standardmäßig an",
+        "defaultOff": "Standardmäßig aus"
+      },
+      "search": "Funktionen suchen",
+      "loadFailed": "Projekt konnte nicht geladen werden",
+      "retry": "Erneut versuchen",
+      "noMatches": "Keine Treffer für {query}.",
+      "emptyTitle": "Keine experimentellen Funktionen",
+      "emptyDescription": "Diese Installation bietet keine projektbezogenen Funktionsschalter.",
+      "permission": "Zum Ändern einer Funktion benötigen Sie die Berechtigung zum Bearbeiten der Projektanpassung.",
+      "updateFailed": "{key} konnte nicht aktualisiert werden",
+      "flags": {
+        "marketplace": {
+          "name": "Marktplatz",
+          "description": "Suchen und installieren Sie Skills aus Community- und Anbieterregistern. Quellen, Updates und Teambreiche ändern sich noch."
+        },
+        "agent_tunnel": {
+          "name": "Agenten-Computertunnel",
+          "description": "Geben Sie Agenten über einen berechtigungsgesteuerten Tunnel sicheren Zugriff auf Dateien, Shell und Desktop eines lokalen Computers."
+        },
+        "connectors_api_discover": {
+          "name": "Connector-API-Suche",
+          "description": "Durchsuchen Sie direkte API-, MCP-, GraphQL-, CLI- und Postman-Integrationen sowie optionale OAuth-Apps."
+        },
+        "agentmail_email": {
+          "name": "AgentMail-E-Mail",
+          "description": "Weisen Sie AgentMail-Postfächer zu, damit eingehende E-Mail-Threads Kortix-Sitzungen starten und fortsetzen können."
+        },
+        "teams": {
+          "name": "Microsoft Teams",
+          "description": "Verbinden Sie einen Microsoft-Teams-Bot, damit Chats und Kanäle Kortix-Sitzungen starten und fortsetzen können."
+        },
+        "llm_gateway": {
+          "name": "LLM-Gateway",
+          "description": "Leiten Sie dieses Projekt über das verwaltete Kortix-LLM-Gateway für Modelle, Messung und Budgets."
+        },
+        "review_center": {
+          "name": "Prüfzentrale",
+          "description": "Prüfen Sie Änderungsanfragen, Freigaben und Agentenausgaben in einem Posteingang im Web oder in Slack."
+        },
+        "meta_agent": {
+          "name": "Meta-Agent",
+          "description": "Fügen Sie einen Koordinator hinzu, der spezialisierte Sitzungen und mehrstufige Arbeiten im Projekt verwaltet."
+        },
+        "apps": {
+          "name": "Apps",
+          "description": "Stellen Sie statische Websites, JavaScript-Pakete, Dockerfiles und OCI-Images unter stabilen serverlosen URLs bereit."
+        },
+        "monitors": {
+          "name": "Monitore",
+          "description": "Führen Sie dauerhafte Wächter aus, die Protokolle, Feeds oder APIs beobachten und bei Ereignissen Agentensitzungen starten."
+        },
+        "warm_sessions": {
+          "name": "Vorgewärmte Sitzungen",
+          "description": "Halten Sie eine Sandbox für sofortige Sitzungsstarts bereit. Die inaktive Sandbox verbraucht Rechenleistung und einen Platz für gleichzeitige Sitzungen."
+        },
+        "secrets_egress": {
+          "name": "Kontrolle der Geheimnisweitergabe",
+          "description": "Steuern Sie, welche Werkzeuge und Ziele Projektgeheimnisse empfangen dürfen."
+        },
+        "pi_worker": {
+          "name": "Pi-Worker",
+          "description": "Führen Sie Sitzungen mit der experimentellen Pi-Worker-Laufzeit aus."
+        }
+      }
+    },
+    "upgrades": {
+      "available": "Verfügbare Upgrades",
+      "readOnly": "Schreibgeschützt — zum Ausführen eines Upgrades benötigen Sie Schreibzugriff auf diesen Arbeitsbereich.",
+      "none": "Keine Upgrades verfügbar",
+      "upToDateDescription": "Dieser Arbeitsbereich ist bereits aktuell.",
+      "upToDate": "Aktuell",
+      "run": "Ausführen",
+      "oneOff": "Einmaliges Upgrade",
+      "oneOffDescription": "Beschreiben Sie stattdessen eine einzelne Änderung. Eine Sitzung führt sie aus, prüft sie und öffnet eine Änderungsanfrage.",
+      "oneOffPlaceholder": "z. B. Den Agenten release-bot überall in deploy-bot umbenennen",
+      "runUpgrade": "Upgrade ausführen",
+      "manifestV2": {
+        "title": "Manifest auf v2 migrieren (kortix.yaml)",
+        "description": "Konvertiert die v1-Datei kortix.toml in die governance-orientierte kortix.yaml, aktualisiert plattformverwaltete Skills und öffnet eine Änderungsanfrage zur Prüfung."
+      }
+    },
     "plan": {
       "managedByAdmin": "Von einem Kontoadministrator verwaltet",
       "adminOnly": "Nur Administratoren dieses Kontos können den Plan ändern oder Credits kaufen.",

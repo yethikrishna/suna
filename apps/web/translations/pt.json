@@ -189,6 +189,56 @@
       "opening": "Abrindo Conectores",
       "redirecting": "Redirecionando para a página de Conectores..."
     },
+    "rail": {
+      "settings": "Configurações",
+      "projectTitle": "Configurações — {projectName}",
+      "backToApp": "Voltar ao aplicativo",
+      "close": "Fechar",
+      "docs": "Documentação",
+      "groups": { "workspace": "Espaço de trabalho", "personal": "Pessoal", "account": "Conta" },
+      "items": {
+        "workspace": { "label": "Geral", "description": "Nome e ícone deste espaço de trabalho." },
+        "sandbox": {
+          "label": "Modelos de sandbox",
+          "description": "A configuração da máquina em que uma sessão é executada e o registro de cada preparação feita pelo Kortix."
+        },
+        "feature-flags": {
+          "label": "Sinalizadores de recursos",
+          "description": "Recursos que você pode ativar antes de estarem disponíveis para todos."
+        },
+        "upgrades": {
+          "label": "Atualizações",
+          "description": "Alterações que um agente faz neste espaço de trabalho. Cada execução abre uma solicitação de alteração para sua revisão. Nada é mesclado automaticamente."
+        },
+        "profile": { "label": "Perfil", "description": "Sua imagem, nome, e-mail e organizações." },
+        "security": {
+          "label": "Segurança",
+          "description": "Autenticação de dois fatores e dispositivos conectados à sua conta."
+        },
+        "appearance": {
+          "label": "Aparência",
+          "description": "Tema, papel de parede e quantidade de conteúdo exibido em uma conversa."
+        },
+        "sessions": {
+          "label": "Sessões",
+          "description": "Como uma sessão em execução chama sua atenção."
+        },
+        "preferences": { "label": "Preferências", "description": "Idioma e atalhos de teclado." },
+        "connected": { "label": "Contas conectadas" },
+        "tokens": {
+          "label": "Chaves de API",
+          "description": "Chaves que autenticam a CLI, um script ou um trabalho de CI como você."
+        },
+        "credits": {
+          "label": "Créditos",
+          "description": "O saldo disponível nesta conta e o valor gasto neste período."
+        },
+        "plan": {
+          "label": "Plano",
+          "description": "Assinatura, licenças da equipe e cobrança desta conta."
+        }
+      }
+    },
     "preferences": {
       "title": "Idioma e atalhos",
       "description": "Atalhos de idioma e teclado.",

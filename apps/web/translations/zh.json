@@ -189,6 +189,38 @@
       "opening": "正在打开连接器",
       "redirecting": "正在重定向到连接器页面..."
     },
+    "rail": {
+      "settings": "设置",
+      "projectTitle": "设置 — {projectName}",
+      "backToApp": "返回应用",
+      "close": "关闭",
+      "docs": "文档",
+      "groups": { "workspace": "工作区", "personal": "个人", "account": "账户" },
+      "items": {
+        "workspace": { "label": "常规", "description": "此工作区的名称和图标。" },
+        "sandbox": {
+          "label": "沙盒模板",
+          "description": "会话运行机器的配置，以及 Kortix 每次准备该机器的记录。"
+        },
+        "feature-flags": { "label": "功能开关", "description": "可在正式发布前启用的功能。" },
+        "upgrades": {
+          "label": "升级",
+          "description": "代理对此工作区进行的更改。每次运行都会创建变更请求供你审核。任何内容都不会自动合并。"
+        },
+        "profile": { "label": "个人资料", "description": "你的头像、姓名、电子邮件和组织。" },
+        "security": { "label": "安全", "description": "双重身份验证以及已登录你账户的设备。" },
+        "appearance": { "label": "外观", "description": "主题、壁纸和对话内容密度。" },
+        "sessions": { "label": "会话", "description": "运行中的会话如何通知你。" },
+        "preferences": { "label": "偏好设置", "description": "语言和键盘快捷键。" },
+        "connected": { "label": "关联账户" },
+        "tokens": {
+          "label": "API 密钥",
+          "description": "用于让 CLI、脚本或 CI 作业以你的身份进行身份验证的密钥。"
+        },
+        "credits": { "label": "点数", "description": "此账户的剩余可用点数和本周期已用点数。" },
+        "plan": { "label": "套餐", "description": "此账户的订阅、团队席位和账单。" }
+      }
+    },
     "preferences": {
       "title": "语言和快捷键",
       "description": "语言和键盘快捷键。",

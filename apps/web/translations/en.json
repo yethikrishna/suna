@@ -42,6 +42,62 @@
       "connectors": "Connectors",
       "envManager": "Env Manager"
     },
+    "rail": {
+      "settings": "Settings",
+      "projectTitle": "Settings — {projectName}",
+      "backToApp": "Back to app",
+      "close": "Close",
+      "docs": "Docs",
+      "groups": { "workspace": "Workspace", "personal": "Personal", "account": "Account" },
+      "items": {
+        "workspace": { "label": "General", "description": "Name and icon for this workspace." },
+        "sandbox": {
+          "label": "Sandbox templates",
+          "description": "The recipe for the machine a session runs on, and the record of every time Kortix prepared one."
+        },
+        "feature-flags": {
+          "label": "Feature flags",
+          "description": "Features you can switch on before they are generally available."
+        },
+        "upgrades": {
+          "label": "Upgrades",
+          "description": "Changes an agent makes to this workspace. Every run opens a change request for you to review — nothing merges on its own."
+        },
+        "profile": {
+          "label": "Profile",
+          "description": "Your picture, name, email, and organizations."
+        },
+        "security": {
+          "label": "Security",
+          "description": "Two-factor authentication and the devices signed in as you."
+        },
+        "appearance": {
+          "label": "Appearance",
+          "description": "Theme, wallpaper, and how much a conversation shows."
+        },
+        "sessions": {
+          "label": "Sessions",
+          "description": "How a running session gets your attention."
+        },
+        "preferences": {
+          "label": "Preferences",
+          "description": "Language and keyboard shortcuts."
+        },
+        "connected": { "label": "Connected accounts" },
+        "tokens": {
+          "label": "API keys",
+          "description": "Keys that sign the CLI, a script, or a CI job in as you."
+        },
+        "credits": {
+          "label": "Credits",
+          "description": "What this account has left to spend, and what it spent this period."
+        },
+        "plan": {
+          "label": "Plan",
+          "description": "Your subscription, team seats, and billing for this account."
+        }
+      }
+    },
     "preferences": {
       "title": "Language & shortcuts",
       "description": "Language and keyboard shortcuts.",

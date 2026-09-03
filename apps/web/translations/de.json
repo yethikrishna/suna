@@ -189,6 +189,62 @@
       "opening": "Connectoren werden geöffnet",
       "redirecting": "Weiterleitung zur Connectors-Seite..."
     },
+    "rail": {
+      "settings": "Einstellungen",
+      "projectTitle": "Einstellungen — {projectName}",
+      "backToApp": "Zurück zur App",
+      "close": "Schließen",
+      "docs": "Dokumentation",
+      "groups": { "workspace": "Arbeitsbereich", "personal": "Persönlich", "account": "Konto" },
+      "items": {
+        "workspace": {
+          "label": "Allgemein",
+          "description": "Name und Symbol für diesen Arbeitsbereich."
+        },
+        "sandbox": {
+          "label": "Sandbox-Vorlagen",
+          "description": "Das Rezept für die Maschine, auf der eine Sitzung läuft, und die Aufzeichnung jedes Mals, wenn Kortix eine vorbereitet hat."
+        },
+        "feature-flags": {
+          "label": "Feature-Flags",
+          "description": "Funktionen, die Sie aktivieren können, bevor sie allgemein verfügbar sind."
+        },
+        "upgrades": {
+          "label": "Upgrades",
+          "description": "Änderungen, die ein Agent an diesem Arbeitsbereich vornimmt. Jeder Lauf öffnet eine Änderungsanfrage zur Prüfung. Nichts wird automatisch zusammengeführt."
+        },
+        "profile": {
+          "label": "Profil",
+          "description": "Ihr Bild, Name, Ihre E-Mail-Adresse und Organisationen."
+        },
+        "security": {
+          "label": "Sicherheit",
+          "description": "Zwei-Faktor-Authentifizierung und die Geräte, auf denen Sie angemeldet sind."
+        },
+        "appearance": {
+          "label": "Darstellung",
+          "description": "Design, Hintergrundbild und Umfang der Gesprächsanzeige."
+        },
+        "sessions": {
+          "label": "Sitzungen",
+          "description": "Wie eine laufende Sitzung Sie benachrichtigt."
+        },
+        "preferences": { "label": "Einstellungen", "description": "Sprache und Tastaturkürzel." },
+        "connected": { "label": "Verbundene Konten" },
+        "tokens": {
+          "label": "API-Schlüssel",
+          "description": "Schlüssel, die die CLI, ein Skript oder einen CI-Auftrag als Sie anmelden."
+        },
+        "credits": {
+          "label": "Credits",
+          "description": "Was dieses Konto noch ausgeben kann und was es in diesem Zeitraum ausgegeben hat."
+        },
+        "plan": {
+          "label": "Tarif",
+          "description": "Ihr Abonnement, Teamplätze und die Abrechnung für dieses Konto."
+        }
+      }
+    },
     "preferences": {
       "title": "Sprache und Verknüpfungen",
       "description": "Sprach- und Tastaturkürzel.",

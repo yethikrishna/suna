@@ -852,6 +852,7 @@ function FeatureFlagsPage({
 
 export function CommandPalette() {
   const tHardcodedUi = useTranslations('hardcodedUi');
+  const tSettingsRail = useTranslations('settings.rail');
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [page, setPage] = useState<PalettePage>('root');
@@ -1208,8 +1209,8 @@ export function CommandPalette() {
   // flag-gated rail rows and all three moved to `/projects/<id>/config`, whose
   // own sub-nav composes them. Nothing left in the rail varies by flag.
   const allSettingsGroups = useMemo(
-    () => settingsPaletteGroups({ hasProject: !!projectId }),
-    [projectId],
+    () => settingsPaletteGroups({ hasProject: !!projectId }, (key) => tSettingsRail(key as never)),
+    [projectId, tSettingsRail],
   );
 
   const filteredSettingsGroups = useMemo(
@@ -2338,7 +2339,7 @@ export function CommandPalette() {
         open={open}
         onOpenChange={setOpen}
         className={cn(
-          'origin-center transition-transform duration-150 ease-in-out sm:max-w-[680px]',
+          'origin-center transition-transform duration-normal ease-in-out sm:max-w-[680px]',
           backScale && 'scale-[0.99]',
         )}
         showCloseButton={false}

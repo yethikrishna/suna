@@ -17,6 +17,12 @@ import {
 import type { SettingsTab } from './settings-tabs';
 import type { RailGroup, RailItem } from './type';
 
+export type SettingsRailTranslator = (key: string) => string;
+
+type RailGroupDefinition = RailGroup & {
+  messageKey: 'workspace' | 'personal' | 'account';
+};
+
 /**
  * Whether a rail item is the active one for the current settings tab.
  *
@@ -31,7 +37,7 @@ export function isRailItemActive(item: RailItem, tab: SettingsTab): boolean {
   return item.tab === tab;
 }
 
-const STATIC_GROUPS: readonly RailGroup[] = [
+const STATIC_GROUPS: readonly RailGroupDefinition[] = [
   /**
    * First, above the personal groups, because it is the thing you are inside.
    * The group disappears whole when the overlay opens without a project:
@@ -45,6 +51,7 @@ const STATIC_GROUPS: readonly RailGroup[] = [
    * capability tab instead — `capability-tab-routes.ts`.)
    */
   {
+    messageKey: 'workspace',
     label: 'Workspace',
     items: [
       {
@@ -88,6 +95,7 @@ const STATIC_GROUPS: readonly RailGroup[] = [
     ],
   },
   {
+    messageKey: 'personal',
     // "Personal", not "You" (Jay, 2026-09-02): the group names the scope the
     // same way "Workspace" and "Account" do.
     label: 'Personal',
@@ -142,6 +150,7 @@ const STATIC_GROUPS: readonly RailGroup[] = [
     ],
   },
   {
+    messageKey: 'account',
     label: 'Account',
     items: [
       // Credits FIRST, plan second: reading the balance is the frequent visit
@@ -194,8 +203,18 @@ const STATIC_GROUPS: readonly RailGroup[] = [
  * palette both call it, and a group that reappears here (or one that becomes
  * conditional again) must not change either call site's shape.
  */
-export function railGroups(): readonly RailGroup[] {
-  return STATIC_GROUPS;
+export function railGroups(...args: [] | [SettingsRailTranslator]): readonly RailGroup[] {
+  const translate = args[0];
+  if (!translate) return STATIC_GROUPS;
+
+  return STATIC_GROUPS.map((group) => ({
+    label: translate(`groups.${group.messageKey}`),
+    items: group.items.map((item) => ({
+      ...item,
+      label: translate(`items.${item.tab}.label`),
+      description: item.description ? translate(`items.${item.tab}.description`) : undefined,
+    })),
+  }));
 }
 
 /*
@@ -223,8 +242,11 @@ export function railGroups(): readonly RailGroup[] {
  * this rail are resolved by
  * `capabilities/project-settings/project-settings-sections.ts` instead.
  */
-export function railItemForTab(tab: SettingsTab): RailItem | undefined {
-  for (const group of STATIC_GROUPS) {
+export function railItemForTab(
+  tab: SettingsTab,
+  ...args: [] | [SettingsRailTranslator]
+): RailItem | undefined {
+  for (const group of railGroups(...args)) {
     const found = group.items.find((item) => item.tab === tab);
     if (found) return found;
   }

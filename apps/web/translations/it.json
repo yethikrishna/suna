@@ -189,6 +189,65 @@
       "opening": "Apertura connettori",
       "redirecting": "Reindirizzamento alla pagina delle connettori..."
     },
+    "rail": {
+      "settings": "Impostazioni",
+      "projectTitle": "Impostazioni — {projectName}",
+      "backToApp": "Torna all'app",
+      "close": "Chiudi",
+      "docs": "Documentazione",
+      "groups": { "workspace": "Spazio di lavoro", "personal": "Personale", "account": "Account" },
+      "items": {
+        "workspace": {
+          "label": "Generale",
+          "description": "Nome e icona di questo spazio di lavoro."
+        },
+        "sandbox": {
+          "label": "Modelli sandbox",
+          "description": "La configurazione della macchina su cui viene eseguita una sessione e il registro di ogni preparazione eseguita da Kortix."
+        },
+        "feature-flags": {
+          "label": "Flag di funzionalità",
+          "description": "Funzionalità che puoi attivare prima che siano disponibili a tutti."
+        },
+        "upgrades": {
+          "label": "Aggiornamenti",
+          "description": "Modifiche apportate da un agente a questo spazio di lavoro. Ogni esecuzione apre una richiesta di modifica da esaminare. Nulla viene unito automaticamente."
+        },
+        "profile": {
+          "label": "Profilo",
+          "description": "La tua immagine, il nome, l'email e le organizzazioni."
+        },
+        "security": {
+          "label": "Sicurezza",
+          "description": "Autenticazione a due fattori e dispositivi su cui hai eseguito l'accesso."
+        },
+        "appearance": {
+          "label": "Aspetto",
+          "description": "Tema, sfondo e quantità di contenuto mostrata in una conversazione."
+        },
+        "sessions": {
+          "label": "Sessioni",
+          "description": "Come una sessione in esecuzione richiama la tua attenzione."
+        },
+        "preferences": {
+          "label": "Preferenze",
+          "description": "Lingua e scorciatoie da tastiera."
+        },
+        "connected": { "label": "Account collegati" },
+        "tokens": {
+          "label": "Chiavi API",
+          "description": "Chiavi che autenticano come te la CLI, uno script o un processo CI."
+        },
+        "credits": {
+          "label": "Crediti",
+          "description": "Quanto rimane da spendere su questo account e quanto è stato speso nel periodo."
+        },
+        "plan": {
+          "label": "Piano",
+          "description": "Abbonamento, postazioni del team e fatturazione di questo account."
+        }
+      }
+    },
     "preferences": {
       "title": "Lingua e scorciatoie",
       "description": "Lingua e scorciatoie da tastiera.",

@@ -189,6 +189,47 @@
       "opening": "コネクターを開いています",
       "redirecting": "コネクターページにリダイレクト中..."
     },
+    "rail": {
+      "settings": "設定",
+      "projectTitle": "設定 — {projectName}",
+      "backToApp": "アプリに戻る",
+      "close": "閉じる",
+      "docs": "ドキュメント",
+      "groups": { "workspace": "ワークスペース", "personal": "個人", "account": "アカウント" },
+      "items": {
+        "workspace": { "label": "一般", "description": "このワークスペースの名前とアイコン。" },
+        "sandbox": {
+          "label": "サンドボックステンプレート",
+          "description": "セッションを実行するマシンの構成と、Kortix がマシンを準備した履歴。"
+        },
+        "feature-flags": { "label": "機能フラグ", "description": "一般公開前に有効にできる機能。" },
+        "upgrades": {
+          "label": "アップグレード",
+          "description": "エージェントがこのワークスペースに加えた変更。実行ごとに確認用の変更リクエストが作成されます。自動ではマージされません。"
+        },
+        "profile": { "label": "プロフィール", "description": "画像、名前、メールアドレス、組織。" },
+        "security": {
+          "label": "セキュリティ",
+          "description": "2 要素認証と、あなたのアカウントでサインインしているデバイス。"
+        },
+        "appearance": { "label": "外観", "description": "テーマ、壁紙、会話の表示量。" },
+        "sessions": { "label": "セッション", "description": "実行中のセッションからの通知方法。" },
+        "preferences": { "label": "環境設定", "description": "言語とキーボードショートカット。" },
+        "connected": { "label": "接続済みアカウント" },
+        "tokens": {
+          "label": "API キー",
+          "description": "CLI、スクリプト、CI ジョブをあなたとして認証するキー。"
+        },
+        "credits": {
+          "label": "クレジット",
+          "description": "このアカウントの残高と、この期間に使用した金額。"
+        },
+        "plan": {
+          "label": "プラン",
+          "description": "このアカウントのサブスクリプション、チーム席、請求。"
+        }
+      }
+    },
     "preferences": {
       "title": "言語とショートカット",
       "description": "言語とキーボード ショートカット。",

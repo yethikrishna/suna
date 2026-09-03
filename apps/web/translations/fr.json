@@ -189,6 +189,62 @@
       "opening": "Ouverture des Connecteurs",
       "redirecting": "Redirection vers la page Connecteurs..."
     },
+    "rail": {
+      "settings": "Paramètres",
+      "projectTitle": "Paramètres — {projectName}",
+      "backToApp": "Retour à l'application",
+      "close": "Fermer",
+      "docs": "Documentation",
+      "groups": { "workspace": "Espace de travail", "personal": "Personnel", "account": "Compte" },
+      "items": {
+        "workspace": {
+          "label": "Général",
+          "description": "Nom et icône de cet espace de travail."
+        },
+        "sandbox": {
+          "label": "Modèles de bac à sable",
+          "description": "La configuration de la machine qui exécute une session et l'historique de chaque préparation effectuée par Kortix."
+        },
+        "feature-flags": {
+          "label": "Indicateurs de fonctionnalités",
+          "description": "Fonctionnalités que vous pouvez activer avant leur disponibilité générale."
+        },
+        "upgrades": {
+          "label": "Mises à niveau",
+          "description": "Modifications apportées par un agent à cet espace de travail. Chaque exécution ouvre une demande de modification à examiner. Rien n'est fusionné automatiquement."
+        },
+        "profile": {
+          "label": "Profil",
+          "description": "Votre image, votre nom, votre adresse e-mail et vos organisations."
+        },
+        "security": {
+          "label": "Sécurité",
+          "description": "Authentification à deux facteurs et appareils connectés à votre compte."
+        },
+        "appearance": {
+          "label": "Apparence",
+          "description": "Thème, fond d'écran et quantité de contenu affiché dans une conversation."
+        },
+        "sessions": {
+          "label": "Sessions",
+          "description": "Comment une session en cours attire votre attention."
+        },
+        "preferences": { "label": "Préférences", "description": "Langue et raccourcis clavier." },
+        "connected": { "label": "Comptes connectés" },
+        "tokens": {
+          "label": "Clés API",
+          "description": "Clés qui authentifient la CLI, un script ou une tâche CI sous votre identité."
+        },
+        "credits": {
+          "label": "Crédits",
+          "description": "Le solde disponible sur ce compte et le montant dépensé pendant cette période."
+        },
+        "plan": {
+          "label": "Forfait",
+          "description": "Abonnement, sièges d'équipe et facturation de ce compte."
+        }
+      }
+    },
     "preferences": {
       "title": "Langue et raccourcis",
       "description": "Raccourcis de langue et de clavier.",

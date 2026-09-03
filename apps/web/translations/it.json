@@ -1494,6 +1494,45 @@
       "default": "Predefinito"
     }
   },
+  "sessionUi": {
+    "modelGate": {
+      "title": "Collega un modello per iniziare a chattare",
+      "description": "Questa sessione richiede un LLM collegato prima di poter rispondere. Usa la tua chiave API di qualsiasi provider.",
+      "upgradeDescription": "Questa sessione richiede un LLM collegato prima di poter rispondere. Esegui l’upgrade per accedere subito ai modelli gestiti da Kortix oppure usa la tua chiave API di qualsiasi provider.",
+      "upgrade": "Esegui l’upgrade",
+      "bringKey": "Usa la tua chiave",
+      "barTitle": "Nessun modello collegato",
+      "barDescription": "collegane uno per iniziare a chattare",
+      "connectModel": "Collega modello"
+    },
+    "providerRecovery": {
+      "savedPrompt": "Prompt salvato",
+      "noText": "Nessun prompt testuale allegato.",
+      "attachments": "{count, plural, one {Allegato} other {Allegati}}",
+      "reattach": "Allega nuovamente questi file dopo il ricaricamento.",
+      "unavailable": "Nessun prompt salvato disponibile.",
+      "retrying": "Nuovo tentativo…",
+      "retry": "Riprova",
+      "copy": "Copia prompt",
+      "delete": "Elimina"
+    },
+    "connectorRequired": {
+      "title": "Collega {connectors} per continuare",
+      "description": "{count, plural, one {Questa sessione richiede {connectors} e non è ancora collegata a nulla. Non è stata eseguita alcuna operazione e non è stato addebitato nulla: collega l’account e il tuo messaggio verrà inviato di nuovo.} other {Questa sessione richiede {connectors} e non è ancora collegata a nessun account. Non è stata eseguita alcuna operazione e non è stato addebitato nulla: collega gli account e il tuo messaggio verrà inviato di nuovo.}}",
+      "connectOne": "Collega {connector}",
+      "connectMany": "Collega account",
+      "privateDescription": "{count, plural, one {{connectors} autorizza un account alla volta, quindi deve essere collegato dall’account con cui viene eseguita questa sessione.} other {{connectors} autorizzano un account alla volta, quindi devono essere collegati dall’account con cui viene eseguita questa sessione.}}"
+    },
+    "composerMenus": {
+      "noMatches": "Nessuna corrispondenza",
+      "mentionSuggestions": "Suggerimenti di menzione",
+      "searching": "Ricerca in corso…",
+      "noCommandMatch": "Nessun comando, file o azione corrispondente",
+      "commandsAndActions": "Comandi e azioni",
+      "toUse": "da usare",
+      "use": "Usa"
+    }
+  },
   "agents": {
     "title": "Agenti",
     "create": "Crea worker",

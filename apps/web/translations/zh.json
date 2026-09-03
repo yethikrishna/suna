@@ -1490,6 +1490,45 @@
       "default": "默认"
     }
   },
+  "sessionUi": {
+    "modelGate": {
+      "title": "连接模型以开始聊天",
+      "description": "此会话需要先连接 LLM 才能响应。你可以使用任意提供商的 API 密钥。",
+      "upgradeDescription": "此会话需要先连接 LLM 才能响应。升级即可立即使用 Kortix 托管模型，也可以使用任意提供商的 API 密钥。",
+      "upgrade": "升级",
+      "bringKey": "使用自己的密钥",
+      "barTitle": "未连接模型",
+      "barDescription": "连接一个模型以开始聊天",
+      "connectModel": "连接模型"
+    },
+    "providerRecovery": {
+      "savedPrompt": "已保存的提示词",
+      "noText": "未附加文本提示词。",
+      "attachments": "{count, plural, one {个附件} other {个附件}}",
+      "reattach": "重新加载后请重新附加这些文件。",
+      "unavailable": "没有可用的已保存提示词。",
+      "retrying": "正在重试…",
+      "retry": "重试",
+      "copy": "复制提示词",
+      "delete": "删除"
+    },
+    "connectorRequired": {
+      "title": "连接{connectors}以继续",
+      "description": "{count, plural, one {此会话需要{connectors}，但目前尚未连接任何账户。尚未执行任何操作，也未产生任何费用——连接账户后，你的消息会重新发送。} other {此会话需要{connectors}，但目前尚未连接任何账户。尚未执行任何操作，也未产生任何费用——连接账户后，你的消息会重新发送。}}",
+      "connectOne": "连接{connector}",
+      "connectMany": "连接账户",
+      "privateDescription": "{count, plural, one {{connectors}一次授权一个账户，因此必须使用此会话运行所用的账户进行连接。} other {{connectors}一次授权一个账户，因此必须使用此会话运行所用的账户进行连接。}}"
+    },
+    "composerMenus": {
+      "noMatches": "没有匹配项",
+      "mentionSuggestions": "提及建议",
+      "searching": "搜索中…",
+      "noCommandMatch": "没有匹配的命令、文件或操作",
+      "commandsAndActions": "命令和操作",
+      "toUse": "以使用",
+      "use": "使用"
+    }
+  },
   "agents": {
     "title": "工作代理",
     "create": "创建 Worker",

@@ -1494,6 +1494,45 @@
       "default": "Standard"
     }
   },
+  "sessionUi": {
+    "modelGate": {
+      "title": "Modell verbinden, um den Chat zu starten",
+      "description": "Diese Sitzung benötigt ein verbundenes LLM, bevor es antworten kann. Verwende deinen eigenen API-Schlüssel von einem beliebigen Anbieter.",
+      "upgradeDescription": "Diese Sitzung benötigt ein verbundenes LLM, bevor es antworten kann. Führe ein Upgrade durch, um sofort auf die verwalteten Modelle von Kortix zuzugreifen, oder verwende deinen eigenen API-Schlüssel von einem beliebigen Anbieter.",
+      "upgrade": "Upgrade",
+      "bringKey": "Eigenen Schlüssel verwenden",
+      "barTitle": "Kein Modell verbunden",
+      "barDescription": "Verbinde eines, um den Chat zu starten",
+      "connectModel": "Modell verbinden"
+    },
+    "providerRecovery": {
+      "savedPrompt": "Gespeicherter Prompt",
+      "noText": "Es war kein Text-Prompt angehängt.",
+      "attachments": "{count, plural, one {Anhang} other {Anhänge}}",
+      "reattach": "Hänge diese Dateien nach dem Neuladen erneut an.",
+      "unavailable": "Kein gespeicherter Prompt verfügbar.",
+      "retrying": "Erneuter Versuch …",
+      "retry": "Erneut versuchen",
+      "copy": "Prompt kopieren",
+      "delete": "Löschen"
+    },
+    "connectorRequired": {
+      "title": "{connectors} verbinden, um fortzufahren",
+      "description": "{count, plural, one {Diese Sitzung benötigt {connectors}, aber bisher ist nichts damit verbunden. Es wurde nichts ausgeführt und nichts berechnet — verbinde das Konto, dann wird deine Nachricht erneut gesendet.} other {Diese Sitzung benötigt {connectors}, aber bisher ist nichts damit verbunden. Es wurde nichts ausgeführt und nichts berechnet — verbinde die Konten, dann wird deine Nachricht erneut gesendet.}}",
+      "connectOne": "{connector} verbinden",
+      "connectMany": "Konten verbinden",
+      "privateDescription": "{count, plural, one {{connectors} autorisiert jeweils ein Konto, daher muss es mit dem Konto verbunden werden, unter dem diese Sitzung ausgeführt wird.} other {{connectors} autorisieren jeweils ein Konto, daher müssen sie mit dem Konto verbunden werden, unter dem diese Sitzung ausgeführt wird.}}"
+    },
+    "composerMenus": {
+      "noMatches": "Keine Treffer",
+      "mentionSuggestions": "Vorschläge für Erwähnungen",
+      "searching": "Suche …",
+      "noCommandMatch": "Kein passender Befehl, keine passende Datei oder Aktion",
+      "commandsAndActions": "Befehle und Aktionen",
+      "toUse": "zur Verwendung",
+      "use": "Verwenden"
+    }
+  },
   "agents": {
     "title": "Worker",
     "create": "Worker erstellen",

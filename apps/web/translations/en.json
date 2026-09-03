@@ -1497,6 +1497,45 @@
       "default": "Default"
     }
   },
+  "sessionUi": {
+    "modelGate": {
+      "title": "Connect a model to start chatting",
+      "description": "This session needs an LLM connected before it can respond. Bring your own API key from any provider.",
+      "upgradeDescription": "This session needs an LLM connected before it can respond. Upgrade for instant access to Kortix's managed models, or bring your own API key from any provider.",
+      "upgrade": "Upgrade",
+      "bringKey": "Bring your own key",
+      "barTitle": "No model connected",
+      "barDescription": "connect one to start chatting",
+      "connectModel": "Connect model"
+    },
+    "providerRecovery": {
+      "savedPrompt": "Saved prompt",
+      "noText": "No text prompt was attached.",
+      "attachments": "{count, plural, one {Attachment} other {Attachments}}",
+      "reattach": "Reattach these files after a reload.",
+      "unavailable": "No saved prompt is available.",
+      "retrying": "Retrying…",
+      "retry": "Retry",
+      "copy": "Copy prompt",
+      "delete": "Delete"
+    },
+    "connectorRequired": {
+      "title": "Connect {connectors} to continue",
+      "description": "{count, plural, one {This session needs {connectors}, and nothing is connected to it yet. Nothing has run and nothing was charged — connect the account and your message is sent again.} other {This session needs {connectors}, and nothing is connected to them yet. Nothing has run and nothing was charged — connect the accounts and your message is sent again.}}",
+      "connectOne": "Connect {connector}",
+      "connectMany": "Connect accounts",
+      "privateDescription": "{count, plural, one {{connectors} authorizes one account at a time, so it has to be connected by the account this session runs as.} other {{connectors} authorize one account at a time, so they have to be connected by the account this session runs as.}}"
+    },
+    "composerMenus": {
+      "noMatches": "No matches",
+      "mentionSuggestions": "Mention suggestions",
+      "searching": "Searching…",
+      "noCommandMatch": "No matching command, file, or action",
+      "commandsAndActions": "Commands and actions",
+      "toUse": "to use",
+      "use": "Use"
+    }
+  },
   "agents": {
     "title": "Workers",
     "create": "Create Worker",

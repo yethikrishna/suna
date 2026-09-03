@@ -1494,6 +1494,45 @@
       "default": "デフォルト"
     }
   },
+  "sessionUi": {
+    "modelGate": {
+      "title": "モデルを接続してチャットを開始",
+      "description": "応答するには、このセッションにLLMを接続する必要があります。任意のプロバイダーのAPIキーを持ち込めます。",
+      "upgradeDescription": "応答するには、このセッションにLLMを接続する必要があります。アップグレードするとKortixのマネージドモデルにすぐアクセスできます。または、任意のプロバイダーのAPIキーを持ち込めます。",
+      "upgrade": "アップグレード",
+      "bringKey": "自分のキーを持ち込む",
+      "barTitle": "モデル未接続",
+      "barDescription": "接続してチャットを開始",
+      "connectModel": "モデルを接続"
+    },
+    "providerRecovery": {
+      "savedPrompt": "保存済みプロンプト",
+      "noText": "テキストプロンプトは添付されていません。",
+      "attachments": "{count, plural, one {添付ファイル} other {添付ファイル}}",
+      "reattach": "再読み込み後にこれらのファイルを再添付してください。",
+      "unavailable": "保存済みプロンプトはありません。",
+      "retrying": "再試行中…",
+      "retry": "再試行",
+      "copy": "プロンプトをコピー",
+      "delete": "削除"
+    },
+    "connectorRequired": {
+      "title": "続行するには{connectors}を接続",
+      "description": "{count, plural, one {{connectors}が必要ですが、まだ何も接続されていません。処理は実行されておらず、料金も発生していません。アカウントを接続すると、メッセージが再送信されます。} other {{connectors}が必要ですが、まだ何も接続されていません。処理は実行されておらず、料金も発生していません。アカウントを接続すると、メッセージが再送信されます。}}",
+      "connectOne": "{connector}を接続",
+      "connectMany": "アカウントを接続",
+      "privateDescription": "{count, plural, one {{connectors}は一度に1つのアカウントを認証するため、このセッションを実行するアカウントで接続する必要があります。} other {{connectors}は一度に1つのアカウントを認証するため、このセッションを実行するアカウントで接続する必要があります。}}"
+    },
+    "composerMenus": {
+      "noMatches": "一致する項目はありません",
+      "mentionSuggestions": "メンション候補",
+      "searching": "検索中…",
+      "noCommandMatch": "一致するコマンド、ファイル、アクションはありません",
+      "commandsAndActions": "コマンドとアクション",
+      "toUse": "使用するには",
+      "use": "使用"
+    }
+  },
   "agents": {
     "title": "ワーカー",
     "create": "ワーカーを作成",

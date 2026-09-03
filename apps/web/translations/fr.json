@@ -1497,6 +1497,45 @@
       "default": "Par défaut"
     }
   },
+  "sessionUi": {
+    "modelGate": {
+      "title": "Connectez un modèle pour commencer à discuter",
+      "description": "Cette session nécessite la connexion d’un LLM avant de pouvoir répondre. Utilisez votre propre clé API, quel que soit le fournisseur.",
+      "upgradeDescription": "Cette session nécessite la connexion d’un LLM avant de pouvoir répondre. Passez à une offre supérieure pour accéder instantanément aux modèles gérés de Kortix, ou utilisez votre propre clé API, quel que soit le fournisseur.",
+      "upgrade": "Passer à une offre supérieure",
+      "bringKey": "Utiliser votre propre clé",
+      "barTitle": "Aucun modèle connecté",
+      "barDescription": "connectez-en un pour commencer à discuter",
+      "connectModel": "Connecter un modèle"
+    },
+    "providerRecovery": {
+      "savedPrompt": "Prompt enregistré",
+      "noText": "Aucun prompt textuel n’a été joint.",
+      "attachments": "{count, plural, one {Pièce jointe} other {Pièces jointes}}",
+      "reattach": "Rattachez ces fichiers après un rechargement.",
+      "unavailable": "Aucun prompt enregistré n’est disponible.",
+      "retrying": "Nouvelle tentative…",
+      "retry": "Réessayer",
+      "copy": "Copier le prompt",
+      "delete": "Supprimer"
+    },
+    "connectorRequired": {
+      "title": "Connectez {connectors} pour continuer",
+      "description": "{count, plural, one {Cette session nécessite {connectors}, mais rien n’y est encore connecté. Rien n’a été exécuté et rien n’a été facturé — connectez le compte et votre message sera renvoyé.} other {Cette session nécessite {connectors}, mais aucun compte n’y est encore connecté. Rien n’a été exécuté et rien n’a été facturé — connectez les comptes et votre message sera renvoyé.}}",
+      "connectOne": "Connecter {connector}",
+      "connectMany": "Connecter les comptes",
+      "privateDescription": "{count, plural, one {{connectors} autorise un compte à la fois. Il doit donc être connecté par le compte sous lequel cette session s’exécute.} other {{connectors} autorisent un compte à la fois. Ils doivent donc être connectés par le compte sous lequel cette session s’exécute.}}"
+    },
+    "composerMenus": {
+      "noMatches": "Aucun résultat",
+      "mentionSuggestions": "Suggestions de mentions",
+      "searching": "Recherche…",
+      "noCommandMatch": "Aucune commande, aucun fichier ni aucune action correspondante",
+      "commandsAndActions": "Commandes et actions",
+      "toUse": "à utiliser",
+      "use": "Utiliser"
+    }
+  },
   "agents": {
     "title": "Agents",
     "create": "Créer un Worker",

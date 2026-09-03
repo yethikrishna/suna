@@ -1494,6 +1494,45 @@
       "default": "Padrão"
     }
   },
+  "sessionUi": {
+    "modelGate": {
+      "title": "Conecte um modelo para começar a conversar",
+      "description": "Esta sessão precisa de um LLM conectado antes de poder responder. Use sua própria chave de API de qualquer provedor.",
+      "upgradeDescription": "Esta sessão precisa de um LLM conectado antes de poder responder. Faça upgrade para ter acesso instantâneo aos modelos gerenciados da Kortix ou use sua própria chave de API de qualquer provedor.",
+      "upgrade": "Fazer upgrade",
+      "bringKey": "Usar sua própria chave",
+      "barTitle": "Nenhum modelo conectado",
+      "barDescription": "conecte um para começar a conversar",
+      "connectModel": "Conectar modelo"
+    },
+    "providerRecovery": {
+      "savedPrompt": "Prompt salvo",
+      "noText": "Nenhum prompt de texto foi anexado.",
+      "attachments": "{count, plural, one {Anexo} other {Anexos}}",
+      "reattach": "Reanexe estes arquivos após recarregar.",
+      "unavailable": "Nenhum prompt salvo está disponível.",
+      "retrying": "Tentando novamente…",
+      "retry": "Tentar novamente",
+      "copy": "Copiar prompt",
+      "delete": "Excluir"
+    },
+    "connectorRequired": {
+      "title": "Conecte {connectors} para continuar",
+      "description": "{count, plural, one {Esta sessão precisa de {connectors}, e nada está conectado a ela ainda. Nada foi executado e nenhuma cobrança foi feita — conecte a conta e sua mensagem será enviada novamente.} other {Esta sessão precisa de {connectors}, e nada está conectado a eles ainda. Nada foi executado e nenhuma cobrança foi feita — conecte as contas e sua mensagem será enviada novamente.}}",
+      "connectOne": "Conectar {connector}",
+      "connectMany": "Conectar contas",
+      "privateDescription": "{count, plural, one {{connectors} autoriza uma conta por vez, então precisa ser conectado pela conta usada por esta sessão.} other {{connectors} autorizam uma conta por vez, então precisam ser conectados pela conta usada por esta sessão.}}"
+    },
+    "composerMenus": {
+      "noMatches": "Nenhum resultado",
+      "mentionSuggestions": "Sugestões de menções",
+      "searching": "Pesquisando…",
+      "noCommandMatch": "Nenhum comando, arquivo ou ação correspondente",
+      "commandsAndActions": "Comandos e ações",
+      "toUse": "para usar",
+      "use": "Usar"
+    }
+  },
   "agents": {
     "title": "Agentes",
     "create": "Criar Worker",

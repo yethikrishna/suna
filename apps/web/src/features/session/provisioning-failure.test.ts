@@ -61,10 +61,11 @@ describe('project session provider-failure recovery', () => {
   });
 
   test('shows the saved prompt and exposes one-click recovery controls', () => {
-    expect(recoverySource).toContain('Saved prompt');
+    expect(recoverySource).toContain("useTranslations('sessionUi.providerRecovery')");
+    expect(recoverySource).toContain("t('savedPrompt')");
     expect(recoverySource).toContain('{pendingPrompt.text}');
     expect(recoverySource).toContain('whitespace-pre-wrap');
-    expect(recoverySource).toContain('Copy prompt');
+    expect(recoverySource).toContain("t('copy')");
     expect(recoverySource).toContain('onClick={onRetry}');
     expect(recoverySource).toContain('onClick={onDelete}');
   });

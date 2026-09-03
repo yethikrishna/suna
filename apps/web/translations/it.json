@@ -1250,7 +1250,7 @@
       "legalPrivacy": "Informativa sulla privacy",
       "contactLead": "Hai ancora bisogno di aiuto? Contattaci.",
       "title": "Assistenza",
-      "lead": "Le risposte che diamo più spesso, le guide che le approfondiscono e una persona in carne e ossa quando non bastano.",
+      "lead": "Le risposte che diamo più spesso e una persona in carne e ossa quando non bastano.",
       "channelEmailTitle": "Scrivici",
       "channelDiscordTitle": "Discord",
       "channelDiscordDetail": "Server della community",
@@ -1260,18 +1260,17 @@
       "channelDocsNote": "Installazione, configurazione e CLI.",
       "channelStatusTitle": "Stato",
       "channelStatusNote": "Disponibilità in tempo reale e incidenti passati.",
-      "guidesTitle": "Guide",
-      "guidesLead": "Le risposte più lunghe, per le domande che un paragrafo non risolve.",
-      "creditsCardTitle": "I crediti spiegati",
-      "creditsCardDescription": "Cos’è un credito, cosa lo consuma, quali sono le tariffe della piattaforma e come far durare il tuo saldo.",
-      "creditsCardMeta": "Fatturazione e utilizzo",
       "faqBugAnswerBefore": "Scrivi a",
       "faqCreditsAnswerBefore": "Contatta",
       "legalTitle": "Note legali",
       "legalImprint": "Informazioni societarie",
       "contactTitle": "Contatti",
       "contactGeneral": "Generale",
-      "contactSecurity": "Sicurezza"
+      "contactSecurity": "Sicurezza",
+      "faqWhatCreditsQuestion": "Cosa sono i crediti e quanto costano?",
+      "faqWhatCreditsAnswerBefore": "I crediti sono l'unità di utilizzo della piattaforma in Kortix, e le chiamate ai modelli sono ciò che ne consuma di più. Kortix applica un ricarico del 20% sul costo del modello, del 50% sulla maggior parte delle chiamate agli strumenti, e addebita invece una commissione fissa di piattaforma del 10% se usi la tua chiave API. Il listino completo, i due tipi di credito e come far durare un saldo si trovano in",
+      "faqWhatCreditsLink": "Crediti e utilizzo",
+      "faqWhatCreditsAnswerAfter": "."
     }
   },
   "hardcodedUi": {

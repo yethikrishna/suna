@@ -1250,7 +1250,7 @@
       "legalPrivacy": "Datenschutzerklärung",
       "contactLead": "Brauchst du noch Hilfe? Melde dich.",
       "title": "Support",
-      "lead": "Die häufigsten Antworten, die Anleitungen dahinter und ein Mensch am anderen Ende, wenn beides nicht reicht.",
+      "lead": "Die häufigsten Antworten und ein Mensch am anderen Ende, wenn sie nicht reichen.",
       "channelEmailTitle": "Schreib uns",
       "channelDiscordTitle": "Discord",
       "channelDiscordDetail": "Community-Server",
@@ -1260,18 +1260,17 @@
       "channelDocsNote": "Einrichtung, Konfiguration und CLI.",
       "channelStatusTitle": "Status",
       "channelStatusNote": "Aktuelle Verfügbarkeit und frühere Störungen.",
-      "guidesTitle": "Anleitungen",
-      "guidesLead": "Die längeren Antworten — für Fragen, die ein Absatz nicht klärt.",
-      "creditsCardTitle": "Credits erklärt",
-      "creditsCardDescription": "Was ein Credit ist, was ihn verbraucht, wie die Plattformaufschläge aussehen und wie dein Guthaben länger reicht.",
-      "creditsCardMeta": "Abrechnung und Nutzung",
       "faqBugAnswerBefore": "Schreib an",
       "faqCreditsAnswerBefore": "Wende dich an",
       "legalTitle": "Rechtliches",
       "legalImprint": "Impressum",
       "contactTitle": "Kontakt",
       "contactGeneral": "Allgemein",
-      "contactSecurity": "Sicherheit"
+      "contactSecurity": "Sicherheit",
+      "faqWhatCreditsQuestion": "Was sind Credits und was kosten sie?",
+      "faqWhatCreditsAnswerBefore": "Credits sind die Einheit für die Plattformnutzung bei Kortix, und Modellaufrufe verbrauchen am meisten. Kortix schlägt 20 % auf die Modellkosten auf, 50 % auf die meisten Tool-Aufrufe, und berechnet stattdessen eine pauschale Plattformgebühr von 10 %, wenn Sie Ihren eigenen API-Schlüssel verwenden. Die vollständige Preisübersicht, die zwei Arten von Credits und wie ein Guthaben länger reicht, finden Sie unter",
+      "faqWhatCreditsLink": "Credits & Nutzung",
+      "faqWhatCreditsAnswerAfter": "."
     }
   },
   "hardcodedUi": {

@@ -1250,7 +1250,7 @@
       "legalPrivacy": "Politique de confidentialité",
       "contactLead": "Besoin d’aide ? Contactez-nous.",
       "title": "Assistance",
-      "lead": "Les réponses que nous donnons le plus souvent, les guides qui les détaillent, et une personne au bout du fil quand cela ne suffit pas.",
+      "lead": "Les réponses que nous donnons le plus souvent, et une personne au bout du fil quand elles ne suffisent pas.",
       "channelEmailTitle": "Écrivez-nous",
       "channelDiscordTitle": "Discord",
       "channelDiscordDetail": "Serveur communautaire",
@@ -1260,18 +1260,17 @@
       "channelDocsNote": "Installation, configuration et CLI.",
       "channelStatusTitle": "État des services",
       "channelStatusNote": "Disponibilité en direct et incidents passés.",
-      "guidesTitle": "Guides",
-      "guidesLead": "Les réponses longues, pour les questions qu’un paragraphe ne suffit pas à régler.",
-      "creditsCardTitle": "Les crédits expliqués",
-      "creditsCardDescription": "Ce qu’est un crédit, ce qui le consomme, les taux de la plateforme et comment faire durer votre solde.",
-      "creditsCardMeta": "Facturation et utilisation",
       "faqBugAnswerBefore": "Écrivez à",
       "faqCreditsAnswerBefore": "Contactez",
       "legalTitle": "Mentions légales",
       "legalImprint": "Mentions légales de l’éditeur",
       "contactTitle": "Contact",
       "contactGeneral": "Général",
-      "contactSecurity": "Sécurité"
+      "contactSecurity": "Sécurité",
+      "faqWhatCreditsQuestion": "Que sont les crédits et combien coûtent-ils ?",
+      "faqWhatCreditsAnswerBefore": "Les crédits sont l'unité d'utilisation de la plateforme chez Kortix, et les appels de modèles en consomment le plus. Kortix ajoute 20 % au coût du modèle, 50 % sur la plupart des appels d'outils, et facture à la place des frais de plateforme forfaitaires de 10 % si vous utilisez votre propre clé d'API. La grille tarifaire complète, les deux types de crédits et comment faire durer un solde se trouvent dans",
+      "faqWhatCreditsLink": "Crédits et utilisation",
+      "faqWhatCreditsAnswerAfter": "."
     }
   },
   "hardcodedUi": {

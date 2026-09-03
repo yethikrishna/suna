@@ -1250,7 +1250,7 @@
       "legalPrivacy": "隐私政策",
       "contactLead": "仍需帮助？请联系我们。",
       "title": "支持",
-      "lead": "最常见问题的答案、背后的详细指南，以及在两者都不够时为你解答的真人。",
+      "lead": "最常见问题的答案，以及在答案不够时为你解答的真人。",
       "channelEmailTitle": "给我们发邮件",
       "channelDiscordTitle": "Discord",
       "channelDiscordDetail": "社区服务器",
@@ -1260,18 +1260,17 @@
       "channelDocsNote": "安装、配置与 CLI。",
       "channelStatusTitle": "运行状态",
       "channelStatusNote": "实时可用性与历史故障记录。",
-      "guidesTitle": "指南",
-      "guidesLead": "更详细的解答，适合一段话说不清的问题。",
-      "creditsCardTitle": "积分说明",
-      "creditsCardDescription": "什么是积分、什么会消耗积分、平台费率如何计算，以及如何让余额更耐用。",
-      "creditsCardMeta": "账单与用量",
       "faqBugAnswerBefore": "发送邮件至",
       "faqCreditsAnswerBefore": "请联系",
       "legalTitle": "法律信息",
       "legalImprint": "公司信息",
       "contactTitle": "联系我们",
       "contactGeneral": "一般咨询",
-      "contactSecurity": "安全问题"
+      "contactSecurity": "安全问题",
+      "faqWhatCreditsQuestion": "什么是积分，费用是多少？",
+      "faqWhatCreditsAnswerBefore": "积分是 Kortix 衡量平台用量的单位，其中模型调用消耗最多。Kortix 在模型成本上加收 20%，在大多数工具调用上加收 50%；如果你使用自己的 API 密钥，则改为收取 10% 的固定平台费。完整的费率表、两种积分类型，以及如何让余额更耐用，请参阅",
+      "faqWhatCreditsLink": "积分与用量",
+      "faqWhatCreditsAnswerAfter": "。"
     }
   },
   "hardcodedUi": {

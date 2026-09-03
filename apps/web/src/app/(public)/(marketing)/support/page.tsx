@@ -10,7 +10,6 @@ import {
 } from '@/components/ui/accordion';
 import { Separator } from '@/components/ui/separator';
 import {
-  ArticleCard,
   ChannelCard,
   LINK,
   Note,
@@ -24,7 +23,6 @@ import {
 import { cn } from '@/lib/utils';
 import {
   BookOpenIcon,
-  CoinsIcon,
   DiscordLogoIcon,
   EnvelopeIcon,
   PulseIcon,
@@ -69,7 +67,6 @@ function SupportPageContent() {
 
   const sections = useMemo(
     () => [
-      { id: 'guides', label: t('guidesTitle') },
       { id: 'faq', label: t('faqTitle') },
       { id: 'account-delete', label: t('accountTitle') },
       { id: 'legal', label: t('legalTitle') },
@@ -145,21 +142,6 @@ function SupportPageContent() {
         <Separator />
 
         <SupportDocGrid sections={sections}>
-          <Section id="guides" title={t('guidesTitle')}>
-            <div className="space-y-4">
-              <P>{t('guidesLead')}</P>
-              <div className="space-y-2">
-                <ArticleCard
-                  icon={CoinsIcon}
-                  title={t('creditsCardTitle')}
-                  description={t('creditsCardDescription')}
-                  meta={t('creditsCardMeta')}
-                  href="/docs/credits"
-                />
-              </div>
-            </div>
-          </Section>
-
           {/* Operational questions first, product questions after. Someone on
               the support page is far more likely to be mid-problem than
               mid-evaluation. */}
@@ -192,6 +174,19 @@ function SupportPageContent() {
                       {SUPPORT_EMAIL}
                     </a>
                     {t('faqCreditsAnswerAfter')}
+                  </>
+                }
+              />
+              <Faq
+                value="what-are-credits"
+                question={t('faqWhatCreditsQuestion')}
+                answer={
+                  <>
+                    {t('faqWhatCreditsAnswerBefore')}{' '}
+                    <Link href="/docs/credits" className={LINK}>
+                      {t('faqWhatCreditsLink')}
+                    </Link>
+                    {t('faqWhatCreditsAnswerAfter')}
                   </>
                 }
               />

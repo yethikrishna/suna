@@ -1250,7 +1250,7 @@
       "legalPrivacy": "プライバシーポリシー",
       "contactLead": "まだサポートが必要ですか？お問い合わせください。",
       "title": "サポート",
-      "lead": "よくある質問への回答、詳しく解説したガイド、そしてそれでは解決しないときに対応する担当者。",
+      "lead": "よくある質問への回答と、それでは解決しないときに対応する担当者。",
       "channelEmailTitle": "メールで問い合わせる",
       "channelDiscordTitle": "Discord",
       "channelDiscordDetail": "コミュニティサーバー",
@@ -1260,18 +1260,17 @@
       "channelDocsNote": "セットアップ、設定、CLI。",
       "channelStatusTitle": "ステータス",
       "channelStatusNote": "現在の稼働状況と過去の障害履歴。",
-      "guidesTitle": "ガイド",
-      "guidesLead": "一段落では説明しきれない質問への、詳しい回答。",
-      "creditsCardTitle": "クレジットの仕組み",
-      "creditsCardDescription": "クレジットとは何か、何が消費するのか、プラットフォーム料率、そして残高を長持ちさせる方法。",
-      "creditsCardMeta": "請求と利用状況",
       "faqBugAnswerBefore": "メールの宛先は",
       "faqCreditsAnswerBefore": "お問い合わせ先は",
       "legalTitle": "法的事項",
       "legalImprint": "会社概要",
       "contactTitle": "お問い合わせ",
       "contactGeneral": "一般のお問い合わせ",
-      "contactSecurity": "セキュリティ"
+      "contactSecurity": "セキュリティ",
+      "faqWhatCreditsQuestion": "クレジットとは何ですか。料金はどれくらいですか。",
+      "faqWhatCreditsAnswerBefore": "クレジットは Kortix のプラットフォーム利用量の単位で、最も多く消費するのはモデル呼び出しです。Kortix はモデル費用に 20%、ほとんどのツール呼び出しに 50% を上乗せします。自分の API キーを使う場合は、代わりに一律 10% のプラットフォーム手数料がかかります。料金表の全体、2 種類のクレジット、残高を長く使うコツについては",
+      "faqWhatCreditsLink": "クレジットと利用状況",
+      "faqWhatCreditsAnswerAfter": "をご覧ください。"
     }
   },
   "hardcodedUi": {

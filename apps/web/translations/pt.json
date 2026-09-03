@@ -1250,7 +1250,7 @@
       "legalPrivacy": "Política de Privacidade",
       "contactLead": "Ainda precisa de ajuda? Entre em contato.",
       "title": "Suporte",
-      "lead": "As respostas que damos com mais frequência, os guias por trás delas e uma pessoa do outro lado quando nada disso resolve.",
+      "lead": "As respostas que damos com mais frequência e uma pessoa do outro lado quando não resolvem.",
       "channelEmailTitle": "Escreva para nós",
       "channelDiscordTitle": "Discord",
       "channelDiscordDetail": "Servidor da comunidade",
@@ -1260,18 +1260,17 @@
       "channelDocsNote": "Instalação, configuração e CLI.",
       "channelStatusTitle": "Status",
       "channelStatusNote": "Disponibilidade em tempo real e incidentes anteriores.",
-      "guidesTitle": "Guias",
-      "guidesLead": "As respostas mais longas, para perguntas que um parágrafo não resolve.",
-      "creditsCardTitle": "Créditos explicados",
-      "creditsCardDescription": "O que é um crédito, o que o consome, quais são as taxas da plataforma e como fazer o saldo durar.",
-      "creditsCardMeta": "Faturamento e uso",
       "faqBugAnswerBefore": "Escreva para",
       "faqCreditsAnswerBefore": "Entre em contato com",
       "legalTitle": "Jurídico",
       "legalImprint": "Informações da empresa",
       "contactTitle": "Contato",
       "contactGeneral": "Geral",
-      "contactSecurity": "Segurança"
+      "contactSecurity": "Segurança",
+      "faqWhatCreditsQuestion": "O que são créditos e quanto custam?",
+      "faqWhatCreditsAnswerBefore": "Os créditos são a unidade de uso da plataforma na Kortix, e as chamadas de modelo são o que mais consome. A Kortix acrescenta 20% ao custo do modelo, 50% na maioria das chamadas de ferramentas, e cobra em vez disso uma taxa fixa de plataforma de 10% se você usar a sua própria chave de API. A tabela de preços completa, os dois tipos de crédito e como fazer um saldo durar estão em",
+      "faqWhatCreditsLink": "Créditos e uso",
+      "faqWhatCreditsAnswerAfter": "."
     }
   },
   "hardcodedUi": {

@@ -1250,7 +1250,7 @@
       "legalPrivacy": "Privacy Policy",
       "contactLead": "Still need help? Reach out.",
       "title": "Support",
-      "lead": "The answers we give most, the guides behind them, and a person on the other end when neither covers it.",
+      "lead": "The answers we give most, and a person on the other end when they don't cover it.",
       "channelEmailTitle": "Email us",
       "channelDiscordTitle": "Discord",
       "channelDiscordDetail": "Community server",
@@ -1260,18 +1260,17 @@
       "channelDocsNote": "Setup, configuration, and the CLI.",
       "channelStatusTitle": "Status",
       "channelStatusNote": "Live uptime and past incidents.",
-      "guidesTitle": "Guides",
-      "guidesLead": "The longer answers, for questions one paragraph cannot settle.",
-      "creditsCardTitle": "Credits explained",
-      "creditsCardDescription": "What a credit is, what spends one, what the platform rates are, and how to make a balance last.",
-      "creditsCardMeta": "Billing and usage",
       "faqBugAnswerBefore": "Email",
       "faqCreditsAnswerBefore": "Contact",
       "legalTitle": "Legal",
       "legalImprint": "Imprint",
       "contactTitle": "Contact",
       "contactGeneral": "General",
-      "contactSecurity": "Security"
+      "contactSecurity": "Security",
+      "faqWhatCreditsQuestion": "What are credits, and what do they cost?",
+      "faqWhatCreditsAnswerBefore": "Credits are Kortix's unit of platform usage, and model calls are the main driver. Kortix adds 20% on model cost, 50% on most tool calls, and charges a flat 10% platform fee instead if you bring your own API key. The full rate card, the two kinds of credit, and how to make a balance last are in",
+      "faqWhatCreditsLink": "Credits & usage",
+      "faqWhatCreditsAnswerAfter": "."
     }
   },
   "hardcodedUi": {

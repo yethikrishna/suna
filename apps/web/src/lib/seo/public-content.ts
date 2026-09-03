@@ -184,7 +184,7 @@ const MARKETING_RECORDS: PublicContentRecord[] = [
     slug: 'support',
     title: 'Kortix support',
     description:
-      'Reach Kortix support, read the guides, and find the answers to the questions people ask most.',
+      'Reach Kortix support by email or Discord, read the answers to the questions people ask most, and find the account deletion steps.',
     htmlPath: '/support',
   },
   // The product pages. Each one's layout.tsx reads its title/description back

@@ -230,52 +230,6 @@ export function ChannelCard({
 }
 
 /**
- * An article in the hub's guide list.
- *
- * Full-width rows, not a grid of tiles: there is one article today and a tile
- * grid with a single tile in it announces the emptiness. A row list reads as
- * complete at one entry and stays right at six.
- */
-export function ArticleCard({
-  icon: Icon,
-  title,
-  description,
-  href,
-  meta,
-}: {
-  icon: Icon;
-  title: string;
-  description: string;
-  href: string;
-  meta: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className={cn(
-        'group bg-popover flex items-start gap-4 border p-4',
-        CARD_RADIUS,
-        'hover:border-foreground/20 hover:shadow-sm transition-[color,box-shadow,border-color]',
-        'focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2',
-        'focus-visible:ring-offset-background focus-visible:outline-none',
-      )}
-    >
-      <span className="bg-muted mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-sm">
-        <Icon className="text-muted-foreground size-4.5" />
-      </span>
-      <div className="min-w-0 flex-1 space-y-1">
-        <div className="flex items-center gap-1.5">
-          <span className="text-foreground text-sm font-medium tracking-tight">{title}</span>
-          <CardArrow href={href} />
-        </div>
-        <p className="text-muted-foreground text-[13px] leading-6 text-pretty">{description}</p>
-        <p className="text-muted-foreground/60 text-xs">{meta}</p>
-      </div>
-    </Link>
-  );
-}
-
-/**
  * A quiet aside for a fact that qualifies the section above it — the credit
  * priority rule, the irreversibility of a deletion.
  *

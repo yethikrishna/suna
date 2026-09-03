@@ -89,8 +89,12 @@ const STATIC_GROUPS: readonly RailGroup[] = [
       // is one word and whose label is two.
       {
         tab: 'tokens',
-        label: 'API keys',
-        description: 'Keys that sign the CLI, a script, or a CI job in as you.',
+        // "Personal access keys" (Marko, 2026-09-03): these are API keys that
+        // act AS YOU — the CLI, a script or a CI job signed in under your
+        // identity — as opposed to the account's service-account tokens on
+        // the account page. The label says whose identity they carry.
+        label: 'Personal access keys',
+        description: 'API keys that act as you — for the CLI, a script, or a CI job.',
         icon: Key,
       },
     ],

@@ -48,6 +48,14 @@ interface LocaleMessages {
       dangerZone: string;
       deleteAccount: string;
     };
+    security: {
+      twoFactorTitle: string;
+      authenticatorApp: string;
+      addAuthenticatorApp: string;
+      noFactorEnrolled: string;
+      devices: string;
+      signOutOtherDevices: string;
+    };
   };
 }
 
@@ -194,6 +202,25 @@ test.describe("26 — Settings localization", () => {
           ]) {
             await expect(
               page.getByText(profileText, { exact: true }).first(),
+            ).toBeVisible();
+          }
+
+          await page
+            .getByRole("tab", {
+              name: copy.settings.rail.items.security.label,
+              exact: true,
+            })
+            .click();
+          for (const securityText of [
+            copy.settings.security.twoFactorTitle,
+            copy.settings.security.authenticatorApp,
+            copy.settings.security.addAuthenticatorApp,
+            copy.settings.security.noFactorEnrolled,
+            copy.settings.security.devices,
+            copy.settings.security.signOutOtherDevices,
+          ]) {
+            await expect(
+              page.getByText(securityText, { exact: true }).first(),
             ).toBeVisible();
           }
 

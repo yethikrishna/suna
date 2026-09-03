@@ -21,6 +21,17 @@ linked, not inlined.
 
 ## Register
 
+### Reject translator sentinels after every machine-translated catalog update (2026-09-03)
+
+**When:** adding or updating locale catalogs with machine translation. Search
+every output value for the original sentinel and its transliterations before
+accepting the catalog. Translators can transliterate protected tokens instead of
+preserving them, which defeats exact replacement and leaves marker text in the
+UI. *Near-miss:* the Serbian Security catalog changed `ZXQTOTPXZQ` into
+`ЗКСКТОТПКСЗК`; one Chinese SMS marker also changed internally. No catalog was
+committed with the residue. *Enforcer:* `apps/web/scripts/audit-i18n.mjs`
+rejects Latin `ZXQ`/`XZQ` and observed Cyrillic `ЗКСК`/`КСЗК` markers.
+
 ### A read that fails is not an admin decision — health flags fail open (2026-09-02)
 
 **When:** writing any code path that answers "is the platform in maintenance /

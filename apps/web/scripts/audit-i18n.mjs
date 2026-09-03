@@ -26,6 +26,10 @@ const maxHardcoded = args.has('max-hardcoded')
 
 const includeGenerated = args.get('include-generated') === 'true';
 
+// Machine translation can alter sentinel spelling instead of preserving it.
+// Reject the Latin form and the Cyrillic transliteration observed in production catalogs.
+const translationSentinelPattern = /(?:ZXQ|XZQ|ЗКСК|КСЗК)/iu;
+
 const ignoredPathParts = [
   '/.next/',
   '/node_modules/',
@@ -179,6 +183,10 @@ function messageIssues(english, messages, locale) {
 
     if (/[\uE000-\uF8FF]/.test(targetValue)) {
       issues.push(`${key}: contains a private-use character`);
+    }
+
+    if (translationSentinelPattern.test(targetValue)) {
+      issues.push(`${key}: contains a translation sentinel`);
     }
 
     const sourceTemplates = templateVariables(sourceValue);

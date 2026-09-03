@@ -36,7 +36,10 @@ const ignoredPathParts = [
   '/src/components/ui/',
   '/src/app/fonts/',
   '/src/types/',
+  '/__harness__/',
 ];
+
+const ignoredFilePattern = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
 
 const allowedLiteralValues = new Set([
   '',
@@ -118,6 +121,16 @@ const ignoredAttributes = new Set([
   'd',
   'path',
   'pattern',
+  'accept',
+  'activeHighlightColor',
+  'githubManageAllHref',
+  'highlightColor',
+  'media',
+  'parentClass',
+  'sizes',
+  'transform',
+  'url',
+  'xlinkHref',
 ]);
 
 function readJson(file) {
@@ -224,7 +237,11 @@ function walkFiles(dir, out = []) {
     }
     if (entry.isDirectory()) {
       walkFiles(full, out);
-    } else if (/\.(tsx|ts)$/.test(entry.name) && !entry.name.endsWith('.d.ts')) {
+    } else if (
+      /\.(tsx|ts)$/.test(entry.name) &&
+      !entry.name.endsWith('.d.ts') &&
+      !ignoredFilePattern.test(entry.name)
+    ) {
       out.push(full);
     }
   }

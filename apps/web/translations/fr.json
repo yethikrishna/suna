@@ -464,6 +464,51 @@
       "testNotificationTitle": "Notification de test",
       "testNotificationBody": "Les notifications fonctionnent correctement !"
     },
+    "plan": {
+      "managedByAdmin": "Géré par un administrateur du compte",
+      "adminOnly": "Seuls les administrateurs de ce compte peuvent modifier son forfait ou acheter des crédits.",
+      "openAccount": "Ouvrir le compte"
+    },
+    "credits": {
+      "loadFailed": "Impossible de charger ce compte.",
+      "availableBalance": "Solde disponible",
+      "creditCount": "{count, plural, one {{formatted} crédit} other {{formatted} crédits}}",
+      "owed": "dus",
+      "buckets": {
+        "monthly": {
+          "label": "Crédits du forfait",
+          "hint": "Expirent à la fin de la période"
+        },
+        "daily": {
+          "label": "Crédits quotidiens",
+          "hint": "Rechargés périodiquement"
+        },
+        "extra": {
+          "label": "Achetés",
+          "hint": "N'expirent jamais"
+        }
+      },
+      "includedInPlan": "Inclus dans votre forfait",
+      "usedThisPeriod": "Utilisés pendant cette période",
+      "planCreditsSpent": "Les crédits du forfait sont épuisés. Les crédits achetés sont désormais utilisés.",
+      "grantRemaining": "{count, plural, one {Il reste {formatted} crédit sur l'allocation de cette période.} other {Il reste {formatted} crédits sur l'allocation de cette période.}}",
+      "dailyAmountEvery": "+{credits} crédits toutes les {hours} h",
+      "dailyAmount": "+{credits} crédits",
+      "countdown": {
+        "anyMoment": "D'un moment à l'autre",
+        "minutes": "dans environ {minutes} min",
+        "hours": "dans environ {hours} h",
+        "hoursMinutes": "dans environ {hours} h {minutes} min"
+      },
+      "dailyCredits": "Crédits quotidiens",
+      "addCredits": "Ajouter des crédits",
+      "spentThisPeriod": "Dépensés pendant cette période",
+      "compute": "Calcul",
+      "total": "Total",
+      "history": "Historique",
+      "historyDescription": "Le coût de chaque session et tous les crédits ajoutés ou dépensés.",
+      "openLedger": "Ouvrir le registre"
+    },
     "tokens": {
       "keyRevoked": "Clé API révoquée",
       "revokeFailed": "Impossible de révoquer la clé API",
@@ -838,6 +883,72 @@
     "placeholder": "Tape ton message..."
   },
   "billing": {
+    "plan": {
+      "teamSeats": "{count, plural, one {Équipe · # siège} other {Équipe · # sièges}}",
+      "cancels": "Résiliation le {date}",
+      "cancelsAtPeriodEnd": "Résiliation à la fin de la période",
+      "renews": "Renouvellement le {date}",
+      "active": "Actif",
+      "noSubscription": "Aucun abonnement",
+      "status": "{status}",
+      "seats": "Sièges",
+      "perSeat": "Par siège",
+      "monthlyTotal": "Total mensuel",
+      "perMonth": "{amount}/mois",
+      "currentPlan": "Forfait actuel",
+      "statuses": {
+        "none": "Aucun abonnement",
+        "past_due": "En retard",
+        "unpaid": "Impayé",
+        "canceled": "Résilié",
+        "incomplete": "Incomplet",
+        "incomplete_expired": "Incomplet expiré",
+        "trialing": "Essai",
+        "paused": "En pause"
+      },
+      "loadFailed": "Impossible de charger les données de l'abonnement",
+      "teamTitle": "Kortix Team",
+      "teamDescription": "Placez chaque membre de l'équipe sur un forfait partagé.",
+      "subscribe": "S'abonner à Team",
+      "manageBilling": "Gérer la facturation",
+      "outOfCredits": "Vous n'avez plus de crédits",
+      "buyCreditsHint": "Achetez des crédits ci-dessous ou activez le rechargement automatique.",
+      "topupWalletHint": "Rechargez votre solde pour maintenir vos agents en fonctionnement.",
+      "addCredits": "Ajouter des crédits",
+      "billingPortal": "Portail de facturation",
+      "portalDescription": "Gérez votre abonnement, vos moyens de paiement et vos factures."
+    },
+    "topup": {
+      "minimum": "Le rechargement minimum est de {amount}.",
+      "contactSales": "Pour un montant supérieur à {amount}, contactez l'équipe commerciale.",
+      "creditHint": "{credits} crédits · ajoutés dès le paiement.",
+      "noExpiry": "Les crédits n'expirent jamais. 1 $ = 100 crédits.",
+      "processing": "Traitement",
+      "addAmount": "Ajouter {amount}",
+      "addCredits": "Ajouter des crédits",
+      "noCheckoutUrl": "Aucune URL de paiement reçue",
+      "checkoutFailed": "Impossible de créer la session de paiement",
+      "amountGroup": "Montant du rechargement",
+      "customAmount": "Montant personnalisé en dollars",
+      "custom": "Personnalisé"
+    },
+    "autoTopup": {
+      "bufferError": "Le montant du rechargement doit dépasser le seuil d'au moins {buffer} — saisissez {minimum} ou plus.",
+      "addPaymentFirst": "Ajoutez un moyen de paiement avant d'activer le rechargement automatique.",
+      "saved": "Rechargement automatique enregistré",
+      "updateFailed": "Impossible de mettre à jour le rechargement automatique",
+      "retry": "Réessayer",
+      "settingsLoadFailed": "Impossible de charger vos paramètres actuels. Les valeurs par défaut sont affichées.",
+      "title": "Rechargement automatique",
+      "enabledDescription": "Votre carte est débitée uniquement lorsque le solde passe sous le seuil.",
+      "disabledDescription": "Les agents se mettent en pause lorsque le solde atteint zéro.",
+      "add": "Ajouter",
+      "amountLabel": "Montant du rechargement en dollars",
+      "whenBelow": "lorsque le solde passe sous",
+      "thresholdLabel": "Seuil de rechargement en dollars",
+      "save": "Enregistrer",
+      "paymentNeeded": "Ajoutez un moyen de paiement pour exécuter le rechargement automatique."
+    },
     "title": "Facturation & Abonnement",
     "subscription": "Abonnement",
     "credits": "Crédits",

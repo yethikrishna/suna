@@ -461,6 +461,51 @@
       "testNotificationTitle": "Notificação de teste",
       "testNotificationBody": "As notificações estão funcionando corretamente!"
     },
+    "plan": {
+      "managedByAdmin": "Gerenciado por um administrador da conta",
+      "adminOnly": "Somente administradores desta conta podem alterar o plano ou comprar créditos.",
+      "openAccount": "Abrir conta"
+    },
+    "credits": {
+      "loadFailed": "Não foi possível carregar esta conta.",
+      "availableBalance": "Saldo disponível",
+      "creditCount": "{count, plural, one {{formatted} crédito} other {{formatted} créditos}}",
+      "owed": "devidos",
+      "buckets": {
+        "monthly": {
+          "label": "Créditos do plano",
+          "hint": "Expiram no fim do período"
+        },
+        "daily": {
+          "label": "Créditos diários",
+          "hint": "Recarregam periodicamente"
+        },
+        "extra": {
+          "label": "Comprados",
+          "hint": "Nunca expiram"
+        }
+      },
+      "includedInPlan": "Incluído no seu plano",
+      "usedThisPeriod": "Usado neste período",
+      "planCreditsSpent": "Os créditos do plano acabaram. Os créditos comprados serão usados a partir de agora.",
+      "grantRemaining": "{count, plural, one {Resta {formatted} crédito da cota deste período.} other {Restam {formatted} créditos da cota deste período.}}",
+      "dailyAmountEvery": "+{credits} créditos a cada {hours} h",
+      "dailyAmount": "+{credits} créditos",
+      "countdown": {
+        "anyMoment": "A qualquer momento",
+        "minutes": "em cerca de {minutes} min",
+        "hours": "em cerca de {hours} h",
+        "hoursMinutes": "em cerca de {hours} h e {minutes} min"
+      },
+      "dailyCredits": "Créditos diários",
+      "addCredits": "Adicionar créditos",
+      "spentThisPeriod": "Gasto neste período",
+      "compute": "Computação",
+      "total": "Total",
+      "history": "Histórico",
+      "historyDescription": "O custo de cada sessão e todos os créditos adicionados ou gastos.",
+      "openLedger": "Abrir extrato"
+    },
     "tokens": {
       "keyRevoked": "Chave de API revogada",
       "revokeFailed": "Não foi possível revogar a chave de API",
@@ -832,6 +877,72 @@
     "placeholder": "Digite tua mensagem..."
   },
   "billing": {
+    "plan": {
+      "teamSeats": "{count, plural, one {Equipe · # vaga} other {Equipe · # vagas}}",
+      "cancels": "Cancela em {date}",
+      "cancelsAtPeriodEnd": "Cancela no fim do período",
+      "renews": "Renova em {date}",
+      "active": "Ativa",
+      "noSubscription": "Sem assinatura",
+      "status": "{status}",
+      "seats": "Vagas",
+      "perSeat": "Por vaga",
+      "monthlyTotal": "Total mensal",
+      "perMonth": "{amount}/mês",
+      "currentPlan": "Plano atual",
+      "statuses": {
+        "none": "Sem assinatura",
+        "past_due": "Pagamento atrasado",
+        "unpaid": "Não pago",
+        "canceled": "Cancelado",
+        "incomplete": "Incompleto",
+        "incomplete_expired": "Incompleto e expirado",
+        "trialing": "Período de teste",
+        "paused": "Pausado"
+      },
+      "loadFailed": "Não foi possível carregar os dados da assinatura",
+      "teamTitle": "Kortix Team",
+      "teamDescription": "Coloque todos os membros da equipe em um único plano compartilhado.",
+      "subscribe": "Assinar o Team",
+      "manageBilling": "Gerenciar faturamento",
+      "outOfCredits": "Seus créditos acabaram",
+      "buyCreditsHint": "Compre créditos abaixo ou ative a recarga automática.",
+      "topupWalletHint": "Recarregue o saldo para manter seus agentes em execução.",
+      "addCredits": "Adicionar créditos",
+      "billingPortal": "Portal de faturamento",
+      "portalDescription": "Gerencie sua assinatura, métodos de pagamento e faturas."
+    },
+    "topup": {
+      "minimum": "A recarga mínima é de {amount}.",
+      "contactSales": "Para mais de {amount}, fale com a equipe de vendas.",
+      "creditHint": "{credits} créditos · adicionados assim que você pagar.",
+      "noExpiry": "Os créditos nunca expiram. US$ 1 = 100 créditos.",
+      "processing": "Processando",
+      "addAmount": "Adicionar {amount}",
+      "addCredits": "Adicionar créditos",
+      "noCheckoutUrl": "Nenhum URL de pagamento foi recebido",
+      "checkoutFailed": "Não foi possível criar a sessão de pagamento",
+      "amountGroup": "Valor da recarga",
+      "customAmount": "Valor personalizado em dólares",
+      "custom": "Personalizado"
+    },
+    "autoTopup": {
+      "bufferError": "O valor da recarga deve ficar pelo menos {buffer} acima do limite — informe {minimum} ou mais.",
+      "addPaymentFirst": "Adicione um método de pagamento antes de ativar a recarga automática.",
+      "saved": "Recarga automática salva",
+      "updateFailed": "Não foi possível atualizar a recarga automática",
+      "retry": "Tentar novamente",
+      "settingsLoadFailed": "Não foi possível carregar as configurações atuais. Exibindo os valores padrão.",
+      "title": "Recarga automática",
+      "enabledDescription": "Seu cartão só é cobrado quando o saldo fica abaixo do limite.",
+      "disabledDescription": "Os agentes pausam quando o saldo chega a zero.",
+      "add": "Adicionar",
+      "amountLabel": "Valor da recarga em dólares",
+      "whenBelow": "quando o saldo ficar abaixo de",
+      "thresholdLabel": "Limite da recarga em dólares",
+      "save": "Salvar",
+      "paymentNeeded": "Adicione um método de pagamento para executar a recarga automática."
+    },
     "title": "Faturação & Assinatura",
     "subscription": "Assinatura",
     "credits": "Créditos",

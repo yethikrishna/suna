@@ -455,6 +455,51 @@
       "testNotificationTitle": "テスト通知",
       "testNotificationBody": "通知は正常に動作しています！"
     },
+    "plan": {
+      "managedByAdmin": "アカウント管理者が管理",
+      "adminOnly": "このアカウントの管理者のみがプランの変更やクレジットの購入を行えます。",
+      "openAccount": "アカウントを開く"
+    },
+    "credits": {
+      "loadFailed": "このアカウントを読み込めませんでした。",
+      "availableBalance": "利用可能残高",
+      "creditCount": "{count, plural, one {{formatted} クレジット} other {{formatted} クレジット}}",
+      "owed": "未払い",
+      "buckets": {
+        "monthly": {
+          "label": "プランクレジット",
+          "hint": "期間終了時に失効"
+        },
+        "daily": {
+          "label": "デイリークレジット",
+          "hint": "定期的に補充"
+        },
+        "extra": {
+          "label": "購入済み",
+          "hint": "無期限"
+        }
+      },
+      "includedInPlan": "プランに含まれる内容",
+      "usedThisPeriod": "この期間の使用量",
+      "planCreditsSpent": "プランクレジットを使い切りました。これ以降は購入済みクレジットを使用します。",
+      "grantRemaining": "{count, plural, one {この期間の付与分は残り {formatted} クレジットです。} other {この期間の付与分は残り {formatted} クレジットです。}}",
+      "dailyAmountEvery": "{hours} 時間ごとに +{credits} クレジット",
+      "dailyAmount": "+{credits} クレジット",
+      "countdown": {
+        "anyMoment": "まもなく",
+        "minutes": "約 {minutes} 分後",
+        "hours": "約 {hours} 時間後",
+        "hoursMinutes": "約 {hours} 時間 {minutes} 分後"
+      },
+      "dailyCredits": "デイリークレジット",
+      "addCredits": "クレジットを追加",
+      "spentThisPeriod": "この期間の支出",
+      "compute": "コンピューティング",
+      "total": "合計",
+      "history": "履歴",
+      "historyDescription": "各セッションの費用と、追加または使用されたすべてのクレジット。",
+      "openLedger": "台帳を開く"
+    },
     "tokens": {
       "keyRevoked": "API キーを取り消しました",
       "revokeFailed": "API キーを取り消せませんでした",
@@ -826,6 +871,72 @@
     "placeholder": "メッセージを入力..."
   },
   "billing": {
+    "plan": {
+      "teamSeats": "{count, plural, one {チーム · # 席} other {チーム · # 席}}",
+      "cancels": "{date} に解約",
+      "cancelsAtPeriodEnd": "期間終了時に解約",
+      "renews": "{date} に更新",
+      "active": "有効",
+      "noSubscription": "サブスクリプションなし",
+      "status": "{status}",
+      "seats": "席数",
+      "perSeat": "1 席あたり",
+      "monthlyTotal": "月額合計",
+      "perMonth": "{amount}/月",
+      "currentPlan": "現在のプラン",
+      "statuses": {
+        "none": "サブスクリプションなし",
+        "past_due": "支払い期限超過",
+        "unpaid": "未払い",
+        "canceled": "解約済み",
+        "incomplete": "未完了",
+        "incomplete_expired": "未完了のまま期限切れ",
+        "trialing": "トライアル",
+        "paused": "一時停止"
+      },
+      "loadFailed": "サブスクリプションデータを読み込めませんでした",
+      "teamTitle": "Kortix Team",
+      "teamDescription": "すべてのチームメンバーを 1 つの共有プランにまとめます。",
+      "subscribe": "Team に登録",
+      "manageBilling": "請求を管理",
+      "outOfCredits": "クレジットを使い切りました",
+      "buyCreditsHint": "以下でクレジットを購入するか、自動チャージを有効にしてください。",
+      "topupWalletHint": "エージェントを稼働させるには残高をチャージしてください。",
+      "addCredits": "クレジットを追加",
+      "billingPortal": "請求ポータル",
+      "portalDescription": "サブスクリプション、支払い方法、請求書を管理します。"
+    },
+    "topup": {
+      "minimum": "最低チャージ額は {amount} です。",
+      "contactSales": "{amount} を超える場合は、営業担当にお問い合わせください。",
+      "creditHint": "{credits} クレジット · 支払い後すぐに追加されます。",
+      "noExpiry": "クレジットは無期限です。1 ドル = 100 クレジット。",
+      "processing": "処理中",
+      "addAmount": "{amount} を追加",
+      "addCredits": "クレジットを追加",
+      "noCheckoutUrl": "決済 URL を受信できませんでした",
+      "checkoutFailed": "決済セッションを作成できませんでした",
+      "amountGroup": "チャージ額",
+      "customAmount": "ドル単位のカスタム金額",
+      "custom": "カスタム"
+    },
+    "autoTopup": {
+      "bufferError": "チャージ額はしきい値より {buffer} 以上高くする必要があります。{minimum} 以上を入力してください。",
+      "addPaymentFirst": "自動チャージを有効にする前に、支払い方法を追加してください。",
+      "saved": "自動チャージを保存しました",
+      "updateFailed": "自動チャージを更新できませんでした",
+      "retry": "再試行",
+      "settingsLoadFailed": "現在の設定を読み込めませんでした。初期値を表示しています。",
+      "title": "自動チャージ",
+      "enabledDescription": "残高がしきい値を下回った場合にのみカードに請求されます。",
+      "disabledDescription": "残高がゼロになると、エージェントは一時停止します。",
+      "add": "追加額",
+      "amountLabel": "チャージ額（ドル）",
+      "whenBelow": "残高が次の金額を下回ったとき",
+      "thresholdLabel": "チャージしきい値（ドル）",
+      "save": "保存",
+      "paymentNeeded": "自動チャージを実行するには支払い方法を追加してください。"
+    },
     "title": "請求とサブスクリプション",
     "subscription": "サブスクリプション",
     "credits": "クレジット",

@@ -275,6 +275,51 @@
       "testNotificationTitle": "Test Notification",
       "testNotificationBody": "Notifications are working correctly!"
     },
+    "plan": {
+      "managedByAdmin": "Managed by an account admin",
+      "adminOnly": "Only admins of this account can change its plan or buy credits.",
+      "openAccount": "Open account"
+    },
+    "credits": {
+      "loadFailed": "Could not load this account.",
+      "availableBalance": "Available balance",
+      "creditCount": "{count, plural, one {{formatted} credit} other {{formatted} credits}}",
+      "owed": "owed",
+      "buckets": {
+        "monthly": {
+          "label": "Plan credits",
+          "hint": "Expire at period end"
+        },
+        "daily": {
+          "label": "Daily credits",
+          "hint": "Refill on a timer"
+        },
+        "extra": {
+          "label": "Purchased",
+          "hint": "Never expire"
+        }
+      },
+      "includedInPlan": "Included in your plan",
+      "usedThisPeriod": "Used this period",
+      "planCreditsSpent": "Plan credits are spent. Purchased credits are used from here.",
+      "grantRemaining": "{count, plural, one {{formatted} credit left of this period's grant.} other {{formatted} credits left of this period's grant.}}",
+      "dailyAmountEvery": "+{credits} credits every {hours}h",
+      "dailyAmount": "+{credits} credits",
+      "countdown": {
+        "anyMoment": "Any moment now",
+        "minutes": "in ~{minutes}m",
+        "hours": "in ~{hours}h",
+        "hoursMinutes": "in ~{hours}h {minutes}m"
+      },
+      "dailyCredits": "Daily credits",
+      "addCredits": "Add credits",
+      "spentThisPeriod": "Spent this period",
+      "compute": "Compute",
+      "total": "Total",
+      "history": "History",
+      "historyDescription": "What every session cost, and every credit added or spent.",
+      "openLedger": "Open ledger"
+    },
     "tokens": {
       "keyRevoked": "API key revoked",
       "revokeFailed": "Could not revoke API key",
@@ -823,6 +868,72 @@
     "placeholder": "Type your message..."
   },
   "billing": {
+    "plan": {
+      "teamSeats": "{count, plural, one {Team · # seat} other {Team · # seats}}",
+      "cancels": "Cancels {date}",
+      "cancelsAtPeriodEnd": "Cancels at period end",
+      "renews": "Renews {date}",
+      "active": "Active",
+      "noSubscription": "No subscription",
+      "status": "{status}",
+      "seats": "Seats",
+      "perSeat": "Per seat",
+      "monthlyTotal": "Monthly total",
+      "perMonth": "{amount}/mo",
+      "currentPlan": "Current plan",
+      "statuses": {
+        "none": "No subscription",
+        "past_due": "Past due",
+        "unpaid": "Unpaid",
+        "canceled": "Canceled",
+        "incomplete": "Incomplete",
+        "incomplete_expired": "Incomplete expired",
+        "trialing": "Trial",
+        "paused": "Paused"
+      },
+      "loadFailed": "Failed to load subscription data",
+      "teamTitle": "Kortix Team",
+      "teamDescription": "Subscribe to put every teammate on one shared plan.",
+      "subscribe": "Subscribe to Team",
+      "manageBilling": "Manage billing",
+      "outOfCredits": "You ran out of credits",
+      "buyCreditsHint": "Buy credits below or turn on auto top-up so it never happens again.",
+      "topupWalletHint": "Top up your wallet to keep your agents running.",
+      "addCredits": "Add credits",
+      "billingPortal": "Billing portal",
+      "portalDescription": "Manage your subscription, payment methods, and invoices."
+    },
+    "topup": {
+      "minimum": "Minimum top-up is {amount}.",
+      "contactSales": "For more than {amount}, contact sales.",
+      "creditHint": "{credits} credits · added as soon as you pay.",
+      "noExpiry": "Credits never expire. $1 = 100 credits.",
+      "processing": "Processing",
+      "addAmount": "Add {amount}",
+      "addCredits": "Add credits",
+      "noCheckoutUrl": "No checkout URL received",
+      "checkoutFailed": "Failed to create checkout session",
+      "amountGroup": "Top-up amount",
+      "customAmount": "Custom amount in dollars",
+      "custom": "Custom"
+    },
+    "autoTopup": {
+      "bufferError": "Reload amount must be at least {buffer} above the threshold — enter {minimum} or more.",
+      "addPaymentFirst": "Add a payment method before turning on auto top-up.",
+      "saved": "Auto top-up saved",
+      "updateFailed": "Failed to update auto top-up",
+      "retry": "Retry",
+      "settingsLoadFailed": "Could not load your current settings. Showing defaults.",
+      "title": "Auto top-up",
+      "enabledDescription": "Your card is charged only when the balance drops below the limit.",
+      "disabledDescription": "Agents pause when the balance reaches zero.",
+      "add": "Add",
+      "amountLabel": "Top-up amount in dollars",
+      "whenBelow": "when the balance drops below",
+      "thresholdLabel": "Top-up threshold in dollars",
+      "save": "Save",
+      "paymentNeeded": "Add a payment method for auto top-up to run."
+    },
     "title": "Billing & Subscription",
     "subscription": "Subscription",
     "credits": "Credits",

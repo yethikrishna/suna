@@ -455,6 +455,51 @@
       "testNotificationTitle": "Пробно обавештење",
       "testNotificationBody": "Обавештења раде исправно!"
     },
+    "plan": {
+      "managedByAdmin": "Управља администратор налога",
+      "adminOnly": "Само администратори овог налога могу да промене план или купе кредите.",
+      "openAccount": "Отвори налог"
+    },
+    "credits": {
+      "loadFailed": "Овај налог није могао да се учита.",
+      "availableBalance": "Расположиво стање",
+      "creditCount": "{count, plural, one {{formatted} кредит} other {{formatted} кредита}}",
+      "owed": "дуговање",
+      "buckets": {
+        "monthly": {
+          "label": "Кредити плана",
+          "hint": "Истичу на крају периода"
+        },
+        "daily": {
+          "label": "Дневни кредити",
+          "hint": "Допуњују се по распореду"
+        },
+        "extra": {
+          "label": "Купљени",
+          "hint": "Никада не истичу"
+        }
+      },
+      "includedInPlan": "Укључено у ваш план",
+      "usedThisPeriod": "Искоришћено у овом периоду",
+      "planCreditsSpent": "Кредити плана су потрошени. Од сада се користе купљени кредити.",
+      "grantRemaining": "{count, plural, one {Преостао је {formatted} кредит из доделе за овај период.} other {Преостало је {formatted} кредита из доделе за овај период.}}",
+      "dailyAmountEvery": "+{credits} кредита на сваких {hours} ч",
+      "dailyAmount": "+{credits} кредита",
+      "countdown": {
+        "anyMoment": "Сваког тренутка",
+        "minutes": "за приближно {minutes} мин",
+        "hours": "за приближно {hours} ч",
+        "hoursMinutes": "за приближно {hours} ч {minutes} мин"
+      },
+      "dailyCredits": "Дневни кредити",
+      "addCredits": "Додај кредите",
+      "spentThisPeriod": "Потрошено у овом периоду",
+      "compute": "Рачунарски ресурси",
+      "total": "Укупно",
+      "history": "Историја",
+      "historyDescription": "Цена сваке сесије и сви додати или потрошени кредити.",
+      "openLedger": "Отвори књигу"
+    },
     "tokens": {
       "keyRevoked": "API кључ је опозван",
       "revokeFailed": "API кључ није могао да се опозове",
@@ -829,6 +874,72 @@
     "placeholder": "Упишите своју поруку..."
   },
   "billing": {
+    "plan": {
+      "teamSeats": "{count, plural, one {Тим · # место} other {Тим · # места}}",
+      "cancels": "Отказује се {date}",
+      "cancelsAtPeriodEnd": "Отказује се на крају периода",
+      "renews": "Обнавља се {date}",
+      "active": "Активна",
+      "noSubscription": "Нема претплате",
+      "status": "{status}",
+      "seats": "Места",
+      "perSeat": "По месту",
+      "monthlyTotal": "Месечно укупно",
+      "perMonth": "{amount}/мес",
+      "currentPlan": "Тренутни план",
+      "statuses": {
+        "none": "Нема претплате",
+        "past_due": "Касни плаћање",
+        "unpaid": "Неплаћена",
+        "canceled": "Отказана",
+        "incomplete": "Непотпуна",
+        "incomplete_expired": "Непотпуна и истекла",
+        "trialing": "Пробни период",
+        "paused": "Паузирана"
+      },
+      "loadFailed": "Подаци о претплати нису могли да се учитају",
+      "teamTitle": "Kortix Team",
+      "teamDescription": "Ставите све чланове тима на један заједнички план.",
+      "subscribe": "Претплати се на Team",
+      "manageBilling": "Управљај обрачуном",
+      "outOfCredits": "Потрошили сте све кредите",
+      "buyCreditsHint": "Купите кредите испод или укључите аутоматску допуну.",
+      "topupWalletHint": "Допуните стање да би агенти наставили да раде.",
+      "addCredits": "Додај кредите",
+      "billingPortal": "Портал за обрачун",
+      "portalDescription": "Управљајте претплатом, начинима плаћања и фактурама."
+    },
+    "topup": {
+      "minimum": "Минимална допуна је {amount}.",
+      "contactSales": "За износ већи од {amount}, обратите се продаји.",
+      "creditHint": "{credits} кредита · додају се одмах након плаћања.",
+      "noExpiry": "Кредити никада не истичу. 1 $ = 100 кредита.",
+      "processing": "Обрада",
+      "addAmount": "Додај {amount}",
+      "addCredits": "Додај кредите",
+      "noCheckoutUrl": "Није примљена URL адреса за плаћање",
+      "checkoutFailed": "Сесија плаћања није могла да се направи",
+      "amountGroup": "Износ допуне",
+      "customAmount": "Прилагођени износ у доларима",
+      "custom": "Прилагођено"
+    },
+    "autoTopup": {
+      "bufferError": "Износ допуне мора бити бар {buffer} већи од прага — унесите {minimum} или више.",
+      "addPaymentFirst": "Додајте начин плаћања пре укључивања аутоматске допуне.",
+      "saved": "Аутоматска допуна је сачувана",
+      "updateFailed": "Аутоматска допуна није могла да се ажурира",
+      "retry": "Покушај поново",
+      "settingsLoadFailed": "Тренутна подешавања нису могла да се учитају. Приказане су подразумеване вредности.",
+      "title": "Аутоматска допуна",
+      "enabledDescription": "Картица се задужује само када стање падне испод прага.",
+      "disabledDescription": "Агенти се паузирају када стање достигне нулу.",
+      "add": "Додај",
+      "amountLabel": "Износ допуне у доларима",
+      "whenBelow": "када стање падне испод",
+      "thresholdLabel": "Праг допуне у доларима",
+      "save": "Сачувај",
+      "paymentNeeded": "Додајте начин плаћања да би аутоматска допуна могла да се изврши."
+    },
     "title": "Обрачун и претплата",
     "subscription": "Претплата",
     "credits": "Кредити",

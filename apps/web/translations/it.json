@@ -464,6 +464,51 @@
       "testNotificationTitle": "Notifica di prova",
       "testNotificationBody": "Le notifiche funzionano correttamente!"
     },
+    "plan": {
+      "managedByAdmin": "Gestito da un amministratore dell'account",
+      "adminOnly": "Solo gli amministratori di questo account possono modificare il piano o acquistare crediti.",
+      "openAccount": "Apri account"
+    },
+    "credits": {
+      "loadFailed": "Impossibile caricare questo account.",
+      "availableBalance": "Saldo disponibile",
+      "creditCount": "{count, plural, one {{formatted} credito} other {{formatted} crediti}}",
+      "owed": "dovuti",
+      "buckets": {
+        "monthly": {
+          "label": "Crediti del piano",
+          "hint": "Scadono alla fine del periodo"
+        },
+        "daily": {
+          "label": "Crediti giornalieri",
+          "hint": "Si ricaricano periodicamente"
+        },
+        "extra": {
+          "label": "Acquistati",
+          "hint": "Non scadono mai"
+        }
+      },
+      "includedInPlan": "Inclusi nel tuo piano",
+      "usedThisPeriod": "Usati in questo periodo",
+      "planCreditsSpent": "I crediti del piano sono esauriti. Da ora vengono usati i crediti acquistati.",
+      "grantRemaining": "{count, plural, one {Rimane {formatted} credito della quota di questo periodo.} other {Rimangono {formatted} crediti della quota di questo periodo.}}",
+      "dailyAmountEvery": "+{credits} crediti ogni {hours} h",
+      "dailyAmount": "+{credits} crediti",
+      "countdown": {
+        "anyMoment": "Da un momento all'altro",
+        "minutes": "tra circa {minutes} min",
+        "hours": "tra circa {hours} h",
+        "hoursMinutes": "tra circa {hours} h {minutes} min"
+      },
+      "dailyCredits": "Crediti giornalieri",
+      "addCredits": "Aggiungi crediti",
+      "spentThisPeriod": "Spesi in questo periodo",
+      "compute": "Elaborazione",
+      "total": "Totale",
+      "history": "Cronologia",
+      "historyDescription": "Il costo di ogni sessione e tutti i crediti aggiunti o spesi.",
+      "openLedger": "Apri registro"
+    },
     "tokens": {
       "keyRevoked": "Chiave API revocata",
       "revokeFailed": "Impossibile revocare la chiave API",
@@ -835,6 +880,72 @@
     "placeholder": "Digita il tuo messaggio..."
   },
   "billing": {
+    "plan": {
+      "teamSeats": "{count, plural, one {Team · # posto} other {Team · # posti}}",
+      "cancels": "Termina il {date}",
+      "cancelsAtPeriodEnd": "Termina alla fine del periodo",
+      "renews": "Si rinnova il {date}",
+      "active": "Attivo",
+      "noSubscription": "Nessun abbonamento",
+      "status": "{status}",
+      "seats": "Posti",
+      "perSeat": "Per posto",
+      "monthlyTotal": "Totale mensile",
+      "perMonth": "{amount}/mese",
+      "currentPlan": "Piano attuale",
+      "statuses": {
+        "none": "Nessun abbonamento",
+        "past_due": "Scaduto",
+        "unpaid": "Non pagato",
+        "canceled": "Annullato",
+        "incomplete": "Incompleto",
+        "incomplete_expired": "Incompleto scaduto",
+        "trialing": "Prova",
+        "paused": "In pausa"
+      },
+      "loadFailed": "Impossibile caricare i dati dell'abbonamento",
+      "teamTitle": "Kortix Team",
+      "teamDescription": "Inserisci tutti i membri del team in un unico piano condiviso.",
+      "subscribe": "Abbonati a Team",
+      "manageBilling": "Gestisci fatturazione",
+      "outOfCredits": "Hai esaurito i crediti",
+      "buyCreditsHint": "Acquista crediti qui sotto o attiva la ricarica automatica.",
+      "topupWalletHint": "Ricarica il saldo per mantenere attivi gli agenti.",
+      "addCredits": "Aggiungi crediti",
+      "billingPortal": "Portale di fatturazione",
+      "portalDescription": "Gestisci abbonamento, metodi di pagamento e fatture."
+    },
+    "topup": {
+      "minimum": "La ricarica minima è {amount}.",
+      "contactSales": "Per importi superiori a {amount}, contatta le vendite.",
+      "creditHint": "{credits} crediti · aggiunti subito dopo il pagamento.",
+      "noExpiry": "I crediti non scadono mai. 1 $ = 100 crediti.",
+      "processing": "Elaborazione",
+      "addAmount": "Aggiungi {amount}",
+      "addCredits": "Aggiungi crediti",
+      "noCheckoutUrl": "Nessun URL di pagamento ricevuto",
+      "checkoutFailed": "Impossibile creare la sessione di pagamento",
+      "amountGroup": "Importo della ricarica",
+      "customAmount": "Importo personalizzato in dollari",
+      "custom": "Personalizzato"
+    },
+    "autoTopup": {
+      "bufferError": "L'importo della ricarica deve superare la soglia di almeno {buffer} — inserisci {minimum} o più.",
+      "addPaymentFirst": "Aggiungi un metodo di pagamento prima di attivare la ricarica automatica.",
+      "saved": "Ricarica automatica salvata",
+      "updateFailed": "Impossibile aggiornare la ricarica automatica",
+      "retry": "Riprova",
+      "settingsLoadFailed": "Impossibile caricare le impostazioni attuali. Vengono mostrati i valori predefiniti.",
+      "title": "Ricarica automatica",
+      "enabledDescription": "La carta viene addebitata solo quando il saldo scende sotto la soglia.",
+      "disabledDescription": "Gli agenti si sospendono quando il saldo raggiunge zero.",
+      "add": "Aggiungi",
+      "amountLabel": "Importo della ricarica in dollari",
+      "whenBelow": "quando il saldo scende sotto",
+      "thresholdLabel": "Soglia della ricarica in dollari",
+      "save": "Salva",
+      "paymentNeeded": "Aggiungi un metodo di pagamento per eseguire la ricarica automatica."
+    },
     "title": "Fatturazione & Abbonamento",
     "subscription": "Abbonamento",
     "credits": "Crediti",

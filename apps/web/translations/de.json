@@ -461,6 +461,51 @@
       "testNotificationTitle": "Testbenachrichtigung",
       "testNotificationBody": "Benachrichtigungen funktionieren korrekt!"
     },
+    "plan": {
+      "managedByAdmin": "Von einem Kontoadministrator verwaltet",
+      "adminOnly": "Nur Administratoren dieses Kontos können den Plan ändern oder Credits kaufen.",
+      "openAccount": "Konto öffnen"
+    },
+    "credits": {
+      "loadFailed": "Dieses Konto konnte nicht geladen werden.",
+      "availableBalance": "Verfügbares Guthaben",
+      "creditCount": "{count, plural, one {{formatted} Credit} other {{formatted} Credits}}",
+      "owed": "offen",
+      "buckets": {
+        "monthly": {
+          "label": "Plan-Credits",
+          "hint": "Verfallen am Periodenende"
+        },
+        "daily": {
+          "label": "Tägliche Credits",
+          "hint": "Werden regelmäßig aufgefüllt"
+        },
+        "extra": {
+          "label": "Gekauft",
+          "hint": "Verfallen nie"
+        }
+      },
+      "includedInPlan": "In deinem Plan enthalten",
+      "usedThisPeriod": "In diesem Zeitraum verbraucht",
+      "planCreditsSpent": "Die Plan-Credits sind verbraucht. Ab jetzt werden gekaufte Credits verwendet.",
+      "grantRemaining": "{count, plural, one {Noch {formatted} Credit aus dem Kontingent dieses Zeitraums.} other {Noch {formatted} Credits aus dem Kontingent dieses Zeitraums.}}",
+      "dailyAmountEvery": "+{credits} Credits alle {hours} Std.",
+      "dailyAmount": "+{credits} Credits",
+      "countdown": {
+        "anyMoment": "Jeden Moment",
+        "minutes": "in ca. {minutes} Min.",
+        "hours": "in ca. {hours} Std.",
+        "hoursMinutes": "in ca. {hours} Std. {minutes} Min."
+      },
+      "dailyCredits": "Tägliche Credits",
+      "addCredits": "Credits hinzufügen",
+      "spentThisPeriod": "In diesem Zeitraum ausgegeben",
+      "compute": "Rechenleistung",
+      "total": "Gesamt",
+      "history": "Verlauf",
+      "historyDescription": "Kosten jeder Sitzung sowie alle hinzugefügten oder verbrauchten Credits.",
+      "openLedger": "Kontobuch öffnen"
+    },
     "tokens": {
       "keyRevoked": "API-Schlüssel widerrufen",
       "revokeFailed": "API-Schlüssel konnte nicht widerrufen werden",
@@ -832,6 +877,72 @@
     "placeholder": "Gib deine Nachricht ein..."
   },
   "billing": {
+    "plan": {
+      "teamSeats": "{count, plural, one {Team · # Platz} other {Team · # Plätze}}",
+      "cancels": "Endet am {date}",
+      "cancelsAtPeriodEnd": "Endet am Periodenende",
+      "renews": "Verlängert sich am {date}",
+      "active": "Aktiv",
+      "noSubscription": "Kein Abonnement",
+      "status": "{status}",
+      "seats": "Plätze",
+      "perSeat": "Pro Platz",
+      "monthlyTotal": "Monatlich gesamt",
+      "perMonth": "{amount}/Monat",
+      "currentPlan": "Aktueller Plan",
+      "statuses": {
+        "none": "Kein Abonnement",
+        "past_due": "Überfällig",
+        "unpaid": "Unbezahlt",
+        "canceled": "Gekündigt",
+        "incomplete": "Unvollständig",
+        "incomplete_expired": "Unvollständig abgelaufen",
+        "trialing": "Testphase",
+        "paused": "Pausiert"
+      },
+      "loadFailed": "Abonnementdaten konnten nicht geladen werden",
+      "teamTitle": "Kortix Team",
+      "teamDescription": "Nimm alle Teammitglieder in einen gemeinsamen Plan auf.",
+      "subscribe": "Team abonnieren",
+      "manageBilling": "Abrechnung verwalten",
+      "outOfCredits": "Keine Credits mehr",
+      "buyCreditsHint": "Kaufe unten Credits oder aktiviere die automatische Aufladung.",
+      "topupWalletHint": "Lade dein Guthaben auf, damit deine Agenten weiterarbeiten.",
+      "addCredits": "Credits hinzufügen",
+      "billingPortal": "Abrechnungsportal",
+      "portalDescription": "Verwalte dein Abonnement, Zahlungsmethoden und Rechnungen."
+    },
+    "topup": {
+      "minimum": "Der Mindestbetrag beträgt {amount}.",
+      "contactSales": "Kontaktiere für mehr als {amount} den Vertrieb.",
+      "creditHint": "{credits} Credits · werden direkt nach der Zahlung hinzugefügt.",
+      "noExpiry": "Credits verfallen nie. 1 $ = 100 Credits.",
+      "processing": "Verarbeitung",
+      "addAmount": "{amount} hinzufügen",
+      "addCredits": "Credits hinzufügen",
+      "noCheckoutUrl": "Keine Checkout-URL erhalten",
+      "checkoutFailed": "Checkout-Sitzung konnte nicht erstellt werden",
+      "amountGroup": "Aufladebetrag",
+      "customAmount": "Benutzerdefinierter Betrag in Dollar",
+      "custom": "Benutzerdefiniert"
+    },
+    "autoTopup": {
+      "bufferError": "Der Aufladebetrag muss mindestens {buffer} über dem Schwellenwert liegen — gib {minimum} oder mehr ein.",
+      "addPaymentFirst": "Füge eine Zahlungsmethode hinzu, bevor du die automatische Aufladung aktivierst.",
+      "saved": "Automatische Aufladung gespeichert",
+      "updateFailed": "Automatische Aufladung konnte nicht aktualisiert werden",
+      "retry": "Erneut versuchen",
+      "settingsLoadFailed": "Die aktuellen Einstellungen konnten nicht geladen werden. Standardwerte werden angezeigt.",
+      "title": "Automatische Aufladung",
+      "enabledDescription": "Deine Karte wird nur belastet, wenn das Guthaben unter den Grenzwert fällt.",
+      "disabledDescription": "Agenten pausieren, wenn das Guthaben null erreicht.",
+      "add": "Füge",
+      "amountLabel": "Aufladebetrag in Dollar",
+      "whenBelow": "hinzu, wenn das Guthaben unter diesen Betrag fällt:",
+      "thresholdLabel": "Schwellenwert für die Aufladung in Dollar",
+      "save": "Speichern",
+      "paymentNeeded": "Füge eine Zahlungsmethode hinzu, damit die automatische Aufladung ausgeführt werden kann."
+    },
     "title": "Abrechnung & Abonnement",
     "subscription": "Abonnement",
     "credits": "Guthaben",

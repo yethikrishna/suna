@@ -440,6 +440,51 @@
       "testNotificationTitle": "测试通知",
       "testNotificationBody": "通知功能运行正常！"
     },
+    "plan": {
+      "managedByAdmin": "由帐户管理员管理",
+      "adminOnly": "只有此帐户的管理员才能更改套餐或购买积分。",
+      "openAccount": "打开帐户"
+    },
+    "credits": {
+      "loadFailed": "无法加载此帐户。",
+      "availableBalance": "可用余额",
+      "creditCount": "{count, plural, one {{formatted} 个积分} other {{formatted} 个积分}}",
+      "owed": "欠款",
+      "buckets": {
+        "monthly": {
+          "label": "套餐积分",
+          "hint": "在周期结束时过期"
+        },
+        "daily": {
+          "label": "每日积分",
+          "hint": "定时补充"
+        },
+        "extra": {
+          "label": "已购买",
+          "hint": "永不过期"
+        }
+      },
+      "includedInPlan": "套餐包含",
+      "usedThisPeriod": "本周期已用",
+      "planCreditsSpent": "套餐积分已用完。接下来将使用已购买的积分。",
+      "grantRemaining": "{count, plural, one {本周期额度还剩 {formatted} 个积分。} other {本周期额度还剩 {formatted} 个积分。}}",
+      "dailyAmountEvery": "每 {hours} 小时 +{credits} 个积分",
+      "dailyAmount": "+{credits} 个积分",
+      "countdown": {
+        "anyMoment": "即将补充",
+        "minutes": "约 {minutes} 分钟后",
+        "hours": "约 {hours} 小时后",
+        "hoursMinutes": "约 {hours} 小时 {minutes} 分钟后"
+      },
+      "dailyCredits": "每日积分",
+      "addCredits": "添加积分",
+      "spentThisPeriod": "本周期支出",
+      "compute": "计算",
+      "total": "总计",
+      "history": "历史记录",
+      "historyDescription": "每个会话的费用，以及添加或使用的每一笔积分。",
+      "openLedger": "打开账本"
+    },
     "tokens": {
       "keyRevoked": "API 密钥已撤销",
       "revokeFailed": "无法撤销 API 密钥",
@@ -807,6 +852,72 @@
     "placeholder": "输入你的消息..."
   },
   "billing": {
+    "plan": {
+      "teamSeats": "{count, plural, one {团队 · # 个席位} other {团队 · # 个席位}}",
+      "cancels": "将于 {date} 取消",
+      "cancelsAtPeriodEnd": "将在周期结束时取消",
+      "renews": "将于 {date} 续订",
+      "active": "有效",
+      "noSubscription": "无订阅",
+      "status": "{status}",
+      "seats": "席位",
+      "perSeat": "每席位",
+      "monthlyTotal": "每月总计",
+      "perMonth": "{amount}/月",
+      "currentPlan": "当前套餐",
+      "statuses": {
+        "none": "无订阅",
+        "past_due": "逾期",
+        "unpaid": "未支付",
+        "canceled": "已取消",
+        "incomplete": "未完成",
+        "incomplete_expired": "未完成且已过期",
+        "trialing": "试用",
+        "paused": "已暂停"
+      },
+      "loadFailed": "无法加载订阅数据",
+      "teamTitle": "Kortix Team",
+      "teamDescription": "让所有团队成员使用同一个共享套餐。",
+      "subscribe": "订阅 Team",
+      "manageBilling": "管理账单",
+      "outOfCredits": "积分已用完",
+      "buyCreditsHint": "请在下方购买积分或开启自动充值。",
+      "topupWalletHint": "为钱包充值，让智能体继续运行。",
+      "addCredits": "添加积分",
+      "billingPortal": "账单门户",
+      "portalDescription": "管理订阅、付款方式和发票。"
+    },
+    "topup": {
+      "minimum": "最低充值金额为 {amount}。",
+      "contactSales": "如需充值超过 {amount}，请联系销售团队。",
+      "creditHint": "{credits} 个积分 · 付款后立即到账。",
+      "noExpiry": "积分永不过期。1 美元 = 100 个积分。",
+      "processing": "处理中",
+      "addAmount": "添加 {amount}",
+      "addCredits": "添加积分",
+      "noCheckoutUrl": "未收到结账网址",
+      "checkoutFailed": "无法创建结账会话",
+      "amountGroup": "充值金额",
+      "customAmount": "自定义美元金额",
+      "custom": "自定义"
+    },
+    "autoTopup": {
+      "bufferError": "充值金额必须至少比阈值高 {buffer} — 请输入 {minimum} 或更多。",
+      "addPaymentFirst": "请先添加付款方式，再开启自动充值。",
+      "saved": "自动充值设置已保存",
+      "updateFailed": "无法更新自动充值",
+      "retry": "重试",
+      "settingsLoadFailed": "无法加载当前设置。正在显示默认值。",
+      "title": "自动充值",
+      "enabledDescription": "仅当余额低于阈值时，才会从你的银行卡扣款。",
+      "disabledDescription": "余额为零时，智能体将暂停。",
+      "add": "充值",
+      "amountLabel": "充值金额（美元）",
+      "whenBelow": "当余额低于",
+      "thresholdLabel": "充值阈值（美元）",
+      "save": "保存",
+      "paymentNeeded": "请添加付款方式，以便执行自动充值。"
+    },
     "title": "计费与订阅",
     "subscription": "订阅",
     "credits": "积分",

@@ -183,28 +183,57 @@ export interface PlanStatus {
   isWindingDown: boolean;
 }
 
-export function describePlanStatus(state: AccountState): PlanStatus {
+export interface PlanStatusCopy {
+  locale: string;
+  teamSeats: (count: number) => string;
+  cancels: (date: string) => string;
+  cancelsAtPeriodEnd: string;
+  renews: (date: string) => string;
+  active: string;
+  noSubscription: string;
+  status: (status: string) => string;
+}
+
+const DEFAULT_PLAN_STATUS_COPY: PlanStatusCopy = {
+  locale: 'en-US',
+  teamSeats: (count) => `Team · ${count} seat${count === 1 ? '' : 's'}`,
+  cancels: (date) => `Cancels ${date}`,
+  cancelsAtPeriodEnd: 'Cancels at period end',
+  renews: (date) => `Renews ${date}`,
+  active: 'Active',
+  noSubscription: 'No subscription',
+  status: (status) => status.replace(/_/g, ' '),
+};
+
+export function describePlanStatus(
+  state: AccountState,
+  copy: PlanStatusCopy = DEFAULT_PLAN_STATUS_COPY,
+): PlanStatus {
   const seatCount = state.seats?.count ?? 1;
   const plan = resolvedPlan(state);
   const isPerSeat = state.billing_model === 'per_seat';
   const sub = state.subscription;
-  const periodEnd = sub?.current_period_end ? formatDate(sub.current_period_end) : null;
+  const periodEnd = sub?.current_period_end
+    ? formatDate(sub.current_period_end, copy.locale)
+    : null;
   const isActive = sub?.status === 'active';
 
   return {
-    name: isPerSeat ? `Team · ${seatCount} seat${seatCount === 1 ? '' : 's'}` : plan.label,
+    name: isPerSeat ? copy.teamSeats(seatCount) : plan.label,
     sublabel: isPerSeat ? null : plan.sublabel,
     detail: sub?.cancel_at_period_end
       ? periodEnd
-        ? `Cancels ${periodEnd}`
-        : 'Cancels at period end'
+        ? copy.cancels(periodEnd)
+        : copy.cancelsAtPeriodEnd
       : isActive && periodEnd
-        ? `Renews ${periodEnd}`
+        ? copy.renews(periodEnd)
         : isActive
-          ? 'Active'
+          ? copy.active
           : // Raw Stripe statuses are snake_case ('past_due', 'incomplete_expired').
             // Shown to a person, so they read as words.
-            (sub?.status?.replace(/_/g, ' ') ?? 'No subscription'),
+            sub?.status
+            ? copy.status(sub.status)
+            : copy.noSubscription,
     isActive,
     isWindingDown: Boolean(sub?.cancel_at_period_end),
   };
@@ -316,9 +345,9 @@ function buildLimitRows(
  * (`packages/shared/src/utils/credit-formatter.ts`) — two separators
  * disagreeing inside one card is worse than either choice alone.
  */
-export function formatUsd(amount: number | null | undefined): string {
+export function formatUsd(amount: number | null | undefined, locale = 'en-US'): string {
   const n = typeof amount === 'number' && Number.isFinite(amount) ? amount : 0;
-  return n.toLocaleString('en-US', {
+  return n.toLocaleString(locale, {
     style: 'currency',
     currency: 'USD',
     minimumFractionDigits: 2,
@@ -327,10 +356,10 @@ export function formatUsd(amount: number | null | undefined): string {
 }
 
 /** `Sep 19` — no year, because a billing period always lands inside one. */
-function formatDate(unixSeconds: number): string | null {
+function formatDate(unixSeconds: number, locale?: string): string | null {
   const ms = unixSeconds * 1000;
   if (!Number.isFinite(ms)) return null;
   const date = new Date(ms);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return date.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
 }

@@ -27,6 +27,12 @@ const nativeLocaleNames: Record<Locale, string> = {
 
 interface LocaleMessages {
   common: { close: string };
+  billing: {
+    plan: {
+      currentPlan: string;
+      active: string;
+    };
+  };
   settings: {
     rail: {
       settings: string;
@@ -104,6 +110,15 @@ interface LocaleMessages {
       expiryNever: string;
       cancel: string;
       createKey: string;
+    };
+    credits: {
+      availableBalance: string;
+      buckets: Record<string, { label: string; hint: string }>;
+      includedInPlan: string;
+      usedThisPeriod: string;
+      history: string;
+      historyDescription: string;
+      openLedger: string;
     };
   };
 }
@@ -482,6 +497,46 @@ test.describe("26 — Settings localization", () => {
               exact: true,
             })
             .click();
+
+          await page
+            .getByRole("tab", {
+              name: copy.settings.rail.items.credits.label,
+              exact: true,
+            })
+            .click();
+          for (const creditText of [
+            copy.settings.credits.availableBalance,
+            ...Object.values(copy.settings.credits.buckets).flatMap(
+              (bucket) => [bucket.label, bucket.hint],
+            ),
+            copy.settings.credits.includedInPlan,
+            copy.settings.credits.usedThisPeriod,
+            copy.settings.credits.history,
+            copy.settings.credits.historyDescription,
+          ]) {
+            await expect(
+              page.getByText(creditText, { exact: true }).first(),
+            ).toBeVisible();
+          }
+          await expect(
+            page.getByRole("link", {
+              name: copy.settings.credits.openLedger,
+              exact: true,
+            }),
+          ).toBeVisible();
+
+          await page
+            .getByRole("tab", {
+              name: copy.settings.rail.items.plan.label,
+              exact: true,
+            })
+            .click();
+          await expect(
+            page.getByText(copy.billing.plan.currentPlan, { exact: true }),
+          ).toBeVisible();
+          await expect(
+            page.getByText(copy.billing.plan.active, { exact: true }),
+          ).toBeVisible();
 
           await page
             .getByRole("tab", {

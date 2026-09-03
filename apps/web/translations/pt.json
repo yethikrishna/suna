@@ -1415,6 +1415,39 @@
     "feedbackSubmittedSuccess": "Feedback enviado com sucesso",
     "feedbackSubmitFailed": "Falha ao enviar feedback"
   },
+  "sessionPage": {
+    "backToProject": "Voltar ao projeto",
+    "delete": "Excluir sessão",
+    "failedLabel": "Sessão com falha",
+    "prompt": {
+      "queueFailed": "Não foi possível adicionar o prompt salvo à fila",
+      "unavailable": "Nenhum prompt salvo está disponível.",
+      "copied": "Prompt copiado",
+      "copyFailed": "Não foi possível copiar o prompt."
+    },
+    "missing": {
+      "title": "Não foi possível iniciar a sessão",
+      "message": "Esta sessão não está mais disponível ou você não tem acesso a ela."
+    },
+    "legacy": {
+      "title": "Sessão legada",
+      "message": "Esta conversa foi importada do Suna. Restaure a sessão para carregar o histórico do chat — os arquivos dela já estão no projeto, em legacy/.",
+      "restore": "Restaurar sessão",
+      "restoring": "Restaurando…"
+    },
+    "stopped": {
+      "title": "Esta sessão está parada",
+      "message": "O computador dela foi liberado. Reinicie a sessão para reativá-la."
+    },
+    "lost": {
+      "title": "O computador desta sessão foi perdido",
+      "message": "O sandbox na nuvem desapareceu do lado do provedor, então esta sessão não pode ser reiniciada nem recuperada. Isso é uma falha nossa, não algo que você fez — o problema foi relatado automaticamente. Tudo o que foi confirmado e enviado a partir desta sessão está seguro no repositório do seu projeto."
+    },
+    "restart": {
+      "label": "Reiniciar sessão",
+      "pending": "Reiniciando…"
+    }
+  },
   "agents": {
     "title": "Agentes",
     "create": "Criar Worker",

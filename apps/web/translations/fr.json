@@ -1418,6 +1418,39 @@
     "feedbackSubmittedSuccess": "Commentaire envoyé avec succès",
     "feedbackSubmitFailed": "Échec de l'envoi du commentaire"
   },
+  "sessionPage": {
+    "backToProject": "Retour au projet",
+    "delete": "Supprimer la session",
+    "failedLabel": "Session échouée",
+    "prompt": {
+      "queueFailed": "Impossible de mettre le prompt enregistré en file d’attente",
+      "unavailable": "Aucun prompt enregistré n’est disponible.",
+      "copied": "Prompt copié",
+      "copyFailed": "Impossible de copier le prompt."
+    },
+    "missing": {
+      "title": "Impossible de démarrer la session",
+      "message": "Cette session n’est plus disponible ou vous n’y avez pas accès."
+    },
+    "legacy": {
+      "title": "Session héritée",
+      "message": "Cette conversation a été importée depuis Suna. Restaurez la session pour charger son historique de discussion — ses fichiers se trouvent déjà dans le projet, sous legacy/.",
+      "restore": "Restaurer la session",
+      "restoring": "Restauration…"
+    },
+    "stopped": {
+      "title": "Cette session est arrêtée",
+      "message": "Son ordinateur a été libéré. Redémarrez la session pour le récupérer."
+    },
+    "lost": {
+      "title": "L’ordinateur de cette session a été perdu",
+      "message": "Son environnement cloud a disparu du côté du fournisseur. Cette session ne peut donc pas être redémarrée ou récupérée. Il s’agit d’un problème de notre côté, pas d’une erreur de votre part — il a été signalé automatiquement. Tout ce qui a été validé et poussé depuis cette session est conservé dans le dépôt de votre projet."
+    },
+    "restart": {
+      "label": "Redémarrer la session",
+      "pending": "Redémarrage…"
+    }
+  },
   "agents": {
     "title": "Agents",
     "create": "Créer un Worker",

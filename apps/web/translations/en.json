@@ -1418,6 +1418,39 @@
     "feedbackSubmittedSuccess": "Feedback submitted successfully",
     "feedbackSubmitFailed": "Failed to submit feedback"
   },
+  "sessionPage": {
+    "backToProject": "Back to project",
+    "delete": "Delete session",
+    "failedLabel": "Failed session",
+    "prompt": {
+      "queueFailed": "Could not queue the saved prompt",
+      "unavailable": "No saved prompt is available.",
+      "copied": "Prompt copied",
+      "copyFailed": "Could not copy the prompt."
+    },
+    "missing": {
+      "title": "Couldn't start session",
+      "message": "This session is no longer available, or you do not have access to it."
+    },
+    "legacy": {
+      "title": "Legacy session",
+      "message": "This conversation was imported from Suna. Restore the session to load its chat history — its files are already in the project under legacy/.",
+      "restore": "Restore session",
+      "restoring": "Restoring…"
+    },
+    "stopped": {
+      "title": "This session is stopped",
+      "message": "Its computer was released. Restart the session to bring it back."
+    },
+    "lost": {
+      "title": "This session's computer was lost",
+      "message": "Its cloud sandbox disappeared on the provider side, so this session cannot be restarted or recovered. This is a fault on our end, not something you did — it has been reported automatically. Anything committed and pushed from this session is safe in your project's repository."
+    },
+    "restart": {
+      "label": "Restart session",
+      "pending": "Restarting…"
+    }
+  },
   "agents": {
     "title": "Workers",
     "create": "Create Worker",

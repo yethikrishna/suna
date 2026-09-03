@@ -1415,6 +1415,39 @@
     "feedbackSubmittedSuccess": "Feedback erfolgreich übermittelt",
     "feedbackSubmitFailed": "Feedback konnte nicht übermittelt werden"
   },
+  "sessionPage": {
+    "backToProject": "Zurück zum Projekt",
+    "delete": "Sitzung löschen",
+    "failedLabel": "Fehlgeschlagene Sitzung",
+    "prompt": {
+      "queueFailed": "Die gespeicherte Eingabe konnte nicht in die Warteschlange gestellt werden",
+      "unavailable": "Keine gespeicherte Eingabe verfügbar.",
+      "copied": "Eingabe kopiert",
+      "copyFailed": "Die Eingabe konnte nicht kopiert werden."
+    },
+    "missing": {
+      "title": "Sitzung konnte nicht gestartet werden",
+      "message": "Diese Sitzung ist nicht mehr verfügbar oder du hast keinen Zugriff darauf."
+    },
+    "legacy": {
+      "title": "Legacy-Sitzung",
+      "message": "Diese Unterhaltung wurde aus Suna importiert. Stelle die Sitzung wieder her, um den Chatverlauf zu laden — die Dateien befinden sich bereits unter legacy/ im Projekt.",
+      "restore": "Sitzung wiederherstellen",
+      "restoring": "Wird wiederhergestellt…"
+    },
+    "stopped": {
+      "title": "Diese Sitzung wurde beendet",
+      "message": "Der zugehörige Computer wurde freigegeben. Starte die Sitzung neu, um sie wiederherzustellen."
+    },
+    "lost": {
+      "title": "Der Computer dieser Sitzung ist verloren gegangen",
+      "message": "Die Cloud-Sandbox ist beim Anbieter verschwunden. Daher kann diese Sitzung nicht neu gestartet oder wiederhergestellt werden. Das ist ein Fehler unsererseits, nicht deinerseits — er wurde automatisch gemeldet. Alles, was aus dieser Sitzung committed und gepusht wurde, ist im Repository deines Projekts sicher."
+    },
+    "restart": {
+      "label": "Sitzung neu starten",
+      "pending": "Wird neu gestartet…"
+    }
+  },
   "agents": {
     "title": "Worker",
     "create": "Worker erstellen",

@@ -1415,6 +1415,39 @@
     "feedbackSubmittedSuccess": "Comentario enviado con éxito",
     "feedbackSubmitFailed": "Error al enviar el comentario"
   },
+  "sessionPage": {
+    "backToProject": "Volver al proyecto",
+    "delete": "Eliminar sesión",
+    "failedLabel": "Sesión fallida",
+    "prompt": {
+      "queueFailed": "No se pudo poner en cola el mensaje guardado",
+      "unavailable": "No hay ningún mensaje guardado disponible.",
+      "copied": "Mensaje copiado",
+      "copyFailed": "No se pudo copiar el mensaje."
+    },
+    "missing": {
+      "title": "No se pudo iniciar la sesión",
+      "message": "Esta sesión ya no está disponible o no tienes acceso a ella."
+    },
+    "legacy": {
+      "title": "Sesión heredada",
+      "message": "Esta conversación se importó de Suna. Restaura la sesión para cargar su historial de chat; sus archivos ya están en el proyecto, en legacy/.",
+      "restore": "Restaurar sesión",
+      "restoring": "Restaurando…"
+    },
+    "stopped": {
+      "title": "Esta sesión está detenida",
+      "message": "Se liberó su ordenador. Reinicia la sesión para recuperarla."
+    },
+    "lost": {
+      "title": "Se perdió el ordenador de esta sesión",
+      "message": "Su sandbox en la nube desapareció del lado del proveedor, por lo que esta sesión no se puede reiniciar ni recuperar. Es un error nuestro, no algo que hayas hecho tú; se ha notificado automáticamente. Todo lo que se confirmó y envió desde esta sesión está a salvo en el repositorio de tu proyecto."
+    },
+    "restart": {
+      "label": "Reiniciar sesión",
+      "pending": "Reiniciando…"
+    }
+  },
   "agents": {
     "title": "Agentes",
     "create": "Crear Worker",

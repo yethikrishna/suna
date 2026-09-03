@@ -57,7 +57,10 @@ import {
   isDormantSessionWithoutRuntime,
   isUnmaterializedSessionFailure,
 } from '@/features/session/session-terminal-state';
-import { shouldPaintFatalCard, shouldPaintTerminalCard } from '@/features/session/terminal-card-gate';
+import {
+  shouldPaintFatalCard,
+  shouldPaintTerminalCard,
+} from '@/features/session/terminal-card-gate';
 import { SidebarToggle } from '@/features/workspace/project-layout/sidebar-toggle';
 import { SessionDeleteModal } from '@/features/workspace/project-sidebar/modal/session-delete-modal';
 import { useAccountState } from '@/hooks/billing';
@@ -153,6 +156,7 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
   // poll timer inside chat produces overlapping audit schedules.
   useSessionAudit(projectId, sessionId, { poll: true, silent: true, limit: 100 });
   const tI18nHardcoded = useTranslations('hardcodedUi');
+  const tSessionPage = useTranslations('sessionPage');
   const { user, isLoading: authLoading } = useAuth();
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -283,21 +287,21 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
           }).catch(() => undefined);
         })
         .catch((error) => {
-          errorToast(error instanceof Error ? error.message : 'Could not queue the saved prompt');
+          errorToast(error instanceof Error ? error.message : tSessionPage('prompt.queueFailed'));
         });
     }
     handleRestart();
   };
   const copyPendingPrompt = async () => {
     if (!pendingPrompt) {
-      errorToast('No saved prompt is available.');
+      errorToast(tSessionPage('prompt.unavailable'));
       return;
     }
     try {
       await navigator.clipboard.writeText(pendingPrompt.text);
-      successToast('Prompt copied');
+      successToast(tSessionPage('prompt.copied'));
     } catch {
-      errorToast('Could not copy the prompt.');
+      errorToast(tSessionPage('prompt.copyFailed'));
     }
   };
   // ── The wake escalation ladder ────────────────────────────────────────────
@@ -766,12 +770,12 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
     if (sessionMissing) {
       return (
         <InlineSessionError
-          title="Couldn't start session"
-          message="This session is no longer available, or you do not have access to it."
+          title={tSessionPage('missing.title')}
+          message={tSessionPage('missing.message')}
           action={
             <Button asChild variant="outline" size="sm">
               <Link href={`/projects/${projectId}`} prefetch>
-                Back to project
+                {tSessionPage('backToProject')}
               </Link>
             </Button>
           }
@@ -836,15 +840,15 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
       if (currentProjectSession && isLegacyMigratedSession(currentProjectSession)) {
         return (
           <InlineSessionError
-            title="Legacy session"
-            message="This conversation was imported from Suna. Restore the session to load its chat history — its files are already in the project under legacy/."
+            title={tSessionPage('legacy.title')}
+            message={tSessionPage('legacy.message')}
             detail={restart.errorMessage ?? undefined}
             action={
               <RestartSessionButton
                 restart={restart}
                 onRestart={handleRestart}
-                label="Restore session"
-                pendingLabel="Restoring…"
+                label={tSessionPage('legacy.restore')}
+                pendingLabel={tSessionPage('legacy.restoring')}
               />
             }
           />
@@ -852,8 +856,8 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
       }
       return (
         <InlineSessionError
-          title="This session is stopped"
-          message="Its computer was released. Restart the session to bring it back."
+          title={tSessionPage('stopped.title')}
+          message={tSessionPage('stopped.message')}
           detail={restart.errorMessage ?? undefined}
           action={<RestartSessionButton restart={restart} onRestart={handleRestart} />}
         />
@@ -874,12 +878,12 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
     if (runtimeIdentityUnavailable) {
       return (
         <InlineSessionError
-          title="This session's computer was lost"
-          message="Its cloud sandbox disappeared on the provider side, so this session cannot be restarted or recovered. This is a fault on our end, not something you did — it has been reported automatically. Anything committed and pushed from this session is safe in your project's repository."
+          title={tSessionPage('lost.title')}
+          message={tSessionPage('lost.message')}
           detail={sandbox?.external_id ? `${sandbox.provider} · ${sandbox.external_id}` : undefined}
           action={
             <Button variant="outline" size="sm" onClick={() => setDeleteOpen(true)}>
-              Delete session
+              {tSessionPage('delete')}
             </Button>
           }
         />
@@ -1035,7 +1039,9 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
         projectId={projectId}
         sessionId={sessionId}
         sessionLabel={
-          currentProjectSession ? sessionDisplayLabel(currentProjectSession) : 'Failed session'
+          currentProjectSession
+            ? sessionDisplayLabel(currentProjectSession)
+            : tSessionPage('failedLabel')
         }
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
@@ -1063,14 +1069,15 @@ function ProjectSessionRuntimeConnection({ children }: { children: ReactNode }) 
 function RestartSessionButton({
   restart,
   onRestart,
-  label = 'Restart session',
-  pendingLabel = 'Restarting…',
+  label,
+  pendingLabel,
 }: {
   restart: { isPending: boolean };
   onRestart: () => void;
   label?: string;
   pendingLabel?: string;
 }) {
+  const t = useTranslations('sessionPage');
   return (
     <Button
       type="button"
@@ -1085,7 +1092,7 @@ function RestartSessionButton({
       ) : (
         <RotateCcw className="size-3.5 shrink-0" />
       )}
-      {restart.isPending ? pendingLabel : label}
+      {restart.isPending ? (pendingLabel ?? t('restart.pending')) : (label ?? t('restart.label'))}
     </Button>
   );
 }

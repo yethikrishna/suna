@@ -1415,6 +1415,39 @@
     "feedbackSubmittedSuccess": "Feedback inviato con successo",
     "feedbackSubmitFailed": "Invio del feedback fallito"
   },
+  "sessionPage": {
+    "backToProject": "Torna al progetto",
+    "delete": "Elimina sessione",
+    "failedLabel": "Sessione non riuscita",
+    "prompt": {
+      "queueFailed": "Impossibile accodare il prompt salvato",
+      "unavailable": "Nessun prompt salvato disponibile.",
+      "copied": "Prompt copiato",
+      "copyFailed": "Impossibile copiare il prompt."
+    },
+    "missing": {
+      "title": "Impossibile avviare la sessione",
+      "message": "Questa sessione non è più disponibile oppure non hai accesso ad essa."
+    },
+    "legacy": {
+      "title": "Sessione legacy",
+      "message": "Questa conversazione è stata importata da Suna. Ripristina la sessione per caricare la cronologia della chat: i file sono già nel progetto, in legacy/.",
+      "restore": "Ripristina sessione",
+      "restoring": "Ripristino…"
+    },
+    "stopped": {
+      "title": "Questa sessione è arrestata",
+      "message": "Il suo computer è stato rilasciato. Riavvia la sessione per ripristinarla."
+    },
+    "lost": {
+      "title": "Il computer di questa sessione è andato perso",
+      "message": "Il suo sandbox cloud è scomparso dal lato del provider, quindi questa sessione non può essere riavviata né recuperata. È un problema nostro, non dipende da te: è stato segnalato automaticamente. Tutto ciò che è stato sottoposto a commit e inviato da questa sessione è al sicuro nel repository del tuo progetto."
+    },
+    "restart": {
+      "label": "Riavvia sessione",
+      "pending": "Riavvio…"
+    }
+  },
   "agents": {
     "title": "Agenti",
     "create": "Crea worker",

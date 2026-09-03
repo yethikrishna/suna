@@ -1411,6 +1411,39 @@
     "feedbackSubmittedSuccess": "反馈提交成功",
     "feedbackSubmitFailed": "反馈提交失败"
   },
+  "sessionPage": {
+    "backToProject": "返回项目",
+    "delete": "删除会话",
+    "failedLabel": "会话失败",
+    "prompt": {
+      "queueFailed": "无法将已保存的提示词加入队列",
+      "unavailable": "没有可用的已保存提示词。",
+      "copied": "提示词已复制",
+      "copyFailed": "无法复制提示词。"
+    },
+    "missing": {
+      "title": "无法启动会话",
+      "message": "此会话已不可用，或你无权访问。"
+    },
+    "legacy": {
+      "title": "旧版会话",
+      "message": "此对话从 Suna 导入。恢复会话以加载其聊天记录 — 文件已位于项目的 legacy/ 目录下。",
+      "restore": "恢复会话",
+      "restoring": "正在恢复…"
+    },
+    "stopped": {
+      "title": "此会话已停止",
+      "message": "其计算机已被释放。重启会话即可恢复。"
+    },
+    "lost": {
+      "title": "此会话的计算机已丢失",
+      "message": "其云端沙盒已在服务提供商一侧消失，因此无法重启或恢复此会话。这是我们的问题，并非你的操作所致 — 系统已自动上报。已从此会话提交并推送的内容仍安全地保存在项目仓库中。"
+    },
+    "restart": {
+      "label": "重启会话",
+      "pending": "正在重启…"
+    }
+  },
   "agents": {
     "title": "工作代理",
     "create": "创建 Worker",

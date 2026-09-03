@@ -1914,6 +1914,53 @@
         "existingAccountWrongPassword": "Você já tem uma conta — digite sua senha atual para entrar.",
         "confirmAccount": "Verifique seu e-mail para confirmar sua conta",
         "invalidCode": "Código inválido ou expirado"
+      },
+      "legal": {
+        "signup": "Ao criar uma conta, você concorda com os <termsOfService>Termos de Serviço</termsOfService> e a <privacyPolicy>Política de Privacidade</privacyPolicy>",
+        "default": "<termsOfService>Termos de Serviço</termsOfService> e <privacyPolicy>Política de Privacidade</privacyPolicy>"
+      }
+    },
+    "passwordReset": {
+      "loading": "Carregando",
+      "resetting": "Redefinindo senha",
+      "request": {
+        "title": "Redefina sua senha",
+        "description": "Digite seu e-mail e enviaremos um link para redefinir sua senha.",
+        "email": "E-mail",
+        "emailPlaceholder": "Seu endereço de e-mail",
+        "sending": "Enviando link…",
+        "submit": "Enviar link de redefinição"
+      },
+      "sent": {
+        "title": "Confira seu e-mail",
+        "description": "Enviamos um link para redefinir sua senha.",
+        "address": "Link de redefinição enviado para <address>{email}</address>"
+      },
+      "expired": {
+        "title": "Link expirado",
+        "description": "Este link de redefinição de senha é inválido ou expirou.",
+        "requestNew": "Solicitar um novo link"
+      },
+      "success": {
+        "title": "Senha atualizada",
+        "description": "Agora você pode entrar com sua nova senha.",
+        "changed": "Sua senha foi alterada.",
+        "signIn": "Ir para o login"
+      },
+      "form": {
+        "title": "Defina uma nova senha",
+        "description": "Escolha uma nova senha para sua conta.",
+        "newPassword": "Nova senha",
+        "newPasswordPlaceholder": "Sua nova senha",
+        "confirmPassword": "Confirme a senha",
+        "confirmPasswordPlaceholder": "Confirme sua nova senha",
+        "updating": "Atualizando senha…",
+        "submit": "Redefinir senha"
+      },
+      "errors": {
+        "sendFailed": "Não foi possível enviar o link de redefinição",
+        "updateFailed": "Não foi possível atualizar a senha",
+        "unexpected": "Ocorreu um erro inesperado"
       }
     }
   },

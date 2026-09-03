@@ -1917,6 +1917,53 @@
         "existingAccountWrongPassword": "Већ имате налог — унесите постојећу лозинку да бисте се пријавили.",
         "confirmAccount": "Проверите имејл да бисте потврдили налог",
         "invalidCode": "Неважећи или истекао код"
+      },
+      "legal": {
+        "signup": "Креирањем налога прихватате <termsOfService>Услове коришћења</termsOfService> и <privacyPolicy>Политику приватности</privacyPolicy>",
+        "default": "<termsOfService>Услови коришћења</termsOfService> и <privacyPolicy>Политика приватности</privacyPolicy>"
+      }
+    },
+    "passwordReset": {
+      "loading": "Учитавање",
+      "resetting": "Ресетовање лозинке",
+      "request": {
+        "title": "Ресетујте лозинку",
+        "description": "Унесите своју адресу е-поште и послаћемо вам линк за ресетовање лозинке.",
+        "email": "Е-пошта",
+        "emailPlaceholder": "Ваша адреса е-поште",
+        "sending": "Слање линка…",
+        "submit": "Пошаљи линк за ресетовање"
+      },
+      "sent": {
+        "title": "Проверите е-пошту",
+        "description": "Послали смо вам линк за ресетовање лозинке.",
+        "address": "Линк за ресетовање послат је на <address>{email}</address>"
+      },
+      "expired": {
+        "title": "Линк је истекао",
+        "description": "Овај линк за ресетовање лозинке није важећи или је истекао.",
+        "requestNew": "Затражи нови линк"
+      },
+      "success": {
+        "title": "Лозинка је ажурирана",
+        "description": "Сада можете да се пријавите са новом лозинком.",
+        "changed": "Ваша лозинка је промењена.",
+        "signIn": "Иди на пријаву"
+      },
+      "form": {
+        "title": "Поставите нову лозинку",
+        "description": "Изаберите нову лозинку за свој налог.",
+        "newPassword": "Нова лозинка",
+        "newPasswordPlaceholder": "Ваша нова лозинка",
+        "confirmPassword": "Потврдите лозинку",
+        "confirmPasswordPlaceholder": "Потврдите нову лозинку",
+        "updating": "Ажурирање лозинке…",
+        "submit": "Ресетуј лозинку"
+      },
+      "errors": {
+        "sendFailed": "Слање линка за ресетовање није успело",
+        "updateFailed": "Ажурирање лозинке није успело",
+        "unexpected": "Дошло је до неочекиване грешке"
       }
     }
   },

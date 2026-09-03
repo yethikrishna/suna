@@ -1917,6 +1917,53 @@
         "existingAccountWrongPassword": "You already have an account — enter your existing password to sign in.",
         "confirmAccount": "Check your email to confirm your account",
         "invalidCode": "Invalid or expired code"
+      },
+      "legal": {
+        "signup": "By creating an account, you agree to the <termsOfService>Terms of Service</termsOfService> and <privacyPolicy>Privacy Policy</privacyPolicy>",
+        "default": "<termsOfService>Terms of Service</termsOfService> and <privacyPolicy>Privacy Policy</privacyPolicy>"
+      }
+    },
+    "passwordReset": {
+      "loading": "Loading",
+      "resetting": "Resetting password",
+      "request": {
+        "title": "Reset your password",
+        "description": "Enter your email and we'll send you a password reset link.",
+        "email": "Email",
+        "emailPlaceholder": "Your email address",
+        "sending": "Sending link…",
+        "submit": "Send reset link"
+      },
+      "sent": {
+        "title": "Check your email",
+        "description": "We've sent you a password reset link.",
+        "address": "Reset link sent to <address>{email}</address>"
+      },
+      "expired": {
+        "title": "Link expired",
+        "description": "This password reset link is invalid or has expired.",
+        "requestNew": "Request a new link"
+      },
+      "success": {
+        "title": "Password updated",
+        "description": "You can now sign in with your new password.",
+        "changed": "Your password has been changed.",
+        "signIn": "Go to sign in"
+      },
+      "form": {
+        "title": "Set a new password",
+        "description": "Choose a new password for your account.",
+        "newPassword": "New password",
+        "newPasswordPlaceholder": "Your new password",
+        "confirmPassword": "Confirm password",
+        "confirmPasswordPlaceholder": "Confirm your new password",
+        "updating": "Updating password…",
+        "submit": "Reset password"
+      },
+      "errors": {
+        "sendFailed": "Could not send reset link",
+        "updateFailed": "Could not update password",
+        "unexpected": "An unexpected error occurred"
       }
     }
   },

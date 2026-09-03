@@ -1914,6 +1914,53 @@
         "existingAccountWrongPassword": "Hai già un account: inserisci la password esistente per accedere.",
         "confirmAccount": "Controlla la tua email per confermare l'account",
         "invalidCode": "Codice non valido o scaduto"
+      },
+      "legal": {
+        "signup": "Creando un account, accetti i <termsOfService>Termini di servizio</termsOfService> e la <privacyPolicy>Informativa sulla privacy</privacyPolicy>",
+        "default": "<termsOfService>Termini di servizio</termsOfService> e <privacyPolicy>Informativa sulla privacy</privacyPolicy>"
+      }
+    },
+    "passwordReset": {
+      "loading": "Caricamento",
+      "resetting": "Reimpostazione della password",
+      "request": {
+        "title": "Reimposta la password",
+        "description": "Inserisci la tua email e ti invieremo un link per reimpostare la password.",
+        "email": "Email",
+        "emailPlaceholder": "Il tuo indirizzo email",
+        "sending": "Invio del link…",
+        "submit": "Invia link di reimpostazione"
+      },
+      "sent": {
+        "title": "Controlla la tua email",
+        "description": "Ti abbiamo inviato un link per reimpostare la password.",
+        "address": "Link di reimpostazione inviato a <address>{email}</address>"
+      },
+      "expired": {
+        "title": "Link scaduto",
+        "description": "Questo link per reimpostare la password non è valido o è scaduto.",
+        "requestNew": "Richiedi un nuovo link"
+      },
+      "success": {
+        "title": "Password aggiornata",
+        "description": "Ora puoi accedere con la tua nuova password.",
+        "changed": "La tua password è stata modificata.",
+        "signIn": "Vai all'accesso"
+      },
+      "form": {
+        "title": "Imposta una nuova password",
+        "description": "Scegli una nuova password per il tuo account.",
+        "newPassword": "Nuova password",
+        "newPasswordPlaceholder": "La tua nuova password",
+        "confirmPassword": "Conferma password",
+        "confirmPasswordPlaceholder": "Conferma la tua nuova password",
+        "updating": "Aggiornamento della password…",
+        "submit": "Reimposta password"
+      },
+      "errors": {
+        "sendFailed": "Impossibile inviare il link di reimpostazione",
+        "updateFailed": "Impossibile aggiornare la password",
+        "unexpected": "Si è verificato un errore imprevisto"
       }
     }
   },

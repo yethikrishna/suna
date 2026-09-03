@@ -1914,6 +1914,53 @@
         "existingAccountWrongPassword": "Ya tienes una cuenta; introduce tu contraseña actual para iniciar sesión.",
         "confirmAccount": "Revisa tu correo electrónico para confirmar tu cuenta",
         "invalidCode": "Código no válido o caducado"
+      },
+      "legal": {
+        "signup": "Al crear una cuenta, aceptas los <termsOfService>Términos de servicio</termsOfService> y la <privacyPolicy>Política de privacidad</privacyPolicy>",
+        "default": "<termsOfService>Términos de servicio</termsOfService> y <privacyPolicy>Política de privacidad</privacyPolicy>"
+      }
+    },
+    "passwordReset": {
+      "loading": "Cargando",
+      "resetting": "Restableciendo la contraseña",
+      "request": {
+        "title": "Restablece tu contraseña",
+        "description": "Introduce tu correo electrónico y te enviaremos un enlace para restablecer tu contraseña.",
+        "email": "Correo electrónico",
+        "emailPlaceholder": "Tu dirección de correo electrónico",
+        "sending": "Enviando enlace…",
+        "submit": "Enviar enlace de restablecimiento"
+      },
+      "sent": {
+        "title": "Revisa tu correo electrónico",
+        "description": "Te hemos enviado un enlace para restablecer tu contraseña.",
+        "address": "Enlace de restablecimiento enviado a <address>{email}</address>"
+      },
+      "expired": {
+        "title": "Enlace caducado",
+        "description": "Este enlace para restablecer la contraseña no es válido o ha caducado.",
+        "requestNew": "Solicitar un enlace nuevo"
+      },
+      "success": {
+        "title": "Contraseña actualizada",
+        "description": "Ahora puedes iniciar sesión con tu nueva contraseña.",
+        "changed": "Tu contraseña ha sido cambiada.",
+        "signIn": "Ir a iniciar sesión"
+      },
+      "form": {
+        "title": "Establece una nueva contraseña",
+        "description": "Elige una nueva contraseña para tu cuenta.",
+        "newPassword": "Nueva contraseña",
+        "newPasswordPlaceholder": "Tu nueva contraseña",
+        "confirmPassword": "Confirma la contraseña",
+        "confirmPasswordPlaceholder": "Confirma tu nueva contraseña",
+        "updating": "Actualizando la contraseña…",
+        "submit": "Restablecer contraseña"
+      },
+      "errors": {
+        "sendFailed": "No se pudo enviar el enlace de restablecimiento",
+        "updateFailed": "No se pudo actualizar la contraseña",
+        "unexpected": "Ocurrió un error inesperado"
       }
     }
   },

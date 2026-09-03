@@ -1914,6 +1914,53 @@
         "existingAccountWrongPassword": "Du hast bereits ein Konto – gib dein bestehendes Passwort ein, um dich anzumelden.",
         "confirmAccount": "Prüfe deine E-Mail, um dein Konto zu bestätigen",
         "invalidCode": "Ungültiger oder abgelaufener Code"
+      },
+      "legal": {
+        "signup": "Durch das Erstellen eines Kontos stimmen Sie den <termsOfService>Nutzungsbedingungen</termsOfService> und der <privacyPolicy>Datenschutzerklärung</privacyPolicy> zu",
+        "default": "<termsOfService>Nutzungsbedingungen</termsOfService> und <privacyPolicy>Datenschutzerklärung</privacyPolicy>"
+      }
+    },
+    "passwordReset": {
+      "loading": "Wird geladen",
+      "resetting": "Passwort wird zurückgesetzt",
+      "request": {
+        "title": "Passwort zurücksetzen",
+        "description": "Geben Sie Ihre E-Mail-Adresse ein. Wir senden Ihnen einen Link zum Zurücksetzen Ihres Passworts.",
+        "email": "E-Mail",
+        "emailPlaceholder": "Ihre E-Mail-Adresse",
+        "sending": "Link wird gesendet …",
+        "submit": "Link zum Zurücksetzen senden"
+      },
+      "sent": {
+        "title": "Prüfen Sie Ihre E-Mails",
+        "description": "Wir haben Ihnen einen Link zum Zurücksetzen Ihres Passworts gesendet.",
+        "address": "Link zum Zurücksetzen gesendet an <address>{email}</address>"
+      },
+      "expired": {
+        "title": "Link abgelaufen",
+        "description": "Dieser Link zum Zurücksetzen des Passworts ist ungültig oder abgelaufen.",
+        "requestNew": "Neuen Link anfordern"
+      },
+      "success": {
+        "title": "Passwort aktualisiert",
+        "description": "Sie können sich jetzt mit Ihrem neuen Passwort anmelden.",
+        "changed": "Ihr Passwort wurde geändert.",
+        "signIn": "Zur Anmeldung"
+      },
+      "form": {
+        "title": "Neues Passwort festlegen",
+        "description": "Wählen Sie ein neues Passwort für Ihr Konto.",
+        "newPassword": "Neues Passwort",
+        "newPasswordPlaceholder": "Ihr neues Passwort",
+        "confirmPassword": "Passwort bestätigen",
+        "confirmPasswordPlaceholder": "Bestätigen Sie Ihr neues Passwort",
+        "updating": "Passwort wird aktualisiert …",
+        "submit": "Passwort zurücksetzen"
+      },
+      "errors": {
+        "sendFailed": "Link zum Zurücksetzen konnte nicht gesendet werden",
+        "updateFailed": "Passwort konnte nicht aktualisiert werden",
+        "unexpected": "Ein unerwarteter Fehler ist aufgetreten"
       }
     }
   },

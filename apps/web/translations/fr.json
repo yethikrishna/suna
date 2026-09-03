@@ -1917,6 +1917,53 @@
         "existingAccountWrongPassword": "Vous avez déjà un compte — saisissez votre mot de passe existant pour vous connecter.",
         "confirmAccount": "Consultez votre boîte e-mail pour confirmer votre compte",
         "invalidCode": "Code invalide ou expiré"
+      },
+      "legal": {
+        "signup": "En créant un compte, vous acceptez les <termsOfService>Conditions d’utilisation</termsOfService> et la <privacyPolicy>Politique de confidentialité</privacyPolicy>",
+        "default": "<termsOfService>Conditions d’utilisation</termsOfService> et <privacyPolicy>Politique de confidentialité</privacyPolicy>"
+      }
+    },
+    "passwordReset": {
+      "loading": "Chargement",
+      "resetting": "Réinitialisation du mot de passe",
+      "request": {
+        "title": "Réinitialiser votre mot de passe",
+        "description": "Saisissez votre adresse e-mail et nous vous enverrons un lien de réinitialisation.",
+        "email": "E-mail",
+        "emailPlaceholder": "Votre adresse e-mail",
+        "sending": "Envoi du lien…",
+        "submit": "Envoyer le lien de réinitialisation"
+      },
+      "sent": {
+        "title": "Consultez votre boîte e-mail",
+        "description": "Nous vous avons envoyé un lien de réinitialisation de votre mot de passe.",
+        "address": "Lien de réinitialisation envoyé à <address>{email}</address>"
+      },
+      "expired": {
+        "title": "Lien expiré",
+        "description": "Ce lien de réinitialisation est invalide ou a expiré.",
+        "requestNew": "Demander un nouveau lien"
+      },
+      "success": {
+        "title": "Mot de passe mis à jour",
+        "description": "Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.",
+        "changed": "Votre mot de passe a été modifié.",
+        "signIn": "Accéder à la connexion"
+      },
+      "form": {
+        "title": "Définir un nouveau mot de passe",
+        "description": "Choisissez un nouveau mot de passe pour votre compte.",
+        "newPassword": "Nouveau mot de passe",
+        "newPasswordPlaceholder": "Votre nouveau mot de passe",
+        "confirmPassword": "Confirmer le mot de passe",
+        "confirmPasswordPlaceholder": "Confirmez votre nouveau mot de passe",
+        "updating": "Mise à jour du mot de passe…",
+        "submit": "Réinitialiser le mot de passe"
+      },
+      "errors": {
+        "sendFailed": "Impossible d’envoyer le lien de réinitialisation",
+        "updateFailed": "Impossible de mettre à jour le mot de passe",
+        "unexpected": "Une erreur inattendue s’est produite"
       }
     }
   },

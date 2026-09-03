@@ -1914,6 +1914,53 @@
         "existingAccountWrongPassword": "すでにアカウントがあります。既存のパスワードを入力してサインインしてください。",
         "confirmAccount": "メールを確認してアカウントを認証してください",
         "invalidCode": "コードが無効か、有効期限が切れています"
+      },
+      "legal": {
+        "signup": "アカウントを作成すると、<termsOfService>利用規約</termsOfService>および<privacyPolicy>プライバシーポリシー</privacyPolicy>に同意したものとみなされます",
+        "default": "<termsOfService>利用規約</termsOfService>および<privacyPolicy>プライバシーポリシー</privacyPolicy>"
+      }
+    },
+    "passwordReset": {
+      "loading": "読み込み中",
+      "resetting": "パスワードをリセット中",
+      "request": {
+        "title": "パスワードをリセット",
+        "description": "メールアドレスを入力すると、パスワードリセット用のリンクをお送りします。",
+        "email": "メールアドレス",
+        "emailPlaceholder": "メールアドレスを入力",
+        "sending": "リンクを送信中…",
+        "submit": "リセットリンクを送信"
+      },
+      "sent": {
+        "title": "メールを確認してください",
+        "description": "パスワードリセット用のリンクを送信しました。",
+        "address": "リセットリンクを<address>{email}</address>に送信しました"
+      },
+      "expired": {
+        "title": "リンクの有効期限が切れています",
+        "description": "このパスワードリセットリンクは無効か、有効期限が切れています。",
+        "requestNew": "新しいリンクをリクエスト"
+      },
+      "success": {
+        "title": "パスワードを更新しました",
+        "description": "新しいパスワードでサインインできるようになりました。",
+        "changed": "パスワードが変更されました。",
+        "signIn": "サインイン画面へ"
+      },
+      "form": {
+        "title": "新しいパスワードを設定",
+        "description": "アカウント用の新しいパスワードを設定してください。",
+        "newPassword": "新しいパスワード",
+        "newPasswordPlaceholder": "新しいパスワードを入力",
+        "confirmPassword": "パスワードを確認",
+        "confirmPasswordPlaceholder": "新しいパスワードを再入力",
+        "updating": "パスワードを更新中…",
+        "submit": "パスワードをリセット"
+      },
+      "errors": {
+        "sendFailed": "リセットリンクを送信できませんでした",
+        "updateFailed": "パスワードを更新できませんでした",
+        "unexpected": "予期しないエラーが発生しました"
       }
     }
   },

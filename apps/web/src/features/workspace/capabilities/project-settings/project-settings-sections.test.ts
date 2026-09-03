@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
 import { CUSTOMIZE_SECTION_ACCESS, isCustomizeSectionVisible } from '@/lib/project-actions';
-import { legacySectionRedirect } from '@/features/workspace/settings/settings-tabs';
 
 import {
   ALL_PROJECT_SETTINGS_SECTIONS,

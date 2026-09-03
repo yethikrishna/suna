@@ -145,9 +145,10 @@ describe('offered tabs survive the panel filter', () => {
     }
   });
 
-  test('with NO project, only account-scoped tabs are offered', () => {
+  test('with NO project, every live tab is offered — all of them are personal', () => {
     const offered: string[] = tabsFor({ hasProject: false });
-    expect([...offered].sort()).toEqual([...ACCOUNT_SCOPED_SETTINGS_TABS].sort());
+    expect([...offered].sort()).toEqual([...SETTINGS_TABS].sort());
+    for (const tab of offered) expect(ACCOUNT_SCOPED_SETTINGS_TABS).toContain(tab);
     // The project configuration tabs specifically — these were the ones the
     // old `Customize · X` entries offered from `/accounts/**`. They are not
     // offered from anywhere in this list now: they are `?section=` values on
@@ -362,10 +363,15 @@ describe('the registry no longer carries palette settings destinations', () => {
     // navigated to a deleted route. `menu-registry-destinations.test.ts` now
     // checks every navigate row's href against the real `src/app` tree, which
     // is the check that would have caught it the day the route was deleted.
+    // The `proj-config-*` rows are BACK since 2026-09-03 (Marko): the
+    // Settings tab returned to the Customize bar and the overlay's Workspace
+    // group went, so these rows are the only way the palette reaches those
+    // sections. `menu-registry-destinations.test.ts` proves each href is a
+    // live route.
     for (const id of ['proj-config-general', 'proj-config-sandbox', 'proj-config-feature-flags']) {
       expect({ id, present: paletteItems.some((item) => item.id === id) }).toEqual({
         id,
-        present: false,
+        present: true,
       });
     }
 

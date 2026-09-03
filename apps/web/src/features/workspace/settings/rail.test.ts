@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { isRailItemActive, railGroups, railItemForTab } from './rail';
+import { isRailItemActive, railGroups, railItemForTab, RETIRED_RAIL_ITEMS } from './rail';
 import { SETTINGS_TABS } from './settings-tabs';
 import type { RailItem } from './type';
 
@@ -23,8 +23,11 @@ describe('railGroups', () => {
   // Settings", but that row names its default TAB, not the rail's order — so
   // leading with the workspace's own identity costs the personal tabs nothing
   // and is what makes renaming findable again.
-  test('renders three groups: Workspace, Personal, Account', () => {
-    expect(railGroups().map((g) => g.label)).toEqual(['Workspace', 'Personal', 'Account']);
+  test('renders one group: Personal', () => {
+    // Workspace (project configuration) is the Customize bar's Settings tab
+    // and Account (Credits, Plan) is the account page — Marko, 2026-09-03:
+    // the overlay is the person's own settings and nothing else.
+    expect(railGroups().map((g) => g.label)).toEqual(['Personal']);
   });
 
   test('holds the workspace tabs first, then the person-scoped tabs, then the plan', () => {
@@ -32,10 +35,6 @@ describe('railGroups', () => {
     // split out of Profile and Preferences; Sandbox templates and Feature
     // flags back under Workspace; Plan as the one Account row.
     expect(tabsOf()).toEqual([
-      'workspace',
-      'sandbox',
-      'feature-flags',
-      'upgrades',
       'profile',
       'security',
       'appearance',
@@ -43,8 +42,6 @@ describe('railGroups', () => {
       'preferences',
       'connected',
       'tokens',
-      'credits',
-      'plan',
     ]);
   });
 
@@ -52,14 +49,21 @@ describe('railGroups', () => {
   // and `general` was already spent on a redirect, but "General" is what this
   // pane has always been called. Pinned so a future tidy-up cannot silently
   // rename the row to match the id and break the word people look for.
-  test('the workspace rows are LABELLED as the config page labels them', () => {
-    const group = railGroups().find((g) => g.label === 'Workspace');
-    expect(group?.items.map((i) => i.label)).toEqual([
+  test('the retired project rows keep their labels for the panes that still render them', () => {
+    // `railItemForTab` still resolves them — the Settings tab's sections
+    // render `SettingsTabHeader` off these rows — but no group lists them.
+    expect(RETIRED_RAIL_ITEMS.map((i) => i.label)).toEqual([
       'General',
       'Sandbox templates',
       'Feature flags',
       'Upgrades',
+      'Credits',
+      'Plan',
     ]);
+    for (const item of RETIRED_RAIL_ITEMS) expect(railItemForTab(item.tab)).toBe(item);
+    for (const group of railGroups()) {
+      for (const item of group.items) expect(RETIRED_RAIL_ITEMS).not.toContain(item);
+    }
   });
 
   test('every rail tab is a live SettingsTab, and every live SettingsTab has a rail row', () => {

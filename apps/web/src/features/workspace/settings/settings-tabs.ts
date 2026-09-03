@@ -138,15 +138,15 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
   'preferences',
   'connected',
   'tokens',
-  'credits',
-  'plan',
-  // Project-scoped, so NOT in `ACCOUNT_SCOPED_SETTINGS_TABS`
-  // (`settings-panel.tsx`): the overlay hides the whole Workspace group when it
-  // opens without a project — on `/settings`, or anywhere under `/accounts/**`.
-  'workspace',
-  'sandbox',
-  'feature-flags',
-  'upgrades',
+  // `credits` and `plan` are still in the type but NOT here: the overlay's
+  // Account group was removed on 2026-09-03 (Marko) — a wallet and a
+  // subscription belong to the account page, `/accounts/[id]`, and both ids
+  // resolve there through `ACCOUNT_GRADUATED`.
+  // `workspace`, `sandbox`, `feature-flags` and `upgrades` are still in the
+  // type — `settings-panel.tsx` keeps their panes mountable — but NOT here:
+  // the overlay's Workspace group was removed on 2026-09-03 (Marko), so no
+  // route or palette row may open them. Each id resolves through `GRADUATED`
+  // to the Customize bar's Settings tab instead.
 ];
 
 export function parseSettingsTab(raw: string | null | undefined): SettingsTab | null {
@@ -183,13 +183,30 @@ const GRADUATED: Record<string, (projectId: string) => string> = {
   schedules: (p) => `/projects/${p}/triggers`,
   webhooks: (p) => `/projects/${p}/triggers`,
 
-  // ── Project configuration → the Settings overlay's Workspace group ──────
-  // `/projects/<id>/config` (the Customize bar's Settings tab) was retired on
-  // 2026-09-02. Every id that named one of its sections is either a LIVE
-  // overlay tab now (`workspace`, `sandbox`, `feature-flags`, `upgrades` —
-  // resolved by `parseSettingsTab`) or an old spelling of one (`RENAMED`
-  // below). Review, the one section that was an inbox rather than
-  // configuration, is a capability tab of its own.
+  // ── Project configuration → the Customize bar's Settings tab ────────────
+  // `/projects/<id>/config` holds General, Sandbox templates, Feature flags
+  // and Upgrades. It was retired on 2026-09-02 for the overlay's Workspace
+  // group and brought back on 2026-09-03 (Marko), and the overlay group went
+  // — so every id that ever named one of these sections, the overlay's own
+  // tab ids included, lands on the page. Review, the one section that was an
+  // inbox rather than configuration, is a capability tab of its own.
+  workspace: (p) => `/projects/${p}/config`,
+  general: (p) => `/projects/${p}/config`,
+  settings: (p) => `/projects/${p}/config`,
+  // Repositories and its pre-rename `git` merged INTO General as a "Git repo"
+  // section.
+  repositories: (p) => `/projects/${p}/config`,
+  git: (p) => `/projects/${p}/config`,
+  sandbox: (p) => `/projects/${p}/config?section=sandbox`,
+  // Snapshots merged into Sandbox templates — a snapshot is a template's
+  // build history.
+  snapshots: (p) => `/projects/${p}/config?section=sandbox`,
+  'feature-flags': (p) => `/projects/${p}/config?section=feature-flags`,
+  // `experimental` was renamed Feature flags on the way.
+  experimental: (p) => `/projects/${p}/config?section=feature-flags`,
+  upgrades: (p) => `/projects/${p}/config?section=upgrades`,
+  // `upgrade`, singular, is the old Customize id for the Upgrades pane.
+  upgrade: (p) => `/projects/${p}/config?section=upgrades`,
   review: (p) => `/projects/${p}/review`,
   // Secrets, Channels, and Models graduated a SECOND time — off the Settings
   // sub-nav entirely and onto their own top-level Customize tab. `models` and
@@ -259,6 +276,10 @@ export const ACCOUNT_GRADUATED: Record<string, string> = {
   billing: 'billing',
   usage: 'transactions',
   transactions: 'transactions',
+  // The overlay's Account group (Credits, Plan) left on 2026-09-03: the
+  // account page already owns both.
+  credits: 'transactions',
+  plan: 'billing',
   groups: 'groups',
   roles: 'roles',
   identity: 'identity',
@@ -290,19 +311,9 @@ export const ACCOUNT_GRADUATED: Record<string, string> = {
  */
 const RENAMED: Record<string, SettingsTab> = {
   'api-keys': 'tokens',
-  // `upgrade`, singular, is the old Customize id for the Upgrades pane.
-  upgrade: 'upgrades',
-  // The retired config page's own vocabulary, and the older ids that fed it.
-  // General is the `workspace` tab (`general` itself is a spent id — see
-  // `SettingsTab`); Repositories and its pre-rename `git` merged INTO General
-  // as a "Git repo" section; Snapshots merged into Sandbox templates;
-  // `experimental` was renamed Feature flags on the way.
-  general: 'workspace',
-  settings: 'workspace',
-  repositories: 'workspace',
-  git: 'workspace',
-  snapshots: 'sandbox',
-  experimental: 'feature-flags',
+  // Every project-configuration spelling (`general`, `git`, `snapshots`,
+  // `experimental`, `upgrade`, …) is in `GRADUATED` above: they name the
+  // Customize bar's Settings tab, not a tab of this overlay.
 };
 
 /**

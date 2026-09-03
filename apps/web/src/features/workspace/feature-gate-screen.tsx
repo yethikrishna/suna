@@ -17,7 +17,7 @@ import { FlagIcon } from '@phosphor-icons/react';
  * The destination has moved twice and the content never has: the legacy
  * Customize overlay's `feature-flags` section, then `/projects/<id>/config
  * ?section=feature-flags`, and — since that page was retired on 2026-09-02 —
- * the Settings overlay's Feature flags tab, at `/settings/feature-flags`.
+ * the Customize bar's Settings tab, at `/config?section=feature-flags`.
  * A real `<Link>`, because it is still a route — middle-click and copy-link
  * both work, and the page prefetches.
  *
@@ -53,7 +53,7 @@ export function FeatureGateScreen({
         </div>
         {projectId ? (
           <Button asChild size="sm" variant="secondary" className="shrink-0">
-            <Link href={`/projects/${projectId}/settings/feature-flags`}>Feature flags</Link>
+            <Link href={`/projects/${projectId}/config?section=feature-flags`}>Feature flags</Link>
           </Button>
         ) : null}
       </div>

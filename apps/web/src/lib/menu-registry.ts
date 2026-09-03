@@ -61,6 +61,9 @@ import {
   UserPlusIcon as UserPlus,
   UsersIcon as UsersSolid,
   ImagesSquareIcon as WallpaperIcon,
+  ShippingContainerIcon as Container,
+  ArrowCircleUpIcon as ArrowUpCircle,
+  FlaskIcon as Flask,
 } from '@phosphor-icons/react';
 import type { ComponentType } from 'react';
 
@@ -491,19 +494,55 @@ export const menuRegistry: MenuItemDef[] = [
     requiresProject: true,
     keywords: 'customize configure setup capabilities overview hub',
   },
+  // The Customize bar's trailing Settings tab, one row per section. Retired
+  // 2026-09-02 for the overlay's Workspace group; both came back to this page
+  // on 2026-09-03 (Marko) when that group was removed from the overlay.
   {
     id: 'proj-config-general',
-    label: 'Settings',
+    label: 'Settings · General',
     icon: CogOne,
     group: 'navigation',
     showIn: ['commandPalette'],
     kind: 'navigate',
-    // The Customize bar's trailing Settings tab — general, sandbox templates,
-    // feature flags, upgrades. Retired 2026-09-02, back 2026-09-03 (Marko).
     href: '/projects/{projectId}/config',
     requiresProject: true,
     keywords:
-      'settings general workspace rename delete danger zone name description git repo repository sandbox templates feature flags upgrades',
+      'settings general workspace rename delete danger zone name description git repo repository github clone branch remote',
+  },
+  {
+    id: 'proj-config-sandbox',
+    label: 'Settings · Sandbox templates',
+    icon: Container,
+    group: 'navigation',
+    showIn: ['commandPalette'],
+    kind: 'navigate',
+    href: '/projects/{projectId}/config?section=sandbox',
+    requiresProject: true,
+    // Snapshots merged into this section — a snapshot is a sandbox template's
+    // build history — so both vocabularies answer here.
+    keywords: 'sandbox templates template image runtime machine snapshots builds recipe container',
+  },
+  {
+    id: 'proj-config-feature-flags',
+    label: 'Settings · Feature flags',
+    icon: Flask,
+    group: 'navigation',
+    showIn: ['commandPalette'],
+    kind: 'navigate',
+    href: '/projects/{projectId}/config?section=feature-flags',
+    requiresProject: true,
+    keywords: 'feature flags flag experimental labs beta toggle enable disable',
+  },
+  {
+    id: 'proj-config-upgrades',
+    label: 'Settings · Upgrades',
+    icon: ArrowUpCircle,
+    group: 'navigation',
+    showIn: ['commandPalette'],
+    kind: 'navigate',
+    href: '/projects/{projectId}/config?section=upgrades',
+    requiresProject: true,
+    keywords: 'upgrades upgrade migrate migration manifest runner kortix yaml version bump',
   },
   {
     id: 'proj-models',

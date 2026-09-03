@@ -448,6 +448,20 @@ export function SettingsPanelShell({
                 </TabsTrigger>
               ))}
             </TabsList>
+            {organizations.length > 0
+              ? organizations.map((account) => (
+                  <ModalClose asChild key={account.account_id}>
+                    <Link
+                      href={`/accounts/${account.account_id}`}
+                      prefetch
+                      className="text-muted-foreground hover:text-foreground flex h-8 w-auto shrink-0 items-center gap-1 px-3 text-sm whitespace-nowrap transition-colors"
+                    >
+                      {account.name?.trim() || 'Account'}
+                      <ArrowUpRightIcon aria-hidden className="size-3.5 shrink-0 opacity-60" />
+                    </Link>
+                  </ModalClose>
+                ))
+              : null}
           </FadedScrollArea>
           <div className="flex shrink-0 items-center px-3">
             <ModalClose asChild>

@@ -137,7 +137,7 @@ const UPGRADES_SECTION: ProjectSettingsSection = {
   gate: 'upgrade',
 };
 
-const REVIEW_SECTION: ProjectSettingsSection = {
+export const REVIEW_SECTION: ProjectSettingsSection = {
   key: 'review',
   label: 'Review',
   icon: Inbox,
@@ -161,7 +161,12 @@ export function projectSettingsSections(
   flags: ProjectSettingsSectionFlags,
 ): readonly ProjectSettingsSection[] {
   const sections = [...STATIC_SECTIONS];
-  if (flags.reviewEnabled) sections.push(REVIEW_SECTION);
+  // Review is NOT a section here any more: it is a capability tab of its own
+  // (`capability-tab-routes.ts`, 2026-09-02). Listing it twice — as a tab and
+  // as a Settings section — was the leftover of restoring this page. The flag
+  // still gates the tab; `REVIEW_SECTION` stays exported for the legacy
+  // `?section=review` redirect target and the pane switch.
+  void flags.reviewEnabled;
   sections.push(FEATURE_FLAGS_SECTION, UPGRADES_SECTION);
   return sections;
 }

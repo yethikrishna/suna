@@ -37,15 +37,16 @@ describe('projectSettingsSections', () => {
     expect(keysFor(OFF)).toEqual(['general', 'git', 'sandbox', 'feature-flags', 'upgrades']);
   });
 
-  test('the review flag adds its section', () => {
-    expect(keysFor({ ...OFF, reviewEnabled: true })).toContain('review');
+  test('the review flag adds no section — Review is a capability tab', () => {
+    expect(keysFor({ ...OFF, reviewEnabled: true })).not.toContain('review');
     expect(keysFor(OFF)).not.toContain('review');
   });
 
   test('the review flag preserves all static sections', () => {
     const keys = keysFor({ reviewEnabled: true });
-    expect(keys).toContain('review');
-    expect(keys).toHaveLength(6);
+    // Review is a capability tab, not a section, whatever the flag says.
+    expect(keys).not.toContain('review');
+    expect(keys).toHaveLength(5);
   });
 
   test('Upgrades is last, where the rail pinned it', () => {
@@ -174,7 +175,6 @@ describe('the sub-nav is flat', () => {
 
   test('the list order IS the rail order — one pass, nothing re-sorted', () => {
     expect(projectSettingsSections({ reviewEnabled: true }).map((s) => s.key)).toEqual(['general', 'git', 'sandbox',
-      'review',
       'feature-flags',
       'upgrades',
     ]);

@@ -50,19 +50,26 @@ export function EditorSectionStyleProvider({
 export function EditorSection({
   title,
   description,
+  trailing,
   children,
 }: {
   title: string;
   description?: ReactNode;
+  /** A summary at the header's right edge — a `Badge` saying "All" or
+   *  "3 picked" — so a card answers its question before it is opened. */
+  trailing?: ReactNode;
   children: ReactNode;
 }) {
   const style = useContext(EditorSectionStyleContext);
   const heading = (
-    <div className="space-y-1">
-      <h3 className="text-foreground text-sm font-medium">{title}</h3>
-      {description ? (
-        <p className="text-muted-foreground text-xs leading-relaxed text-pretty">{description}</p>
-      ) : null}
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0 space-y-1">
+        <h3 className="text-foreground text-sm font-medium">{title}</h3>
+        {description ? (
+          <p className="text-muted-foreground text-xs leading-relaxed text-pretty">{description}</p>
+        ) : null}
+      </div>
+      {trailing ? <div className="shrink-0">{trailing}</div> : null}
     </div>
   );
   if (style === 'panel') {

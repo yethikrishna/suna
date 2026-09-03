@@ -191,17 +191,13 @@ test.describe('21 — Trigger-created session access UI', () => {
 
       const { section } = await openTriggerAccess(page, projectId);
       const privateOption = section.getByRole('radio', {
-        // Capital "Managers" — matches `schedule-detail-sheet.tsx`'s copy
-        // override verbatim ("Trigger agent and project Managers", "Project
-        // Managers can always open trigger-created sessions."). A raw regex
-        // (unlike `getByText`'s string form) is case-sensitive by default, so
-        // the lowercase "managers" this used to read never matched.
-        name: /Trigger agent and project Managers/,
+        // Matches `trigger-session-access-copy.ts` verbatim — the copy names
+        // the permission the API checks (`project.members.manage`), not a
+        // role nickname. A raw regex is case-sensitive by default.
+        name: /Project admins only/,
       });
       await expect(privateOption).toBeChecked();
-      await expect(
-        section.getByText('Project managers can always open trigger-created sessions.'),
-      ).toBeVisible();
+      await expect(section.getByText(/project\.members\.manage permission/)).toBeVisible();
 
       await section.getByRole('radio', { name: /Selected teammates/ }).click();
       const memberButton = section.getByRole('button', { name: new RegExp(email) });

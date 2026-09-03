@@ -63,6 +63,7 @@ import {
 } from '@phosphor-icons/react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
+import { TRIGGER_SESSION_ACCESS_COPY } from './trigger-session-access-copy';
 
 import {
   KIND_COPY,
@@ -491,21 +492,7 @@ export function ScheduleCreateModal({
                         value={sessionAccess}
                         onChange={setSessionAccess}
                         showHeading={false}
-                        copy={{
-                          heading: 'Who can access sessions created by this trigger',
-                          private: {
-                            label: 'Trigger agent and project Managers',
-                            desc: 'Project Managers can always open trigger-created sessions.',
-                          },
-                          members: {
-                            label: 'Selected teammates',
-                            desc: 'Choose additional members and groups. Project Managers always have access.',
-                          },
-                          project: {
-                            label: 'Whole project',
-                            desc: 'Every project member can open these sessions.',
-                          },
-                        }}
+                        copy={TRIGGER_SESSION_ACCESS_COPY}
                       />
                     </Field>
 

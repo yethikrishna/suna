@@ -16,6 +16,7 @@
  * reason no reader could see.
  */
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Disclosure, DisclosureContent, DisclosureTrigger } from '@/components/ui/disclosure';
 import { Input } from '@/components/ui/input';
@@ -39,7 +40,6 @@ import {
   useKortixRouteProjectId,
   useRuntimeProviders,
 } from '@kortix/sdk/react';
-import { useState } from 'react';
 import { AGENT_MODE_HELP, AGENT_MODE_LABEL, AGENT_MODES } from './agent-editor-catalog';
 import { EditorSection, InlineAction, SettingBlock, SettingRow } from './agent-editor-primitives';
 
@@ -172,142 +172,132 @@ export function ModelSection({
     !isSliderAtDefault(oc.temperature, 0) ||
     !isSliderAtDefault(oc.top_p, 1) ||
     oc.steps !== undefined;
-  const [advancedOpen, setAdvancedOpen] = useState(advancedSet);
 
   return (
-    <EditorSection title="Model" description="How this agent thinks.">
-      {/* "Provider model", not "Model": the section is already titled Model,
+    <>
+      <EditorSection title="Model" description="How this agent thinks.">
+        {/* "Provider model", not "Model": the section is already titled Model,
           and a row that repeats its section's name reads as a typo. */}
-      <SettingRow
-        label="Provider model"
-        help={
-          oc.model ? (
-            <InlineAction onClick={() => setOc('model', undefined)}>
-              Reset to project default
-            </InlineAction>
-          ) : (
-            'Follows the project default.'
-          )
+        <SettingRow
+          label="Provider model"
+          help={
+            oc.model ? (
+              <InlineAction onClick={() => setOc('model', undefined)}>
+                Reset to project default
+              </InlineAction>
+            ) : (
+              'Follows the project default.'
+            )
+          }
+        >
+          <div className="flex sm:justify-end">
+            <ModelSelector
+              models={models}
+              providers={providers}
+              selectedModel={selectedModelKey}
+              unsetLabel="Project default"
+              onSelect={(m) => setOc('model', m ? modelKeyToWire(m) : undefined)}
+            />
+          </div>
+        </SettingRow>
+
+        {/* A wall of text most agents never set — collapsed, like the tool
+          permissions at the foot of the editor. */}
+        {showPrompt ? (
+          <SettingBlock
+            label="System prompt"
+            help="Replaces the default instructions for this agent."
+          >
+            <Disclosure variant="outline" className="overflow-hidden rounded-md">
+              <DisclosureTrigger variant="outline">
+                <Button
+                  variant="popover"
+                  className="flex w-full items-center justify-between gap-3 rounded-none text-sm font-normal"
+                >
+                  <span className="min-w-0 truncate">
+                    {oc.prompt ? firstLine(oc.prompt) : 'Not set — using the default instructions'}
+                  </span>
+                  <span className="text-muted-foreground shrink-0 text-xs">
+                    {oc.prompt ? 'Edit' : 'Write one'}
+                  </span>
+                </Button>
+              </DisclosureTrigger>
+              <DisclosureContent variant="outline" contentClassName="border-border border-t">
+                <Textarea
+                  aria-label="System prompt"
+                  value={oc.prompt ?? ''}
+                  placeholder="You are…"
+                  minHeight={160}
+                  className="rounded-none border-0 font-mono text-xs focus-visible:border-0 focus-visible:ring-0"
+                  onChange={(e) => setOc('prompt', e.target.value)}
+                />
+              </DisclosureContent>
+            </Disclosure>
+          </SettingBlock>
+        ) : null}
+      </EditorSection>
+
+      {/* Its own card, rows open: the page gives each topic a full column, so
+          nothing needs hiding behind a disclosure. `advancedSet` still feeds
+          the header chip so an untouched agent reads "Defaults" at a glance. */}
+      <EditorSection
+        title="Sampling and limits"
+        description="How the model samples, and how many tool calls one run may make."
+        trailing={
+          <Badge variant={advancedSet ? 'outline' : 'muted'} size="sm">
+            {advancedSet ? 'Customized' : 'Defaults'}
+          </Badge>
         }
       >
-        <div className="flex sm:justify-end">
-          <ModelSelector
-            models={models}
-            providers={providers}
-            selectedModel={selectedModelKey}
-            unsetLabel="Project default"
-            onSelect={(m) => setOc('model', m ? modelKeyToWire(m) : undefined)}
+        <SettingRow label="Variant" help="Provider variant to request, such as thinking.">
+          <Input
+            aria-label="Variant"
+            value={oc.variant ?? ''}
+            placeholder="Provider default"
+            variant="popover"
+            className="h-9 w-full text-sm"
+            onChange={(e) => setOc('variant', e.target.value)}
           />
-        </div>
-      </SettingRow>
+        </SettingRow>
 
-      <div className="py-3.5">
-        <Disclosure
-          variant="outline"
-          className="overflow-hidden rounded-md"
-          open={advancedOpen}
-          onOpenChange={setAdvancedOpen}
-        >
-          <DisclosureTrigger variant="outline">
-            <Button
-              variant="popover"
-              className="flex w-full items-center justify-between gap-3 rounded-none text-sm font-normal"
-            >
-              <span className="min-w-0 truncate">Sampling and limits</span>
-              <span className="text-muted-foreground shrink-0 text-xs">
-                {advancedSet ? 'Customized' : 'Defaults'}
-              </span>
-            </Button>
-          </DisclosureTrigger>
-          <DisclosureContent variant="outline" contentClassName="border-border border-t">
-            <div className="divide-border/60 divide-y px-4">
-              <SettingRow label="Variant" help="Provider variant to request, such as thinking.">
-                <Input
-                  aria-label="Variant"
-                  value={oc.variant ?? ''}
-                  placeholder="Provider default"
-                  variant="popover"
-                  className="h-9 w-full text-sm"
-                  onChange={(e) => setOc('variant', e.target.value)}
-                />
-              </SettingRow>
+        <SliderRow
+          label="Temperature"
+          help="0 gives the same answer every time. 2 is the most random."
+          value={oc.temperature}
+          fallback={0}
+          min={0}
+          max={2}
+          step={0.05}
+          onChange={(v) => setOc('temperature', v)}
+        />
 
-              <SliderRow
-                label="Temperature"
-                help="0 gives the same answer every time. 2 is the most random."
-                value={oc.temperature}
-                fallback={0}
-                min={0}
-                max={2}
-                step={0.05}
-                onChange={(v) => setOc('temperature', v)}
-              />
+        <SliderRow
+          label="Top-p"
+          help="Nucleus sampling. Leave it alone unless you are tuning the model."
+          value={oc.top_p}
+          fallback={1}
+          min={0}
+          max={1}
+          step={0.01}
+          onChange={(v) => setOc('top_p', v)}
+        />
 
-              <SliderRow
-                label="Top-p"
-                help="Nucleus sampling. Leave it alone unless you are tuning the model."
-                value={oc.top_p}
-                fallback={1}
-                min={0}
-                max={1}
-                step={0.01}
-                onChange={(v) => setOc('top_p', v)}
-              />
-
-              <SettingRow label="Step limit" help="Most tool calls this agent may make in one run.">
-                <Input
-                  aria-label="Step limit"
-                  type="number"
-                  min={1}
-                  value={oc.steps ?? ''}
-                  placeholder="No limit"
-                  variant="popover"
-                  className="h-9 w-full text-sm tabular-nums"
-                  onChange={(e) =>
-                    setOc('steps', e.target.value ? Math.max(1, Number(e.target.value)) : undefined)
-                  }
-                />
-              </SettingRow>
-            </div>
-          </DisclosureContent>
-        </Disclosure>
-      </div>
-
-      {/* A wall of text most agents never set — collapsed, like the tool
-          permissions at the foot of the editor. */}
-      {showPrompt ? (
-        <SettingBlock
-          label="System prompt"
-          help="Replaces the default instructions for this agent."
-        >
-          <Disclosure variant="outline" className="overflow-hidden rounded-md">
-            <DisclosureTrigger variant="outline">
-              <Button
-                variant="popover"
-                className="flex w-full items-center justify-between gap-3 rounded-none text-sm font-normal"
-              >
-                <span className="min-w-0 truncate">
-                  {oc.prompt ? firstLine(oc.prompt) : 'Not set — using the default instructions'}
-                </span>
-                <span className="text-muted-foreground shrink-0 text-xs">
-                  {oc.prompt ? 'Edit' : 'Write one'}
-                </span>
-              </Button>
-            </DisclosureTrigger>
-            <DisclosureContent variant="outline" contentClassName="border-border border-t">
-              <Textarea
-                aria-label="System prompt"
-                value={oc.prompt ?? ''}
-                placeholder="You are…"
-                minHeight={160}
-                className="rounded-none border-0 font-mono text-xs focus-visible:border-0 focus-visible:ring-0"
-                onChange={(e) => setOc('prompt', e.target.value)}
-              />
-            </DisclosureContent>
-          </Disclosure>
-        </SettingBlock>
-      ) : null}
-    </EditorSection>
+        <SettingRow label="Step limit" help="Most tool calls this agent may make in one run.">
+          <Input
+            aria-label="Step limit"
+            type="number"
+            min={1}
+            value={oc.steps ?? ''}
+            placeholder="No limit"
+            variant="popover"
+            className="h-9 w-full text-sm tabular-nums"
+            onChange={(e) =>
+              setOc('steps', e.target.value ? Math.max(1, Number(e.target.value)) : undefined)
+            }
+          />
+        </SettingRow>
+      </EditorSection>
+    </>
   );
 }
 

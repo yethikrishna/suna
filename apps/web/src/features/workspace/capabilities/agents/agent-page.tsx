@@ -71,6 +71,7 @@ import { EmptyState } from '@/features/layout/section/empty-state';
 import { ErrorState } from '@/features/layout/section/error-state';
 import { configEntitySourcePath } from '@/features/workspace/customize/sections/component/config-entity-source-path';
 import {
+  AGENT_CONFIG_SECTION_GROUPS,
   AGENT_CONFIG_SECTIONS,
   type AgentConfigSectionKey,
   AgentConfigSections,
@@ -99,17 +100,20 @@ import {
 import { contract, qk, useProjectAccountId } from '@kortix/sdk/react';
 import { capitalizeWords } from '@kortix/shared';
 import {
+  BookOpenTextIcon,
   CaretRightIcon,
   CpuIcon,
   CubeIcon,
   DotsThreeIcon,
   FileTextIcon,
   type Icon,
-  LockKeyIcon,
+  KeyIcon,
   PlayIcon,
+  PlugsConnectedIcon,
   RobotIcon,
   SlidersHorizontalIcon,
   StarIcon,
+  TerminalWindowIcon,
   TimerIcon,
   UsersIcon,
   WrenchIcon,
@@ -143,12 +147,15 @@ type Agent = ProjectConfigSummary['agents'][number];
 const SECTION_ICON: Record<AgentConfigSectionKey, Icon> = {
   overview: FileTextIcon,
   people: UsersIcon,
-  access: LockKeyIcon,
-  triggers: TimerIcon,
-  model: CpuIcon,
-  workspace: CubeIcon,
-  tools: WrenchIcon,
   basics: SlidersHorizontalIcon,
+  triggers: TimerIcon,
+  skills: BookOpenTextIcon,
+  connectors: PlugsConnectedIcon,
+  secrets: KeyIcon,
+  actions: TerminalWindowIcon,
+  model: CpuIcon,
+  tools: WrenchIcon,
+  workspace: CubeIcon,
 };
 
 export function AgentPage({ projectId, agentName }: { projectId: string; agentName: string }) {
@@ -251,6 +258,12 @@ function AgentPageFrame({
 }) {
   const isMobile = useIsMobile();
   const items = AGENT_CONFIG_SECTIONS.filter((s) => sections.includes(s.key));
+  // The Preferences rail's rule: a heading over a lone group labels nothing.
+  const groups = AGENT_CONFIG_SECTION_GROUPS.map((group) => ({
+    group,
+    items: items.filter((s) => s.group === group),
+  })).filter((g) => g.items.length > 0);
+  const showGroupLabels = groups.length > 1;
   const trigger = (item: (typeof AGENT_CONFIG_SECTIONS)[number], horizontal: boolean) => {
     const SectionIcon = SECTION_ICON[item.key];
     return (
@@ -281,7 +294,7 @@ function AgentPageFrame({
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      <div className="border-border/60 shrink-0 border-b px-5 pt-5 pb-4">{header}</div>
+      <div className="border-border/60 shrink-0 border-b px-5 py-3">{header}</div>
       <div
         className={cn(
           'min-h-0 flex-1',
@@ -312,10 +325,19 @@ function AgentPageFrame({
               aria-label="Agent sections"
               className="flex min-h-0 flex-1 [scrollbar-width:none] flex-col gap-4 overflow-y-auto px-2 pt-3 pb-2 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             >
-              <Tabs value={section} orientation="vertical">
-                <TabsList orientation="vertical" className="w-full">
-                  {items.map((item) => trigger(item, false))}
-                </TabsList>
+              <Tabs value={section} orientation="vertical" className="space-y-3">
+                {groups.map((g) => (
+                  <div key={g.group}>
+                    {showGroupLabels ? (
+                      <div className="text-muted-foreground flex h-7 items-center px-2.5 text-xs font-medium">
+                        {g.group}
+                      </div>
+                    ) : null}
+                    <TabsList orientation="vertical" className="w-full">
+                      {g.items.map((item) => trigger(item, false))}
+                    </TabsList>
+                  </div>
+                ))}
               </Tabs>
             </nav>
           </aside>
@@ -548,9 +570,12 @@ function AgentHeader({
   children?: ReactNode;
 }) {
   return (
-    <header className="space-y-4">
+    <header className="space-y-2">
+      {/* One row (Marko, 2026-09-03): the breadcrumb's last crumb IS the
+          title — an h1 — with the status chips beside it, and every action on
+          the right. A second row for the name alone said nothing new. */}
       <div className="flex items-center justify-between gap-3">
-        <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-sm">
+        <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
           <Link
             href={capabilityTabHref(projectId, 'agent')}
             prefetch
@@ -559,22 +584,14 @@ function AgentHeader({
             Agents
           </Link>
           <CaretRightIcon aria-hidden className="text-muted-foreground/50 size-3.5 shrink-0" />
-          <span className="text-foreground truncate font-medium">
+          <h1 className="text-foreground truncate text-sm font-semibold">
             {capitalizeWords(agent.name)}
-          </span>
+          </h1>
+          <AgentChips agent={agent} config={config} size="xs" />
         </nav>
         <AgentActions projectId={projectId} agent={agent} config={config} canWrite={canWrite} />
       </div>
-
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <h1 className="text-foreground text-2xl font-semibold tracking-tight text-balance">
-            {capitalizeWords(agent.name)}
-          </h1>
-          <AgentChips agent={agent} config={config} size="sm" />
-        </div>
-        {children}
-      </div>
+      {children}
     </header>
   );
 }
@@ -737,7 +754,6 @@ const EDITABLE_SECTIONS: readonly AgentConfigSectionKey[] = AGENT_CONFIG_SECTION
 const READ_ONLY_SECTIONS: readonly AgentConfigSectionKey[] = [
   'overview',
   'people',
-  'access',
   'triggers',
   'model',
 ];
@@ -754,12 +770,13 @@ function EditableAgentPage({
   initial: AgentConfigBlock;
 }) {
   const editor = useAgentDraft(initial);
-  const options = useAgentEditorOptions(projectId, initial);
+  const options = useAgentEditorOptions(projectId);
   const update = useUpdateAgentConfig(projectId, agent.name);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const skillsOptions = toArray(config.skills).map((skill) => ({
     id: skill.name,
     label: skill.name,
+    description: skill.description ?? undefined,
   }));
   const pathname = usePathname();
   const section = useAgentSection(EDITABLE_SECTIONS);
@@ -1190,11 +1207,12 @@ function ReadOnlyAgentPage({
               </InfoBanner>
             ) : null}
             {section === 'overview' ? (
-              source
+              <>
+                {source}
+                <AgentScope projectId={projectId} agentName={agent.name} scope={agent.scope} />
+              </>
             ) : section === 'people' ? (
               <AgentPeopleSection projectId={projectId} agentName={agent.name} />
-            ) : section === 'access' ? (
-              <AgentScope projectId={projectId} agentName={agent.name} scope={agent.scope} />
             ) : section === 'triggers' ? (
               <AgentTriggersSection
                 projectId={projectId}

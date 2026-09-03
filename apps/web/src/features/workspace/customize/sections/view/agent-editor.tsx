@@ -42,9 +42,10 @@
  * all/pick/none grant control in grant-mode-field.tsx.
  */
 
+import { Badge } from '@/components/ui/badge';
+import type { SandboxTemplate } from '@kortix/sdk';
 import {
   type AgentConfigBlock,
-  type AgentGrantSetV2,
   listConnectors,
   listProjectSandboxTemplates,
   listProjectSecrets,
@@ -53,9 +54,16 @@ import {
 import { contract, qk } from '@kortix/sdk/react';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
-import { AccessSection, WorkspaceSection } from './agent-editor-access-fields';
+import {
+  ConnectorsSection,
+  ProjectActionsSection,
+  SecretsSection,
+  SkillsSection,
+  WorkspaceSection,
+} from './agent-editor-access-fields';
 import { BasicsSection, ModelSection } from './agent-editor-basics-fields';
 import { EditorSectionStyleProvider } from './agent-editor-primitives';
+import type { GrantOption } from './grant-mode-field';
 import { ToolsSection } from './permission-editor';
 
 export {
@@ -167,21 +175,27 @@ export function useAgentDraft(initial: AgentConfigBlock): AgentDraft {
 }
 
 export interface AgentEditorOptions {
-  secretOptions: { id: string; label: string }[];
-  connectorOptions: { id: string; label: string }[];
-  sandboxOptions: { id: string; label: string }[];
+  secretOptions: GrantOption[];
+  connectorOptions: GrantOption[];
+  sandboxTemplates: SandboxTemplate[];
+  defaultSandboxSlug: string | null;
 }
 
+const CONNECTOR_STATUS_BADGE: Record<string, { label: string; variant: 'destructive' | 'muted' }> =
+  {
+    needs_auth: { label: 'Needs auth', variant: 'destructive' },
+    error: { label: 'Error', variant: 'destructive' },
+    disabled: { label: 'Disabled', variant: 'muted' },
+  };
+
 /**
- * The option lists behind the Access and Workspace pickers. `initial.sandbox`
- * is kept in the sandbox list even when the template no longer exists, so a
- * stale value shows as itself rather than snapping to "Project default" and
- * silently rewriting the manifest on the next save.
+ * The option lists behind the Access and Workspace pages. A stale sandbox pin
+ * (a slug the project no longer declares) is the Workspace page's concern —
+ * it shows the raw slug rather than snapping to "Project default".
  */
-export function useAgentEditorOptions(
-  projectId: string,
-  initial: Pick<AgentConfigBlock, 'sandbox'>,
-): AgentEditorOptions {
+const EMPTY_TEMPLATES: SandboxTemplate[] = [];
+
+export function useAgentEditorOptions(projectId: string): AgentEditorOptions {
   const secretsQuery = useQuery({
     queryKey: qk.project.secrets(projectId),
     queryFn: () => listProjectSecrets(projectId),
@@ -197,32 +211,48 @@ export function useAgentEditorOptions(
     queryFn: () => listProjectSandboxTemplates(projectId),
     ...contract('config'),
   });
-  const secretOptions = useMemo(
-    () =>
-      [...new Set((secretsQuery.data?.items ?? []).map((s) => s.identifier))]
-        .sort()
-        .map((identifier) => ({ id: identifier, label: identifier })),
-    [secretsQuery.data],
-  );
-  const connectorOptions = useMemo(
+  // One row per identifier: a secret with a shared value AND a personal
+  // override lists twice in the API, once per layer.
+  const secretOptions = useMemo<GrantOption[]>(() => {
+    const seen = new Map<string, GrantOption>();
+    for (const s of secretsQuery.data?.items ?? []) {
+      if (seen.has(s.identifier)) continue;
+      seen.set(s.identifier, {
+        id: s.identifier,
+        label: s.identifier,
+        description: s.purpose || (s.name !== s.identifier ? `Env var ${s.name}` : undefined),
+        trailing: s.system ? (
+          <Badge variant="muted" size="xs">
+            System
+          </Badge>
+        ) : undefined,
+      });
+    }
+    return [...seen.values()].sort((a, b) => a.id.localeCompare(b.id));
+  }, [secretsQuery.data]);
+  const connectorOptions = useMemo<GrantOption[]>(
     () =>
       (connectorsQuery.data?.connectors ?? [])
-        .map((c) => ({ id: c.slug, label: c.name || c.slug }))
+        .map((c) => {
+          const status = CONNECTOR_STATUS_BADGE[c.status];
+          return {
+            id: c.slug,
+            label: c.name || c.slug,
+            description: c.slug,
+            trailing: status ? (
+              <Badge variant={status.variant} size="xs">
+                {status.label}
+              </Badge>
+            ) : undefined,
+          };
+        })
         .sort((a, b) => a.label.localeCompare(b.label)),
     [connectorsQuery.data],
   );
-  const sandboxOptions = useMemo(() => {
-    const options = new Map<string, string>([['default', 'Platform default']]);
-    for (const template of sandboxesQuery.data?.items ?? []) {
-      options.set(template.slug, template.is_default ? 'Platform default' : template.name);
-    }
-    if (initial.sandbox && !options.has(initial.sandbox)) {
-      options.set(initial.sandbox, initial.sandbox);
-    }
-    return [...options].map(([id, label]) => ({ id, label }));
-  }, [initial.sandbox, sandboxesQuery.data]);
+  const sandboxTemplates = sandboxesQuery.data?.items ?? EMPTY_TEMPLATES;
+  const defaultSandboxSlug = sandboxesQuery.data?.default_slug ?? null;
 
-  return { secretOptions, connectorOptions, sandboxOptions };
+  return { secretOptions, connectorOptions, sandboxTemplates, defaultSandboxSlug };
 }
 
 /**
@@ -238,26 +268,32 @@ export function useAgentEditorOptions(
  * housekeeping switches. `children` slots page-owned sections (triggers,
  * people) into the same stack so the column reads as one list.
  */
+/** The rail's group headings, in order. */
+export const AGENT_CONFIG_SECTION_GROUPS = ['General', 'Access', 'Runtime'] as const;
+export type AgentConfigSectionGroup = (typeof AGENT_CONFIG_SECTION_GROUPS)[number];
+
 /**
- * The pane's tabs, in order. Access leads: which skills, connectors and
- * secrets an agent may reach — and who may reach the agent — is the decision
- * Customize exists for (Marko, 2026-09-02); the model and the sampling knobs
- * are set once and rarely revisited, so they sit further down.
+ * The page's topics, in rail order, each under a group heading.
+ *
+ * General is the agent itself and who runs it: overview, identity, people,
+ * triggers. Access is one topic per grant set — skills, connectors, secrets,
+ * project actions — each its own page (Marko, 2026-09-03: "split up ACCESS
+ * … into its own standalone menu items on the left & we can have nicer UX/UI
+ * for each"). Runtime is what a session runs on: model, tools, workspace.
  */
 export const AGENT_CONFIG_SECTIONS = [
-  // Overview is the agent itself — description and instructions. Then People:
-  // granting an agent to a person or a group IS the access path in Kortix
-  // (Marko, 2026-09-03), so who may use it comes right after, and what it may
-  // reach — which those people inherit — follows.
-  { key: 'overview', label: 'Overview' },
-  { key: 'people', label: 'People' },
-  { key: 'access', label: 'Access' },
-  { key: 'triggers', label: 'Triggers' },
-  { key: 'model', label: 'Model' },
-  { key: 'workspace', label: 'Workspace' },
-  { key: 'tools', label: 'Tools' },
-  { key: 'basics', label: 'Basics' },
-] as const;
+  { key: 'overview', label: 'Overview', group: 'General' },
+  { key: 'basics', label: 'Basics', group: 'General' },
+  { key: 'people', label: 'People', group: 'General' },
+  { key: 'triggers', label: 'Triggers', group: 'General' },
+  { key: 'skills', label: 'Skills', group: 'Access' },
+  { key: 'connectors', label: 'Connectors', group: 'Access' },
+  { key: 'secrets', label: 'Secrets', group: 'Access' },
+  { key: 'actions', label: 'Project actions', group: 'Access' },
+  { key: 'model', label: 'Model', group: 'Runtime' },
+  { key: 'tools', label: 'Tools', group: 'Runtime' },
+  { key: 'workspace', label: 'Workspace', group: 'Runtime' },
+] as const satisfies readonly { key: string; label: string; group: AgentConfigSectionGroup }[];
 
 export type AgentConfigSectionKey = (typeof AGENT_CONFIG_SECTIONS)[number]['key'];
 
@@ -289,7 +325,7 @@ export function AgentConfigSections({
   section: AgentConfigSectionKey;
   editor: AgentDraft;
   options: AgentEditorOptions;
-  skillsOptions: { id: string; label: string }[];
+  skillsOptions: GrantOption[];
   /** Description + instructions — a page-owned section, the Overview tab. */
   overview?: React.ReactNode;
   /** The agent's triggers — a page-owned section, the Triggers tab. */
@@ -306,22 +342,27 @@ export function AgentConfigSections({
         return <>{overview}</>;
       case 'people':
         return <>{people}</>;
-      case 'access':
-        return (
-          <AccessSection
-            draft={draft}
-            set={set}
-            skillsOptions={skillsOptions}
-            connectorOptions={options.connectorOptions}
-            secretOptions={options.secretOptions}
-          />
-        );
+      case 'skills':
+        return <SkillsSection draft={draft} set={set} options={skillsOptions} />;
+      case 'connectors':
+        return <ConnectorsSection draft={draft} set={set} options={options.connectorOptions} />;
+      case 'secrets':
+        return <SecretsSection draft={draft} set={set} options={options.secretOptions} />;
+      case 'actions':
+        return <ProjectActionsSection draft={draft} set={set} />;
       case 'triggers':
         return <>{triggers}</>;
       case 'model':
         return <ModelSection oc={oc} setOc={setOc} showPrompt={false} />;
       case 'workspace':
-        return <WorkspaceSection draft={draft} set={set} sandboxOptions={options.sandboxOptions} />;
+        return (
+          <WorkspaceSection
+            draft={draft}
+            set={set}
+            sandboxTemplates={options.sandboxTemplates}
+            defaultSandboxSlug={options.defaultSandboxSlug}
+          />
+        );
       case 'tools':
         return (
           <ToolsSection permission={oc.permission} onChange={(next) => setOc('permission', next)} />
@@ -339,13 +380,4 @@ export function AgentConfigSections({
   );
 }
 
-/** Summarize a grant set — "All", "None", "3 picked" — for compact cards. */
-export function grantSummary(v: AgentGrantSetV2 | undefined): {
-  label: string;
-  tone: 'muted' | 'outline';
-} {
-  if (v === 'all') return { label: 'All', tone: 'outline' };
-  if (v === undefined || v === 'none' || (Array.isArray(v) && v.length === 0))
-    return { label: 'None', tone: 'muted' };
-  return { label: `${(v as string[]).length} picked`, tone: 'outline' };
-}
+export { grantSummary } from './grant-mode-field';

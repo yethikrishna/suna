@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 /**
  * Creating a trigger — a schedule or a webhook.
  *
@@ -122,6 +123,7 @@ export function ScheduleCreateModal({
   onOpenChange: (open: boolean) => void;
   onCreated: (slug: string) => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const [kind, setKind] = useState<TriggerKind | null>(null);
   const copy = kind ? KIND_COPY[kind] : null;
   const isCron = kind === 'cron';
@@ -336,13 +338,13 @@ export function ScheduleCreateModal({
               <TypeCard
                 icon={TimerIcon}
                 title="Scheduled"
-                description="Runs automatically on a repeating schedule, or once at a set time."
+                description={tI18nComplete.raw('textfd7761663e4f')}
                 onClick={() => chooseKind('cron')}
               />
               <TypeCard
                 icon={WebhooksLogoIcon}
                 title="Webhook"
-                description="Starts when another app sends a request to a private address."
+                description={tI18nComplete.raw('textf1b28a589920')}
                 onClick={() => chooseKind('webhook')}
               />
             </div>
@@ -352,26 +354,23 @@ export function ScheduleCreateModal({
                 <Input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Daily standup digest"
+                  placeholder={tI18nComplete.raw('textc8cf587a3b6c')}
                   maxLength={64}
                   autoFocus
                 />
               </Field>
 
-              <Field
-                label="Instruction"
-                hint="Sent to the agent every time this runs, as if you had typed it."
-              >
+              <Field label="Instruction" hint={tI18nComplete.raw('text03956d4b33dc')}>
                 <Textarea
                   value={instruction}
                   onChange={(e) => setInstruction(e.target.value)}
-                  placeholder="Write today's status report and save it to /workspace/reports/"
+                  placeholder={tI18nComplete.raw('text2438ee64fbf9')}
                   rows={5}
                   className="leading-relaxed"
                 />
               </Field>
 
-              <Field label="Agent" hint="Which agent handles each run.">
+              <Field label="Agent" hint={tI18nComplete.raw('text1b7bdab96532')}>
                 {/* Same shape as the detail sheet: a full-width rounded-md
                     panel, not the chat composer pill these selectors ship
                     with. The control must not look different depending on
@@ -385,13 +384,13 @@ export function ScheduleCreateModal({
                 </div>
               </Field>
 
-              <Field label="Model" hint="Leave this alone to use the agent's usual model.">
+              <Field label="Model" hint={tI18nComplete.raw('text0593f4f7c4ed')}>
                 <div className="bg-popover flex w-full items-center rounded-md border px-2 py-1.5">
                   <ModelSelector
                     models={models}
                     providers={providers}
                     selectedModel={model}
-                    unsetLabel="Agent's usual model"
+                    unsetLabel={tI18nComplete.raw('text57069bbd0d2e')}
                     onSelect={setModel}
                   />
                 </div>
@@ -400,7 +399,7 @@ export function ScheduleCreateModal({
           ) : (
             <>
               {isCron ? (
-                <Field label="When it runs">
+                <Field label={tI18nComplete.raw('text1bd739e67b5e')}>
                   <ScheduleBuilder
                     value={cron}
                     onChange={setCron}
@@ -412,14 +411,14 @@ export function ScheduleCreateModal({
                 </Field>
               ) : (
                 <Field
-                  label="Signing key"
-                  hint="Both sides sign each request with this, so nobody else can start your agent."
+                  label={tI18nComplete.raw('text49395b9594c2')}
+                  hint={tI18nComplete.raw('textcbdd5dc3da21')}
                 >
                   <div className="flex gap-2">
                     <Input
                       value={signingKey}
                       onChange={(e) => setSigningKey(e.target.value)}
-                      placeholder="Paste or generate a key"
+                      placeholder={tI18nComplete.raw('text74414cb4f277')}
                       className="font-mono text-sm"
                     />
                     <Button
@@ -430,12 +429,11 @@ export function ScheduleCreateModal({
                       onClick={() => setSigningKey(generateSigningKey())}
                     >
                       <ArrowsClockwiseIcon className="size-3.5 shrink-0" />
-                      Generate
+                      {tI18nComplete.raw('text49e49bb4401e')}
                     </Button>
                   </div>
                   <InfoBanner tone="info" className="text-xs">
-                    We save this as a project secret and give you the web address once the webhook
-                    exists.
+                    {tI18nComplete.raw('textc22e9b2269f5')}
                   </InfoBanner>
                 </Field>
               )}
@@ -447,15 +445,15 @@ export function ScheduleCreateModal({
                     size="sm"
                     className="text-muted-foreground -mx-2 w-[calc(100%+1rem)] justify-between px-2"
                   >
-                    Advanced
+                    {tI18nComplete.raw('text9f088dbebd6c')}
                     <CaretDownIcon className="size-3.5 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
                   </Button>
                 </DisclosureTrigger>
                 <DisclosureContent>
                   <div className="space-y-6 pt-4">
                     <Field
-                      label="Memory between runs"
-                      hint="Whether the agent picks up where it left off, or starts clean."
+                      label={tI18nComplete.raw('text345e6cf10469')}
+                      hint={tI18nComplete.raw('text319d909352ff')}
                     >
                       <RunLocationFields
                         mode={mode}
@@ -474,8 +472,8 @@ export function ScheduleCreateModal({
                     </Field>
 
                     <Field
-                      label="Session access"
-                      hint="Pinned sessions keep their own sharing settings. This policy applies when the trigger creates a session."
+                      label={tI18nComplete.raw('textbc9424d3f527')}
+                      hint={tI18nComplete.raw('text8493c3761028')}
                     >
                       <SharingPicker
                         projectId={projectId}
@@ -503,15 +501,15 @@ export function ScheduleCreateModal({
                     {!isCron && (
                       <>
                         <Field
-                          label="Only run when"
-                          hint="Ignore requests you don't care about. Leave empty to run on all of them."
+                          label={tI18nComplete.raw('text94c7226773af')}
+                          hint={tI18nComplete.raw('text8e47e838d897')}
                         >
                           <ConditionsEditor rows={conditions} onChange={setConditions} />
                         </Field>
 
                         <Field
-                          label="Name the saved secret"
-                          hint="The key above is saved under this name in Secrets. Built from the name if you leave this blank."
+                          label={tI18nComplete.raw('text301cd463a175')}
+                          hint={tI18nComplete.raw('text432020e4f157')}
                         >
                           <Input
                             value={secretName}
@@ -524,7 +522,7 @@ export function ScheduleCreateModal({
                     )}
 
                     <Field
-                      label="Custom ID"
+                      label={tI18nComplete.raw('text7396f100afdf')}
                       hint={
                         isCron
                           ? "Built from the name if you leave this blank. It can't be changed later."
@@ -541,8 +539,8 @@ export function ScheduleCreateModal({
                     </Field>
 
                     <Field
-                      label="Start it right away"
-                      hint="Turn this off to create it paused and look it over first."
+                      label={tI18nComplete.raw('textd90c143bf007')}
+                      hint={tI18nComplete.raw('textbed03adbb73f')}
                     >
                       <div className="bg-card flex items-center justify-between gap-3 rounded-md border px-3 py-2.5">
                         <Label htmlFor="schedule-start-active" className="text-sm font-normal">
@@ -572,23 +570,23 @@ export function ScheduleCreateModal({
           {step === 'how' ? (
             <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setStep('what')}>
               <ArrowLeftIcon className="size-4 shrink-0" />
-              Back
+              {tI18nComplete.raw('text76900f1bfd16')}
             </Button>
           ) : step === 'what' ? (
             <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setStep('type')}>
               <ArrowLeftIcon className="size-4 shrink-0" />
-              Back
+              {tI18nComplete.raw('text76900f1bfd16')}
             </Button>
           ) : (
             <span />
           )}
           <div className="flex items-center gap-2">
             <Button variant="outline-ghost" size="sm" onClick={() => onOpenChange(false)}>
-              Cancel
+              {tI18nComplete.raw('text19766ed6ccb2')}
             </Button>
             {step === 'type' ? null : step === 'what' ? (
               <Button size="sm" className="gap-1.5" onClick={goForward}>
-                Continue
+                {tI18nComplete.raw('text31fbef162594')}
                 <ArrowRightIcon className="size-4 shrink-0" />
               </Button>
             ) : (

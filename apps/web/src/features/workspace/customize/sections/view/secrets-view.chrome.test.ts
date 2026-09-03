@@ -48,9 +48,7 @@ describe('SecretsView page chrome', () => {
    * restate the title.
    */
   test('the heading explains what a secret is and how it reaches a session', () => {
-    const description = shellHeader.match(/description="([^"]+)"/)?.[1] ?? '';
-    expect(description.length).toBeGreaterThan(80);
-    expect(description).toContain('environment variable');
+    expect(shellHeader).toContain("raw('i18nComplete.texteca47e3afa10')");
   });
 
   test('search and the Add action are the shell’s slots, not inline', () => {
@@ -79,10 +77,12 @@ describe('SecretsView page chrome', () => {
    * presentation table: a legend restated in JSX drifts from the badge.
    */
   test('the Access legend is the filters row, and reads the shared table', () => {
-    expect(shellHeader).toContain('filters={<SecretsAccessExplainer showEnforced={showEnforced} />}');
+    expect(shellHeader).toContain(
+      'filters={<SecretsAccessExplainer showEnforced={showEnforced} />}',
+    );
     expect(shellChildren).not.toContain('<SecretsAccessExplainer');
     expect(code).toContain('secretDeliveryLegend(showEnforced)');
-    expect(code).toContain('What each Access value means');
+    expect(code).toContain("raw('text0d8c9f89b826')");
     expect(code).toContain('<Collapsible open={open} onOpenChange={setOpen}');
     expect(code).toContain('<CollapsibleTrigger');
     expect(code).toContain('<CollapsibleContent>');

@@ -50,7 +50,6 @@ function SlashRowIcon({
   heading: string;
   className?: string;
 }) {
-  const t = useTranslations('sessionUi.composerMenus');
   // Per-extension, not one generic file glyph: the palette's file rows are the
   // same files the Outputs and Context cards draw, and those cards use this
   // exact helper (`outputs-card.tsx`, `mention-menu.tsx`). A `.pdf` that looks
@@ -145,6 +144,7 @@ export function SlashMenu({
   onSelect: (row: SlashRow) => void;
   onHover?: (row: SlashRow) => void;
 }) {
+  const t = useTranslations('sessionUi.composerMenus');
   // A query that matches nothing keeps the card, with one dead row saying so.
   // Returning `null` made the palette DISAPPEAR mid-word — the user could not
   // tell "no match" from "the menu closed", and one backspace brought it back

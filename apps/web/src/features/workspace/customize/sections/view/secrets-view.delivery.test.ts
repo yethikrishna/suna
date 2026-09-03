@@ -113,11 +113,15 @@ describe('SecretsView lets the system classify a new secret', () => {
     expect(code).toContain(
       'const classification = useMemo(() => classifyNewSecret({ key, value }), [key, value]);',
     );
-    expect(code).toContain('const exposure = pickedExposure ?? defaultSecretExposure(row, classification);');
+    expect(code).toContain(
+      'const exposure = pickedExposure ?? defaultSecretExposure(row, classification);',
+    );
   });
 
   test('an explicit pick latches and is never overwritten by the next keystroke', () => {
-    expect(code).toContain('const [pickedExposure, setPickedExposure] = useState<SecretExposure | null>(null);');
+    expect(code).toContain(
+      'const [pickedExposure, setPickedExposure] = useState<SecretExposure | null>(null);',
+    );
     expect(code).toContain('onValueChange={(next) => setPickedExposure(next as SecretExposure)}');
   });
 
@@ -145,7 +149,7 @@ describe('SecretsView warns when no agent can receive the secret', () => {
     expect(code).toContain(
       'shouldWarnMissingAgentGrant(row.deliveryBlockedReason, row.strategy, row.consumer) && (',
     );
-    expect(code).toContain('>No agent grant</span>');
+    expect(code).toContain("raw('i18nComplete.text6404e0b5d78d')");
   });
 
   test('the dialog renders the notice and the kortix.yaml fix', () => {

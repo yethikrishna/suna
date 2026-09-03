@@ -353,13 +353,13 @@ describe('identity page progressive disclosure', () => {
     expect(cardSource).toContain('Service provider values');
     expect(cardSource).toContain('DisclosureTrigger');
     // Not-connected leads with a call-to-action, not a wall of URLs.
-    expect(cardSource).toContain('Not connected yet');
+    expect(cardSource).toContain("raw('text898569356612')");
     // Group mappings collapse too, with a count chip in the trigger.
     expect(cardSource).toContain('{mappings.length}');
   });
 
   test('the SCIM card leads with a status chip and collapses setup values + tokens', () => {
-    expect(scimCardSource).toContain('Setup values');
+    expect(scimCardSource).toContain("raw('text59a5ff1b6b64')");
     expect(scimCardSource).toContain('DisclosureTrigger');
     // Amber only for the one genuinely wrong state: minted but never called.
     expect(scimCardSource).toContain('waiting for IdP');
@@ -395,7 +395,7 @@ describe('SCIM start-sync guides', () => {
   });
 
   test('the SCIM card renders the cheat sheet with deep links into each guide', () => {
-    expect(scimCardSource).toContain('Start automatic sync in your IdP');
+    expect(scimCardSource).toContain("raw('textc8f3dd364de4')");
     expect(scimCardSource).toContain('startSyncHint');
     expect(scimCardSource).toContain('scim-setup?provider=');
   });
@@ -417,14 +417,12 @@ describe('SCIM scope trade-off copy (live confusion: "why only assigned?")', () 
 
 describe('domain field explains its consequence in the guided wizard (live incident)', () => {
   test('states that every sign-in from the domain routes to the IdP instead of password login', () => {
-    expect(flatWizardSource).toContain(
-      'Every sign-in from this domain is routed to this identity provider instead of password login',
-    );
+    expect(flatWizardSource).toContain("raw('texte6c1f062119d')");
   });
 
   test("warns when the entered domain matches the current admin's own email domain", () => {
     expect(wizardSource).toContain('adminEmailDomain');
-    expect(flatWizardSource).toContain('this will route YOUR next sign-in to the IdP');
+    expect(flatWizardSource).toContain("raw('textcd93ff59e7c2')");
   });
 });
 
@@ -502,11 +500,11 @@ describe('setup polish stays fixed', () => {
 
   test('a returning admin with a prior token gets an explanation + a skip', () => {
     expect(wizardSource).toContain('listScimTokens');
-    expect(wizardSource).toContain('Continue without minting');
+    expect(wizardSource).toContain("raw('texte80f2760aa78')");
   });
 
   test('the already-connected import state is not a dead end', () => {
-    expect(wizardSource).toContain('Continue to testing');
+    expect(wizardSource).toContain("raw('textc75bd371076e')");
   });
 
   test('the Free-tier group-claim path restates the memberOf rename', () => {
@@ -601,7 +599,7 @@ describe('change-provider guard', () => {
   test('Change provider confirms and clears in-progress state', () => {
     expect(wizardSource).toContain("setConfirmAction('change')");
     expect(wizardSource).toContain('Change provider?');
-    expect(wizardSource).toContain('only one identity provider per account');
+    expect(wizardSource).toContain("raw('textfb77a2e0d116')");
     // the confirm actually resets the current provider's progress + stash + token
     expect(wizardSource).toContain('clearCurrentProgress');
     expect(flatWizardSource).toContain('window.localStorage.removeItem(metadataStashKey(');

@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 // Guided identity setup — Vercel-style wizards for SAML SSO and Directory
 // Sync (SCIM). Screen 1 picks the identity provider; screen 2 walks the
 // provider-specific steps (guides.ts) with a vertical stepper, copyable
@@ -27,14 +28,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import {
-  type ReactNode,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 import { EnterpriseUpsell } from '@/components/iam/enterprise-upsell';
 import { Badge } from '@/components/ui/badge';
@@ -262,6 +256,7 @@ function StepFigure({
   alt: string;
   schematic?: StepSchematic;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const [missing, setMissing] = useState(false);
   return (
     <figure className="space-y-1">
@@ -270,7 +265,7 @@ function StepFigure({
           <SchematicPanel schematic={schematic} />
         ) : (
           <div className="border-border/60 bg-muted/30 text-muted-foreground flex aspect-video w-full flex-col items-center justify-center gap-1 rounded-md border border-dashed px-4 text-center text-xs">
-            <span className="font-medium">Screenshot coming</span>
+            <span className="font-medium">{tI18nComplete.raw('textefff9994c52b')}</span>
             <span className="text-muted-foreground/80">{alt}</span>
           </div>
         )
@@ -317,11 +312,12 @@ function ClaimsTable({
 }: {
   rows: Array<{ name: string; source: string; required?: boolean }>;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
     <div className="border-border/60 bg-popover overflow-hidden rounded-md border">
       <div className="border-border/40 text-muted-foreground grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b px-4 py-2 text-xs font-medium">
-        <span>Name</span>
-        <span>Source attribute</span>
+        <span>{tI18nComplete.raw('textdcd1d5223f73')}</span>
+        <span>{tI18nComplete.raw('text20f25bdb24b4')}</span>
       </div>
       <ul className="divide-border/40 divide-y">
         {rows.map((row) => (
@@ -333,7 +329,7 @@ function ClaimsTable({
               <code className="text-foreground truncate font-mono text-xs">{row.name}</code>
               {row.required && (
                 <Badge variant="outline" size="xs" className="shrink-0">
-                  Required
+                  {tI18nComplete.raw('text4850b174b713')}
                 </Badge>
               )}
               <Button
@@ -386,6 +382,7 @@ function SpValueRows({
   acsFirst?: boolean;
   includeSignOnUrl?: boolean;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   // The SP-initiated sign-in page is this app's own origin — the exact value
   // we set live ({origin}/auth), computed instead of described. Read through
   // useSyncExternalStore (same pattern as use-deployment-cli-install-command)
@@ -399,7 +396,9 @@ function SpValueRows({
     <div className="border-border/60 bg-popover space-y-3 rounded-md border p-4">
       {acsFirst ? acsRow : entityRow}
       {acsFirst ? entityRow : acsRow}
-      {includeSignOnUrl && signOnUrl && <CopyRow label="Sign on URL" value={signOnUrl} />}
+      {includeSignOnUrl && signOnUrl && (
+        <CopyRow label={tI18nComplete.raw('text8a0b88c0ea43')} value={signOnUrl} />
+      )}
     </div>
   );
 }
@@ -417,6 +416,7 @@ function ProviderSelect({
   ssoConnected: boolean;
   onPick: (id: string) => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const [query, setQuery] = useState('');
   const all = flow === 'sso' ? PROVIDER_GUIDES : SCIM_PROVIDER_GUIDES;
   const guides = useMemo(() => {
@@ -437,15 +437,16 @@ function ProviderSelect({
         <div className="mt-6">
           <InfoBanner
             tone="info"
-            title="Set up SAML SSO first"
+            title={tI18nComplete.raw('text65716e73a7c3')}
             action={
               <Button asChild variant="outline" size="sm">
-                <Link href={`/accounts/${accountId}/sso-setup`}>Set up SSO</Link>
+                <Link href={`/accounts/${accountId}/sso-setup`}>
+                  {tI18nComplete.raw('text8bf926d1ef32')}
+                </Link>
               </Button>
             }
           >
-            Directory Sync provisions accounts, but without SSO those users have no way to sign in.
-            Connecting SAML first is strongly recommended.
+            {tI18nComplete.raw('text88f8c1416b7d')}
           </InfoBanner>
         </div>
       )}
@@ -455,7 +456,7 @@ function ProviderSelect({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Find your provider"
+            placeholder={tI18nComplete.raw('texta39dcc7acc78')}
             className="h-12 rounded-none border-0 pl-11 shadow-none focus-visible:ring-0"
           />
         </div>
@@ -484,7 +485,7 @@ function ProviderSelect({
         ))}
         {guides.length === 0 && (
           <p className="text-muted-foreground px-5 py-6 text-sm">
-            No match — pick the Custom option for any standards-based provider.
+            {tI18nComplete.raw('text1f97b1d85d84')}
           </p>
         )}
       </div>
@@ -507,6 +508,7 @@ function MetadataInputStep({
   doneLabel: string;
   onDone: () => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const [mode, setMode] = useState<'url' | 'xml'>(config.preferredMetadata ?? 'url');
   const [url, setUrl] = useState('');
   const [xml, setXml] = useState('');
@@ -584,7 +586,7 @@ function MetadataInputStep({
               setXml(e.target.value);
               persist('xml', e.target.value);
             }}
-            placeholder="<EntityDescriptor …>…</EntityDescriptor>"
+            placeholder={tI18nComplete.raw('textb76700893c7c')}
             rows={5}
             className="border-border bg-background focus-visible:ring-ring w-full resize-y rounded-md border px-3 py-2 font-mono text-xs outline-none focus-visible:ring-1"
           />
@@ -613,7 +615,7 @@ function MetadataInputStep({
           disabled={!ready}
           className="shrink-0 gap-1.5"
         >
-          Continue
+          {tI18nComplete.raw('text31fbef162594')}
           <ArrowRight className="size-3.5 shrink-0" />
         </Button>
       </div>
@@ -638,6 +640,7 @@ function ImportForm({
   alreadyConnected: boolean;
   onDone: () => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const queryClient = useQueryClient();
   const { user } = useAuth();
   // The current admin's own email domain — if they route it to the IdP and
@@ -696,12 +699,11 @@ function ImportForm({
   if (alreadyConnected) {
     return (
       <div className="space-y-3">
-        <InfoBanner tone="info" title="Already connected">
-          This account already has an SSO provider. Manage it from the SAML SSO card in account
-          settings — remove it there first to run a fresh import.
+        <InfoBanner tone="info" title={tI18nComplete.raw('textbe03b81f11cb')}>
+          {tI18nComplete.raw('text053d2dc26869')}
         </InfoBanner>
         <Button onClick={onDone} className="gap-1.5">
-          Continue to testing
+          {tI18nComplete.raw('textc75bd371076e')}
           <ArrowRight className="size-3.5 shrink-0" />
         </Button>
       </div>
@@ -712,7 +714,7 @@ function ImportForm({
     <div className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label>Display name</Label>
+          <Label>{tI18nComplete.raw('text2b7f6a84de91')}</Label>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -720,29 +722,22 @@ function ImportForm({
           />
         </div>
         <div className="space-y-1.5">
-          <Label>Primary email domain</Label>
+          <Label>{tI18nComplete.raw('text196f5a9a744a')}</Label>
           <Input
             value={domain}
             onChange={(e) => setDomain(e.target.value)}
             placeholder="acme.com"
             disabled={mutation.isPending}
           />
-          <p className="text-muted-foreground text-xs">
-            Every sign-in from this domain is routed to this identity provider instead of password
-            login — only add a domain your IdP actually controls. Users on other domains are
-            unaffected.
-          </p>
+          <p className="text-muted-foreground text-xs">{tI18nComplete.raw('texte6c1f062119d')}</p>
           {adminEmailDomain && domain.trim().toLowerCase() === adminEmailDomain && (
-            <p className="text-kortix-yellow text-xs">
-              This is your own email domain — saving this will route YOUR next sign-in to the IdP
-              too. Make sure your account exists there before you continue.
-            </p>
+            <p className="text-kortix-yellow text-xs">{tI18nComplete.raw('textcd93ff59e7c2')}</p>
           )}
         </div>
       </div>
 
       <div className="space-y-1.5">
-        <Label>Group claim name</Label>
+        <Label>{tI18nComplete.raw('texte75adb62c8c7')}</Label>
         <Input
           value={claim}
           onChange={(e) => setClaim(e.target.value)}
@@ -756,7 +751,7 @@ function ImportForm({
 
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
-          <Label htmlFor="entra-federation-metadata">Federation metadata</Label>
+          <Label htmlFor="entra-federation-metadata">{tI18nComplete.raw('text57daca724d75')}</Label>
           <div className="border-border/70 inline-flex overflow-hidden rounded-md border">
             {(
               [
@@ -794,7 +789,7 @@ function ImportForm({
             id="entra-federation-metadata"
             value={metaXml}
             onChange={(e) => setMetaXml(e.target.value)}
-            placeholder="<EntityDescriptor …>…</EntityDescriptor>"
+            placeholder={tI18nComplete.raw('textb76700893c7c')}
             disabled={mutation.isPending}
             rows={5}
             className="border-border bg-background focus-visible:ring-ring w-full resize-y rounded-md border px-3 py-2 font-mono text-xs outline-none focus-visible:ring-1"
@@ -811,9 +806,9 @@ function ImportForm({
           disabled={mutation.isPending}
         />
         <span>
-          <span className="font-medium">Auto-create members</span>
+          <span className="font-medium">{tI18nComplete.raw('text33e17e895ebc')}</span>
           <span className="text-muted-foreground block text-xs">
-            Anyone who signs in via SSO from your domain becomes a member automatically.
+            {tI18nComplete.raw('textbce8671d3706')}
           </span>
         </span>
       </label>
@@ -826,9 +821,9 @@ function ImportForm({
           disabled={mutation.isPending}
         />
         <span>
-          <span className="font-medium">Auto-provision groups</span>
+          <span className="font-medium">{tI18nComplete.raw('text459ff8f45278')}</span>
           <span className="text-muted-foreground block text-xs">
-            Create a Kortix group for every group your IdP sends — no per-group mapping.
+            {tI18nComplete.raw('textb9acc1017895')}
           </span>
         </span>
       </label>
@@ -839,7 +834,7 @@ function ImportForm({
         className="gap-1.5"
       >
         {mutation.isPending ? <Loading className="size-4 shrink-0" /> : null}
-        Connect provider
+        {tI18nComplete.raw('texte1ad3eb2a000')}
       </Button>
     </div>
   );
@@ -929,6 +924,7 @@ function ScimTokenStep({
   connectContent?: StepBlock[];
   spUrls: SamlSpUrls | null;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const [name, setName] = useState(`${providerName} provisioning`);
 
   // Resume case: a token was minted on a previous visit, so its secret is gone
@@ -960,19 +956,17 @@ function ScimTokenStep({
   return (
     <div className="space-y-4">
       <div className="border-border/60 bg-popover space-y-3 rounded-md border p-4">
-        <CopyRow label="Tenant URL" value={tenantUrl} />
-        <p className="text-muted-foreground text-xs">
-          Your identity provider appends /Users and /Groups to this URL.
-        </p>
+        <CopyRow label={tI18nComplete.raw('text097fe0b10cc3')} value={tenantUrl} />
+        <p className="text-muted-foreground text-xs">{tI18nComplete.raw('text4755e88f3955')}</p>
       </div>
 
       {minted ? (
         <div className="border-border/60 bg-popover space-y-3 rounded-md border p-4">
-          <CopyRow label="Secret token" value={minted.secret} />
+          <CopyRow label={tI18nComplete.raw('textd1598dde2f63')} value={minted.secret} />
           <p className="text-muted-foreground text-xs">
-            The secret is only ever shown during this visit; if you leave and come back later only
-            the prefix ({minted.public_prefix}) is visible, and you'd mint a new token from the SCIM
-            card in Settings.
+            {tI18nComplete.raw('texta5d97cacb6f4')}
+            {minted.public_prefix}
+            {tI18nComplete.raw('textd3062e403163')}
           </p>
         </div>
       ) : null}
@@ -980,16 +974,15 @@ function ScimTokenStep({
       {!minted && (
         <div className="space-y-3">
           {priorTokens.length > 0 && (
-            <InfoBanner tone="info" title="You minted a token on a previous visit">
-              Its secret ({priorTokens[0].public_prefix}…) was only shown at mint time. If it's
-              already pasted into your IdP and every IdP-side step below is done, you can continue
-              without minting. If anything is unfinished, mint a fresh token, update the IdP with
-              it, then revoke the old one from the SCIM card in account settings.
+            <InfoBanner tone="info" title={tI18nComplete.raw('textcbe414dc8d0f')}>
+              {tI18nComplete.raw('text3bac8a95f83a')}
+              {priorTokens[0].public_prefix}
+              {tI18nComplete.raw('textc41427dae9e4')}
             </InfoBanner>
           )}
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-56 space-y-1.5">
-              <Label>Token name</Label>
+              <Label>{tI18nComplete.raw('text2e4186244bbd')}</Label>
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -1006,7 +999,7 @@ function ScimTokenStep({
               ) : (
                 <KeyRound className="size-3.5 shrink-0" />
               )}
-              Mint token
+              {tI18nComplete.raw('text4f4003ab9539')}
             </Button>
           </div>
         </div>
@@ -1016,7 +1009,7 @@ function ScimTokenStep({
         <div className="space-y-4">
           <div className="border-border/60 border-t pt-4">
             <h4 className="text-foreground text-sm font-semibold">
-              Now paste these into {providerName}
+              {tI18nComplete.raw('textf3d75361a203')} {providerName}
             </h4>
             <p className="text-muted-foreground mt-1 text-xs">
               {minted
@@ -1027,12 +1020,12 @@ function ScimTokenStep({
           <StepBlocks blocks={connectContent} spUrls={spUrls} />
           {minted ? (
             <Button onClick={onDone}>
-              Continue
+              {tI18nComplete.raw('text31fbef162594')}
               <ArrowRight className="ml-1.5 size-3.5 shrink-0" />
             </Button>
           ) : (
             <Button variant="outline" onClick={onDone}>
-              Continue without minting
+              {tI18nComplete.raw('texte80f2760aa78')}
               <ArrowRight className="ml-1.5 size-3.5 shrink-0" />
             </Button>
           )}
@@ -1041,7 +1034,7 @@ function ScimTokenStep({
 
       {minted && (!connectContent || connectContent.length === 0) && (
         <Button onClick={onDone}>
-          Continue
+          {tI18nComplete.raw('text31fbef162594')}
           <ArrowRight className="ml-1.5 size-3.5 shrink-0" />
         </Button>
       )}
@@ -1065,19 +1058,18 @@ function ScimValuesPanel({
   tenantUrl: string;
   minted: CreatedScimToken | null;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
     <div className="border-border/70 bg-popover space-y-3 rounded-md border p-4">
-      <p className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium tracking-wide uppercase">
+      <p className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium">
         <KeyRound className="size-3.5 shrink-0" />
-        Your values — keep this open while you configure your identity provider
+        {tI18nComplete.raw('textc09407a43df3')}
       </p>
-      <CopyRow label="Tenant URL" value={tenantUrl} />
+      <CopyRow label={tI18nComplete.raw('text097fe0b10cc3')} value={tenantUrl} />
       {minted ? (
-        <CopyRow label="Secret token" value={minted.secret} />
+        <CopyRow label={tI18nComplete.raw('textd1598dde2f63')} value={minted.secret} />
       ) : (
-        <p className="text-muted-foreground text-xs">
-          Secret token not minted yet — go back to "Mint a SCIM token" to create it.
-        </p>
+        <p className="text-muted-foreground text-xs">{tI18nComplete.raw('textef44f52c8b32')}</p>
       )}
     </div>
   );
@@ -1110,6 +1102,7 @@ function SsoTestStatusPanel({
    *  re-seeded from the query cache that already contains the arrival. */
   baselineRef: React.MutableRefObject<Set<string> | null>;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const membersQuery = useQuery({
     queryKey: ['sso-verify-members', accountId],
     queryFn: () => listAccountMembers(accountId),
@@ -1131,20 +1124,24 @@ function SsoTestStatusPanel({
   return (
     <div className="border-border/70 bg-popover space-y-3 rounded-md border p-4">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium tracking-wide uppercase">
+        <p className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium">
           <span className="bg-kortix-green relative flex size-1.5 shrink-0 rounded-full">
             <span className="bg-kortix-green absolute inline-flex size-full animate-ping rounded-full opacity-75" />
           </span>
-          Watching for the test sign-in
+          {tI18nComplete.raw('text7c59656bfc86')}
         </p>
         <Button
           variant="ghost"
           size="icon"
           className="size-6"
-          aria-label="Refresh now"
+          aria-label={tI18nComplete.raw('text148677068467')}
           onClick={() => membersQuery.refetch()}
         >
-          <RefreshCw className={cn('size-3.5', membersQuery.isFetching && 'animate-spin')} />
+          {membersQuery.isFetching ? (
+            <Loading className="size-3.5" />
+          ) : (
+            <RefreshCw className="size-3.5" />
+          )}
         </Button>
       </div>
       {membersQuery.isLoading ? (
@@ -1159,15 +1156,14 @@ function SsoTestStatusPanel({
                 : `${arrived.length} users arrived`}
             </p>
             <p className="text-muted-foreground truncate text-xs">
-              {arrived.map((m) => m.email ?? m.user_id).join(', ')} — signed in via SSO and
-              auto-provisioned. The round-trip works.
+              {arrived.map((m) => m.email ?? m.user_id).join(', ')}{' '}
+              {tI18nComplete.raw('texte36024fe4756')}
             </p>
           </div>
         </div>
       ) : (
         <p className="text-muted-foreground text-sm">
-          {members?.length ?? '—'} members now. Complete the test sign-in in your private window —
-          the moment the user is provisioned, they appear here (checks every few seconds).
+          {members?.length ?? '—'} {tI18nComplete.raw('textd649bd5b85d2')}
         </p>
       )}
     </div>
@@ -1182,6 +1178,7 @@ function ProvisionedStatusPanel({
   /** Per-provider "when does the IdP push" copy (guide.config.syncCadenceHint). */
   cadenceHint?: string;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const membersQuery = useQuery({
     queryKey: ['scim-verify-members', accountId],
     queryFn: () => listAccountMembers(accountId),
@@ -1217,24 +1214,24 @@ function ProvisionedStatusPanel({
   return (
     <div className="border-border/70 bg-popover space-y-3 rounded-md border p-4">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium tracking-wide uppercase">
+        <p className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium">
           <span className="bg-kortix-green relative flex size-1.5 shrink-0 rounded-full">
             <span className="bg-kortix-green absolute inline-flex size-full animate-ping rounded-full opacity-75" />
           </span>
-          Live status
+          {tI18nComplete.raw('text8043aa58ae92')}
         </p>
         <Button
           variant="ghost"
           size="icon"
           className="size-6"
-          aria-label="Refresh now"
+          aria-label={tI18nComplete.raw('text148677068467')}
           onClick={() => {
             membersQuery.refetch();
             groupsQuery.refetch();
             tokensQuery.refetch();
           }}
         >
-          <RefreshCw className={cn('size-3.5', isLoading && 'animate-spin')} />
+          {isLoading ? <Loading className="size-3.5" /> : <RefreshCw className="size-3.5" />}
         </Button>
       </div>
       {/* Two lines on purpose — mirrors the SCIM card's panel so the label +
@@ -1247,18 +1244,18 @@ function ProvisionedStatusPanel({
               freshness === 'live' && 'bg-kortix-green',
               freshness === 'recent' && 'bg-kortix-green/60',
               freshness === 'quiet' && 'bg-muted-foreground/40',
-              freshness === 'never' && 'bg-amber-500',
+              freshness === 'never' && 'bg-kortix-orange',
             )}
           />
-          <span className="text-muted-foreground whitespace-nowrap">Last sync activity</span>
-          <span className="text-foreground whitespace-nowrap font-medium">
+          <span className="text-muted-foreground whitespace-nowrap">
+            {tI18nComplete.raw('text97df9d6eae8f')}
+          </span>
+          <span className="text-foreground font-medium whitespace-nowrap">
             {lastSyncAt ? relativeTime(lastSyncAt) : 'none yet'}
           </span>
         </p>
         {freshness === 'never' && !tokensQuery.isLoading && (
-          <p className="text-muted-foreground pl-3">
-            Your IdP hasn’t connected — check provisioning is running there.
-          </p>
+          <p className="text-muted-foreground pl-3">{tI18nComplete.raw('text60872f0408fe')}</p>
         )}
       </div>
       {isLoading ? (
@@ -1271,7 +1268,9 @@ function ProvisionedStatusPanel({
               <p className="text-foreground text-lg leading-none font-semibold tabular-nums">
                 {totalMembers ?? '—'}
               </p>
-              <p className="text-muted-foreground text-xs">Members in this account</p>
+              <p className="text-muted-foreground text-xs">
+                {tI18nComplete.raw('text1c92f49889dd')}
+              </p>
             </div>
           </div>
           <div className="border-border/60 bg-background flex items-center gap-3 rounded-md border p-3">
@@ -1281,7 +1280,8 @@ function ProvisionedStatusPanel({
                 {scimMemberCount}
               </p>
               <p className="text-muted-foreground text-xs">
-                Members in {scimGroups.length} SCIM-provisioned group
+                {tI18nComplete.raw('textb84655f012ef')} {scimGroups.length}{' '}
+                {tI18nComplete.raw('text6ec62587abb7')}
                 {scimGroups.length === 1 ? '' : 's'}
               </p>
             </div>
@@ -1289,7 +1289,7 @@ function ProvisionedStatusPanel({
         </div>
       )}
       <p className="text-muted-foreground text-xs">
-        Refreshes automatically every few seconds.{' '}
+        {tI18nComplete.raw('textba88c968e1e5')}{' '}
         {cadenceHint ??
           'Your IdP pushes changes on its own schedule — no manual action needed on the Kortix side.'}
       </p>
@@ -1332,6 +1332,7 @@ function StepBody({
   onCompleteStep: () => void;
   onFinish: () => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   // The test step's bullets are a verification CHECKLIST (unordered outcomes);
   // every other step's bullets are a numbered sequence of console actions.
   const isChecklist = step.kind === 'test';
@@ -1393,13 +1394,13 @@ function StepBody({
       {step.showSpValues && <SpValueRows urls={spUrls} />}
 
       {step.success && (
-        <InfoBanner tone="success" title="Success looks like">
+        <InfoBanner tone="success" title={tI18nComplete.raw('textb274aca9dee1')}>
           {step.success}
         </InfoBanner>
       )}
 
       {step.warning && (
-        <InfoBanner tone="warning" title="Watch out">
+        <InfoBanner tone="warning" title={tI18nComplete.raw('text4f9baa5ecfd7')}>
           {step.warning}
         </InfoBanner>
       )}
@@ -1454,16 +1455,16 @@ function StepBody({
                     )
                   }
                 >
-                  Copy sign-in URL
+                  {tI18nComplete.raw('text02c2b41a99e7')}
                   <Copy className="ml-1.5 size-3.5 shrink-0" />
                 </Button>
                 <span className="text-muted-foreground text-xs">
-                  Test in a private/incognito window so your own session doesn’t auto-complete it.
+                  {tI18nComplete.raw('text311659f8380c')}
                 </span>
               </>
             )}
             <Button onClick={onFinish}>
-              Finish
+              {tI18nComplete.raw('texta6c7a84baa67')}
               <Check className="ml-1.5 size-3.5 shrink-0" />
             </Button>
           </div>
@@ -1481,7 +1482,7 @@ function StepBody({
             </span>
           </span>
           <Button onClick={onCompleteStep} className="shrink-0 gap-1.5">
-            Continue
+            {tI18nComplete.raw('text31fbef162594')}
             <ArrowRight className="size-3.5 shrink-0" />
           </Button>
         </div>
@@ -1493,6 +1494,7 @@ function StepBody({
 // ─── The wizard ────────────────────────────────────────────────────────────
 
 function WizardCore({ accountId, flow }: { accountId: string; flow: Flow }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const router = useRouter();
   const searchParams = useSearchParams();
   const providerId = searchParams?.get('provider') ?? null;
@@ -1639,7 +1641,7 @@ function WizardCore({ accountId, flow }: { accountId: string; flow: Flow }) {
             className="gap-1.5"
           >
             <RotateCcw className="size-3.5 shrink-0" />
-            Start over
+            {tI18nComplete.raw('text5eed7e9fc8f3')}
           </Button>
           <Button
             variant="ghost"
@@ -1648,7 +1650,7 @@ function WizardCore({ accountId, flow }: { accountId: string; flow: Flow }) {
             className="gap-1.5"
           >
             <ArrowLeft className="mr-1.5 size-3.5 shrink-0" />
-            Change provider
+            {tI18nComplete.raw('textc8d2a9446813')}
           </Button>
         </div>
       </div>
@@ -1656,7 +1658,7 @@ function WizardCore({ accountId, flow }: { accountId: string; flow: Flow }) {
       <div className="grid gap-10 md:grid-cols-[240px_minmax(0,1fr)]">
         {/* Vercel-style rail: no connector line — soft-green done circles,
             solid active circle, muted upcoming. Whole row is the target. */}
-        <nav aria-label="Setup steps" className="space-y-1 self-start">
+        <nav aria-label={tI18nComplete.raw('text1eba90226b10')} className="space-y-1 self-start">
           {guide.steps.map((s, i) => {
             const isDone = completedSet.has(s.id);
             const isActive = i === activeStep;
@@ -1696,8 +1698,9 @@ function WizardCore({ accountId, flow }: { accountId: string; flow: Flow }) {
         </nav>
 
         <div className="min-w-0">
-          <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-            Step {activeStep + 1} of {guide.steps.length}
+          <p className="text-muted-foreground text-xs font-medium">
+            {tI18nComplete.raw('text8e6a6cca7aae')} {activeStep + 1}{' '}
+            {tI18nComplete.raw('text28391d3bc64e')} {guide.steps.length}
           </p>
           <h2 className="text-foreground mt-1 text-xl font-semibold">{step.title}</h2>
           <div className="mt-4">
@@ -1727,7 +1730,7 @@ function WizardCore({ accountId, flow }: { accountId: string; flow: Flow }) {
                 onClick={() => setActiveStep(activeStep - 1)}
               >
                 <ArrowLeft className="size-3.5 shrink-0" />
-                Back
+                {tI18nComplete.raw('text76900f1bfd16')}
               </Button>
             ) : (
               <span />
@@ -1748,13 +1751,13 @@ function WizardCore({ accountId, flow }: { accountId: string; flow: Flow }) {
         description={
           confirmAction === 'change' ? (
             <span>
-              You can connect only one identity provider per account. Your in-progress{' '}
-              <strong>{guide.name}</strong> setup will be reset.
+              {tI18nComplete.raw('textfb77a2e0d116')} <strong>{guide.name}</strong>{' '}
+              {tI18nComplete.raw('text77793c7508f1')}
             </span>
           ) : (
             <span>
-              This clears your progress for <strong>{guide.name}</strong> and returns to the first
-              step.
+              {tI18nComplete.raw('text9b08dc863a27')} <strong>{guide.name}</strong>{' '}
+              {tI18nComplete.raw('text3b894362f7ae')}
             </span>
           )
         }

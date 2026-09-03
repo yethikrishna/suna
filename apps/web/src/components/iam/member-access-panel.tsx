@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 /**
  * `MemberAccessPanel` — one person's detail surface, rendered INSIDE the
  * account hub pane (`/accounts/{id}?tab=members&member=<id>`), exactly like
@@ -90,7 +91,6 @@ import {
   type MemberProjectAccess,
 } from '@/lib/iam-client';
 import { usePermission, usePermissionsFor } from '@/lib/use-permission';
-import { areaLabel, permissionLabel } from './role-capability-matrix';
 import { cn } from '@/lib/utils';
 import {
   listAccountMembers,
@@ -99,6 +99,7 @@ import {
   type IamPolicy,
 } from '@kortix/sdk';
 import { invalidatePermissionProbes, qk } from '@kortix/sdk/react';
+import { areaLabel, permissionLabel } from './role-capability-matrix';
 
 const PANEL = 'bg-popover rounded-md border';
 
@@ -167,6 +168,7 @@ export function MemberAccessPanel({
   onBack,
   onOpenGroup,
 }: MemberAccessPanelProps) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const queryClient = useQueryClient();
   const [grantConfirmOpen, setGrantConfirmOpen] = useState(false);
   const [revokeConfirmOpen, setRevokeConfirmOpen] = useState(false);
@@ -292,20 +294,20 @@ export function MemberAccessPanel({
           <>
             {isSelf ? (
               <Badge variant="secondary" size="sm">
-                You
+                {tI18nComplete.raw('text08b041935798')}
               </Badge>
             ) : null}
             {member.is_super_admin ? (
               <Badge
                 size="sm"
                 className="bg-kortix-orange/15 text-kortix-orange border-transparent"
-                title="Super admin — bypasses every IAM check"
+                title={tI18nComplete.raw('text3cafa764c6f9')}
               >
-                Super
+                {tI18nComplete.raw('text8185c8ac4656')}
               </Badge>
             ) : null}
             {member.has_verified_mfa ? (
-              <Badge variant="success" size="sm" title="MFA enrolled">
+              <Badge variant="success" size="sm" title={tI18nComplete.raw('textc56fc40bb882')}>
                 2FA
               </Badge>
             ) : null}
@@ -316,9 +318,14 @@ export function MemberAccessPanel({
         member ? (
           <InlineMeta className="text-sm">
             <span>{builtinRoleLabel('account', member.account_role)}</span>
-            <span>Joined {formatDate(member.joined_at)}</span>
+            <span>
+              {tI18nComplete.raw('text69318b0c6a92')} {formatDate(member.joined_at)}
+            </span>
             {accountWidePolicies.length > 0 ? (
-              <span>Account-wide: {formatList(accountWidePolicies.map((p) => p.role_name))}</span>
+              <span>
+                {tI18nComplete.raw('texte7bb06822dfd')}{' '}
+                {formatList(accountWidePolicies.map((p) => p.role_name))}
+              </span>
             ) : null}
           </InlineMeta>
         ) : null
@@ -340,7 +347,7 @@ export function MemberAccessPanel({
               {canUpdateRole && !isSelf ? (
                 <DropdownMenuItem onSelect={() => setEditOpen(true)} className="gap-2">
                   <PencilSimple className="size-3.5" />
-                  Edit access
+                  {tI18nComplete.raw('texta514a684676a')}
                 </DropdownMenuItem>
               ) : null}
               {/* Reads the same `role.read` catalog as CapabilitiesCard —
@@ -348,7 +355,7 @@ export function MemberAccessPanel({
               {canReadRoles ? (
                 <DropdownMenuItem onSelect={() => setViewAsOpen(true)} className="gap-2">
                   <Eye className="size-3.5" />
-                  View as this member
+                  {tI18nComplete.raw('text42bcffb92597')}
                 </DropdownMenuItem>
               ) : null}
               {canPromoteSuperAdmin ? (
@@ -357,12 +364,12 @@ export function MemberAccessPanel({
                   {member.is_super_admin ? (
                     <DropdownMenuItem onSelect={() => setRevokeConfirmOpen(true)} className="gap-2">
                       <ShieldOff className="size-3.5" />
-                      Revoke super-admin
+                      {tI18nComplete.raw('text79449a68e98d')}
                     </DropdownMenuItem>
                   ) : (
                     <DropdownMenuItem onSelect={() => setGrantConfirmOpen(true)} className="gap-2">
                       <Shield className="size-3.5" />
-                      Grant super-admin
+                      {tI18nComplete.raw('textbd59cb991302')}
                     </DropdownMenuItem>
                   )}
                 </>
@@ -377,7 +384,7 @@ export function MemberAccessPanel({
                     className="gap-2"
                   >
                     <TrashIcon className="size-3.5" />
-                    Remove from account
+                    {tI18nComplete.raw('text6bfa319e3d20')}
                   </DropdownMenuItem>
                 </>
               ) : null}
@@ -389,18 +396,18 @@ export function MemberAccessPanel({
       {membersQuery.isError ? (
         <ErrorState
           size="sm"
-          title="Failed to load member"
+          title={tI18nComplete.raw('textc88462000c01')}
           description={(membersQuery.error as Error).message}
           action={
             <Button variant="outline" size="sm" onClick={() => membersQuery.refetch()}>
-              Retry
+              {tI18nComplete.raw('text942087cc2d41')}
             </Button>
           }
         />
       ) : null}
 
       {!membersQuery.isLoading && !member ? (
-        <InfoBanner tone="neutral">This user is not a member of this account.</InfoBanner>
+        <InfoBanner tone="neutral">{tI18nComplete.raw('textf75481058771')}</InfoBanner>
       ) : null}
 
       {member ? (
@@ -451,7 +458,7 @@ export function MemberAccessPanel({
       <ConfirmDialog
         open={removeOpen}
         onOpenChange={setRemoveOpen}
-        title="Remove access?"
+        title={tI18nComplete.raw('text914d43beac26')}
         description={`${memberLabel} loses access to ${accountName}.`}
         confirmLabel="Remove"
         confirmVariant="destructive"
@@ -462,14 +469,14 @@ export function MemberAccessPanel({
       <ConfirmDialog
         open={grantConfirmOpen}
         onOpenChange={setGrantConfirmOpen}
-        title="Grant super-admin"
+        title={tI18nComplete.raw('textbd59cb991302')}
         description={
           <span>
-            Super-admin bypasses every permission check. <strong>{memberLabel}</strong> will be able
-            to do anything in this account.
+            {tI18nComplete.raw('textde361b6ea9ec')} <strong>{memberLabel}</strong>{' '}
+            {tI18nComplete.raw('textb4598b56508f')}
           </span>
         }
-        confirmLabel="Grant super-admin"
+        confirmLabel={tI18nComplete.raw('textbd59cb991302')}
         isPending={setSuperAdminMutation.isPending}
         onConfirm={() => setSuperAdminMutation.mutate(true)}
       />
@@ -477,14 +484,13 @@ export function MemberAccessPanel({
       <ConfirmDialog
         open={revokeConfirmOpen}
         onOpenChange={setRevokeConfirmOpen}
-        title="Revoke super-admin"
+        title={tI18nComplete.raw('text79449a68e98d')}
         description={
           <span>
-            <strong>{memberLabel}</strong> will lose the bypass. Every action goes through the
-            normal permission checks again.
+            <strong>{memberLabel}</strong> {tI18nComplete.raw('text8b728638c006')}
           </span>
         }
-        confirmLabel="Revoke super-admin"
+        confirmLabel={tI18nComplete.raw('text79449a68e98d')}
         confirmVariant="destructive"
         isPending={setSuperAdminMutation.isPending}
         onConfirm={() => setSuperAdminMutation.mutate(false)}
@@ -527,6 +533,7 @@ function MemberProjectAccessSection({
   canEdit: boolean;
   query: ReturnType<typeof useQuery<Awaited<ReturnType<typeof listMemberProjectAccess>>>>;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const queryClient = useQueryClient();
   const [editTarget, setEditTarget] = useState<ProjectEditTarget | null>(null);
   const [openingProjectId, setOpeningProjectId] = useState<string | null>(null);
@@ -589,11 +596,11 @@ function MemberProjectAccessSection({
       ) : query.isError ? (
         <ErrorState
           size="sm"
-          title="Failed to load project access"
+          title={tI18nComplete.raw('text19890c7ac88a')}
           description={(query.error as Error)?.message}
           action={
             <Button variant="outline" size="sm" onClick={() => query.refetch()}>
-              Retry
+              {tI18nComplete.raw('text942087cc2d41')}
             </Button>
           }
         />
@@ -601,7 +608,7 @@ function MemberProjectAccessSection({
         <EmptyState
           icon={FolderOpen}
           size="sm"
-          title="No project access"
+          title={tI18nComplete.raw('text5b9616df2058')}
           description={
             isAdminLike
               ? `${accountRole === 'owner' ? 'Owners' : 'Admins'} are implicit Manager on every active project in the account.`
@@ -637,7 +644,10 @@ function MemberProjectAccessSection({
                 meta={
                   <span className="text-muted-foreground text-xs">
                     <InlineMeta>
-                      <span>via {project.sources.map((s) => SOURCE_LABEL[s]).join(' + ')}</span>
+                      <span>
+                        {tI18nComplete.raw('text4d327af41f96')}{' '}
+                        {project.sources.map((s) => SOURCE_LABEL[s]).join(' + ')}
+                      </span>
                       {customNames.length > 0 ? <span>{formatList(customNames)}</span> : null}
                     </InlineMeta>
                   </span>
@@ -708,14 +718,15 @@ function MemberGroupsSection({
   isLoading: boolean;
   onOpenGroup: (groupId: string) => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   if (isLoading) return <Skeleton className="h-[58px] w-full rounded-md" />;
   if (memberGroups.length === 0) {
     return (
       <EmptyState
         icon={Users}
         size="sm"
-        title="Not in any groups"
-        description="Add them to a group to inherit its access."
+        title={tI18nComplete.raw('text9a70da1bb740')}
+        description={tI18nComplete.raw('text5c101a14dc57')}
       />
     );
   }
@@ -796,6 +807,7 @@ function CapabilitiesCard({
   accountId: string;
   memberUserId: string;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   // One catalog read, then ONE batched probe over everything it named.
   const { items, probes, groups } = useAccountCapabilities(accountId, true);
   const results = usePermissionsFor(accountId, memberUserId, probes);
@@ -804,9 +816,11 @@ function CapabilitiesCard({
   return (
     <section className="space-y-2">
       <div className="flex items-center justify-between gap-3 px-1">
-        <Label className="text-muted-foreground text-xs font-medium">What they can do</Label>
+        <Label className="text-muted-foreground text-xs font-medium">
+          {tI18nComplete.raw('text5161cce6217e')}
+        </Label>
         <span className="text-muted-foreground text-xs">
-          Computed from their role, groups, and policies.
+          {tI18nComplete.raw('textd668b28cfe55')}
         </span>
       </div>
       <div className={cn(PANEL, 'divide-border divide-y')}>
@@ -889,6 +903,7 @@ function ViewAsUserDialog({
   memberUserId: string;
   memberLabel: string;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   // Only probe when the dialog is open (saves the round-trip for
   // admins who never click View as). Probes intentionally exclude
   // resource-scoped actions like project.write on project X — the
@@ -914,11 +929,9 @@ function ViewAsUserDialog({
         <ModalHeader>
           <ModalTitle className="flex items-center gap-2">
             <Eye className="text-muted-foreground size-4" />
-            Viewing as {memberLabel}
+            {tI18nComplete.raw('textaaf36d769729')} {memberLabel}
           </ModalTitle>
-          <ModalDescription>
-            Read-only preview of what this member can do. Nothing is changed.
-          </ModalDescription>
+          <ModalDescription>{tI18nComplete.raw('texta9e830d2e9c7')}</ModalDescription>
         </ModalHeader>
 
         <ModalBody className="max-h-[60vh] space-y-4 overflow-y-auto">
@@ -952,9 +965,7 @@ function ViewAsUserDialog({
             </section>
           ))}
 
-          <p className="text-muted-foreground text-xs">
-            Project-by-project access is listed in the Projects section on this page.
-          </p>
+          <p className="text-muted-foreground text-xs">{tI18nComplete.raw('text9d53e28e9e39')}</p>
         </ModalBody>
       </ModalContent>
     </Modal>

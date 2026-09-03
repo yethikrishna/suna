@@ -8,6 +8,7 @@ import {
   XIcon as X,
 } from '@phosphor-icons/react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { type Dispatch, type ReactNode, type SetStateAction, useMemo, useState } from 'react';
 
 import { CopyOverlay, HighlightedCode } from '@/components/markdown/code';
@@ -47,9 +48,9 @@ import {
   EMPTY_PRINCIPAL_SELECTION,
   PROJECT_SELECT_ALL,
   PrincipalPicker,
+  type PrincipalSelection,
   ProjectSelect,
   formatRelative,
-  type PrincipalSelection,
   singlePrincipal,
 } from '@/features/workspace/shared/access';
 import { getSupabaseAccessTokenWithRetry } from '@/lib/auth-token';
@@ -200,6 +201,7 @@ function applyQuickFilter(
 }
 
 export function AuditTab({ accountId }: { accountId: string }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const [filter, setFilter] = useState<AuditFilterState>(EMPTY_FILTER);
   const [qInput, setQInput] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -357,22 +359,26 @@ export function AuditTab({ accountId }: { accountId: string }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <p className="text-foreground text-sm font-medium">Audit log</p>
+          <p className="text-foreground text-sm font-medium">
+            {tI18nComplete.raw('texte4d36f9a4e22')}
+          </p>
           <p className="text-muted-foreground max-w-2xl text-xs leading-relaxed">
-            Reconstruct activity across people, agents, sessions, API requests, and connectors.
+            {tI18nComplete.raw('text862397da3718')}
           </p>
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="secondary" size="sm" disabled={exporting} className="gap-1.5">
               {exporting ? <Loading className="size-4" /> : <Download className="size-4" />}
-              Export
+              {tI18nComplete.raw('text3664895579f0')}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-40">
-            <DropdownMenuItem onSelect={() => exportEvents('csv')}>Download CSV</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => exportEvents('csv')}>
+              {tI18nComplete.raw('texta4023b89022f')}
+            </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => exportEvents('jsonl')}>
-              Download JSONL
+              {tI18nComplete.raw('text3e01503c5c75')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -407,8 +413,8 @@ export function AuditTab({ accountId }: { accountId: string }) {
               }
             }}
             onBlur={() => setFilter((current) => ({ ...current, q: qInput.trim() }))}
-            placeholder="Search action, project, session, request, or correlation ID"
-            aria-label="Search audit events"
+            placeholder={tI18nComplete.raw('text03f856a9d7ec')}
+            aria-label={tI18nComplete.raw('textfc856a631771')}
             className="h-9 pl-8"
           />
         </div>
@@ -416,7 +422,7 @@ export function AuditTab({ accountId }: { accountId: string }) {
         <ProjectSelect
           accountId={accountId}
           value={filter.projectId || PROJECT_SELECT_ALL}
-          allOptionLabel="All projects"
+          allOptionLabel={tI18nComplete.raw('text4b87271b6b81')}
           placeholder="Project"
           className="h-9 w-[210px]"
           onChange={(value) =>
@@ -442,7 +448,7 @@ export function AuditTab({ accountId }: { accountId: string }) {
             <SelectValue placeholder={filter.projectId ? 'All sessions' : 'Select project first'} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All sessions</SelectItem>
+            <SelectItem value="all">{tI18nComplete.raw('text78648d4d6649')}</SelectItem>
             {(sessionsQuery.data ?? []).map((session) => (
               <SelectItem
                 key={session.session_id}
@@ -465,7 +471,7 @@ export function AuditTab({ accountId }: { accountId: string }) {
         {hasFilter ? (
           <Button variant="ghost" size="sm" className="h-9 gap-1.5" onClick={clearFilters}>
             <X className="size-4" />
-            Clear
+            {tI18nComplete.raw('text83b12c2216ef')}
           </Button>
         ) : null}
       </div>
@@ -473,11 +479,11 @@ export function AuditTab({ accountId }: { accountId: string }) {
       {query.isError ? (
         <ErrorState
           size="sm"
-          title="Failed to load audit events"
+          title={tI18nComplete.raw('text73a3f2fca157')}
           description={(query.error as Error)?.message}
           action={
             <Button variant="outline" size="sm" onClick={() => query.refetch()}>
-              Retry
+              {tI18nComplete.raw('text942087cc2d41')}
             </Button>
           }
         />
@@ -495,8 +501,8 @@ export function AuditTab({ accountId }: { accountId: string }) {
         <EmptyState
           icon={Search}
           size="sm"
-          title="No events match these filters"
-          description="Clear a filter or select a wider time range."
+          title={tI18nComplete.raw('text046aea06df37')}
+          description={tI18nComplete.raw('text380efe8cc760')}
         />
       ) : null}
 
@@ -505,11 +511,13 @@ export function AuditTab({ accountId }: { accountId: string }) {
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead>Event</TableHead>
-                <TableHead>Scope</TableHead>
-                <TableHead>Principal</TableHead>
-                <TableHead>Result</TableHead>
-                <TableHead className="hidden text-right 2xl:table-cell">Time</TableHead>
+                <TableHead>{tI18nComplete.raw('text4e1f49a9c8ae')}</TableHead>
+                <TableHead>{tI18nComplete.raw('textb073f6c68ef8')}</TableHead>
+                <TableHead>{tI18nComplete.raw('textafc19f1734c1')}</TableHead>
+                <TableHead>{tI18nComplete.raw('text6e7d50e84f47')}</TableHead>
+                <TableHead className="hidden text-right 2xl:table-cell">
+                  {tI18nComplete.raw('text33b93476cf59')}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -540,7 +548,7 @@ export function AuditTab({ accountId }: { accountId: string }) {
             className="gap-1.5"
           >
             {query.isFetchingNextPage ? <Loading className="size-3.5" /> : null}
-            Load more
+            {tI18nComplete.raw('textac8991ef0101')}
           </Button>
         </div>
       ) : null}
@@ -559,6 +567,7 @@ function AdvancedFilters({
   onChange: Dispatch<SetStateAction<AuditFilterState>>;
   count: number;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   // `filter.actor` is a user id on the wire; the picker speaks
   // `PrincipalSelection`, so the field is derived from the filter rather than
   // held twice — clearing the filter clears the picker with no extra wiring.
@@ -571,7 +580,7 @@ function AdvancedFilters({
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm" className="h-9 gap-1.5">
           <Funnel className="size-4" />
-          Filters
+          {tI18nComplete.raw('text546ebb8eb993')}
           {count > 0 ? (
             <Badge variant="muted" size="xs" className="ml-0.5 tabular-nums">
               {count}
@@ -581,9 +590,11 @@ function AdvancedFilters({
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[min(44rem,calc(100vw-2rem))] space-y-4 p-4">
         <div>
-          <p className="text-foreground text-sm font-medium">Filter activity</p>
+          <p className="text-foreground text-sm font-medium">
+            {tI18nComplete.raw('text3b9995d82ed9')}
+          </p>
           <p className="text-muted-foreground mt-0.5 text-xs">
-            Combine fields to reconstruct one actor, session, or request path.
+            {tI18nComplete.raw('text4fc200eed435')}
           </p>
         </div>
         {/* "Who" leads, full width: the picker is a searchable list, not a
@@ -599,7 +610,7 @@ function AdvancedFilters({
                 className="h-6 px-2 text-xs"
                 onClick={() => onChange((current) => ({ ...current, actor: '' }))}
               >
-                Everyone
+                {tI18nComplete.raw('textda2e5dc515b1')}
               </Button>
             ) : null
           }
@@ -610,7 +621,7 @@ function AdvancedFilters({
             kinds={['member']}
             value={actorSelection}
             autoFocus={false}
-            emptyLabel="No members in this account yet."
+            emptyLabel={tI18nComplete.raw('text0f8c1078fa99')}
             onChange={(next) => {
               const picked = singlePrincipal(next);
               onChange((current) => ({
@@ -622,7 +633,7 @@ function AdvancedFilters({
         </FilterField>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <FilterField label="Principal type">
+          <FilterField label={tI18nComplete.raw('text104a6fe5d2a6')}>
             <Select
               value={filter.actorType || 'all'}
               onValueChange={(value) =>
@@ -636,11 +647,13 @@ function AdvancedFilters({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Any principal</SelectItem>
-                <SelectItem value="human">Person</SelectItem>
-                <SelectItem value="agent">Agent</SelectItem>
-                <SelectItem value="service_account">Service account</SelectItem>
-                <SelectItem value="system">System</SelectItem>
+                <SelectItem value="all">{tI18nComplete.raw('texteb9e6d4103b1')}</SelectItem>
+                <SelectItem value="human">{tI18nComplete.raw('text6007db63e18e')}</SelectItem>
+                <SelectItem value="agent">{tI18nComplete.raw('text11b39c93777e')}</SelectItem>
+                <SelectItem value="service_account">
+                  {tI18nComplete.raw('textce5e9df4a78f')}
+                </SelectItem>
+                <SelectItem value="system">{tI18nComplete.raw('text6725e7bbcd28')}</SelectItem>
               </SelectContent>
             </Select>
           </FilterField>
@@ -682,11 +695,11 @@ function AdvancedFilters({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Any outcome</SelectItem>
-                <SelectItem value="success">Success</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="denied">Denied</SelectItem>
-                <SelectItem value="failure">Failure</SelectItem>
+                <SelectItem value="all">{tI18nComplete.raw('textae47e08e55f1')}</SelectItem>
+                <SelectItem value="success">{tI18nComplete.raw('textc88a0b907419')}</SelectItem>
+                <SelectItem value="pending">{tI18nComplete.raw('text331551b0de41')}</SelectItem>
+                <SelectItem value="denied">{tI18nComplete.raw('textda404deb110f')}</SelectItem>
+                <SelectItem value="failure">{tI18nComplete.raw('text7031edbcf9c4')}</SelectItem>
               </SelectContent>
             </Select>
           </FilterField>
@@ -705,7 +718,7 @@ function AdvancedFilters({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Any phase</SelectItem>
+                <SelectItem value="all">{tI18nComplete.raw('text0154297a0f48')}</SelectItem>
                 {PHASES.map((phase) => (
                   <SelectItem key={phase} value={phase}>
                     {phase.charAt(0).toUpperCase() + phase.slice(1)}
@@ -812,6 +825,7 @@ function AuditRow({
   actorEmail: string | null;
   projectName: string | null;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const [expanded, setExpanded] = useState(false);
   const occurred = new Date(event.occurred_at);
   const action = describeAuditAction(event.action);
@@ -839,7 +853,7 @@ function AuditRow({
           <div className="flex min-w-0 items-start gap-2">
             <CaretRight
               className={cn(
-                'text-muted-foreground mt-0.5 size-3.5 shrink-0 transition-transform duration-150',
+                'text-muted-foreground duration-normal mt-0.5 size-3.5 shrink-0 transition-transform',
                 expanded && 'rotate-90',
               )}
             />
@@ -851,7 +865,7 @@ function AuditRow({
               <div className="flex min-w-0 items-center gap-2">
                 <span className="text-foreground truncate text-sm font-medium">{action.title}</span>
                 {action.detail ? (
-                  <code className="bg-muted/50 text-muted-foreground truncate rounded px-1.5 py-0.5 font-mono text-[11px]">
+                  <code className="bg-muted/50 text-muted-foreground truncate rounded px-1.5 py-0.5 font-mono text-xs">
                     {action.detail}
                   </code>
                 ) : null}
@@ -863,7 +877,7 @@ function AuditRow({
                       {action.method}
                     </Badge>
                   ) : null}
-                  <span className="text-muted-foreground truncate text-[11px]">
+                  <span className="text-muted-foreground truncate text-xs">
                     {action.mapped ? action.area : 'Unmapped API route'}
                   </span>
                 </div>
@@ -874,8 +888,8 @@ function AuditRow({
         <TableCell className="max-w-[220px] whitespace-normal">
           <p className="text-foreground truncate text-xs">{scopeLabel}</p>
           {event.session_id ? (
-            <p className="text-muted-foreground truncate font-mono text-[11px]">
-              Session {event.session_id.slice(0, 8)}
+            <p className="text-muted-foreground truncate font-mono text-xs">
+              {tI18nComplete.raw('text6959b4159575')} {event.session_id.slice(0, 8)}
             </p>
           ) : null}
         </TableCell>
@@ -894,7 +908,8 @@ function AuditRow({
             ) : null}
             {event.client_reported_source ? (
               <Badge variant="muted" size="xs" className="capitalize">
-                client: {event.client_reported_source.replace('_', ' ')}
+                {tI18nComplete.raw('texta273a74aed9f')}{' '}
+                {event.client_reported_source.replace('_', ' ')}
               </Badge>
             ) : null}
           </div>
@@ -915,8 +930,8 @@ function AuditRow({
             <div className="space-y-4 p-4 md:p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 space-y-1">
-                  <p className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
-                    Event detail
+                  <p className="text-muted-foreground text-xs font-medium">
+                    {tI18nComplete.raw('text097e77abc2d0')}
                   </p>
                   <p className="text-foreground text-sm font-medium">{action.title}</p>
                   <p className="text-muted-foreground text-xs">
@@ -937,29 +952,56 @@ function AuditRow({
               </div>
 
               <div className="border-border bg-background grid overflow-hidden rounded-md border sm:grid-cols-2 lg:grid-cols-4">
-                <Detail label="Event ID" value={event.event_id} />
+                <Detail label={tI18nComplete.raw('text3045abafb173')} value={event.event_id} />
                 <Detail
-                  label="Session sequence"
+                  label={tI18nComplete.raw('textc831393117f0')}
                   value={event.session_sequence != null ? String(event.session_sequence) : null}
                 />
                 <Detail label="Phase" value={event.phase ?? null} />
-                <Detail label="Source ledger" value={event.source_ledger ?? null} />
-                <Detail label="Request ID" value={event.request_id} />
-                <Detail label="Trace ID" value={event.trace_id} />
-                <Detail label="Correlation ID" value={event.correlation_id} />
-                <Detail label="Causation ID" value={event.causation_id ?? null} />
-                <Detail label="Project ID" value={event.project_id} />
-                <Detail label="Session ID" value={event.session_id} />
-                <Detail label="OpenCode session" value={event.opencode_session_id ?? null} />
-                <Detail label="Turn ID" value={event.turn_id ?? null} />
-                <Detail label="Message ID" value={event.message_id ?? null} />
-                <Detail label="Tool call ID" value={event.tool_call_id ?? null} />
-                <Detail label="Execution ID" value={event.execution_id ?? null} />
+                <Detail
+                  label={tI18nComplete.raw('textdc8d7c5c602b')}
+                  value={event.source_ledger ?? null}
+                />
+                <Detail label={tI18nComplete.raw('textd561f528baf7')} value={event.request_id} />
+                <Detail label={tI18nComplete.raw('textc4cbbc62b684')} value={event.trace_id} />
+                <Detail
+                  label={tI18nComplete.raw('textc267c186e80d')}
+                  value={event.correlation_id}
+                />
+                <Detail
+                  label={tI18nComplete.raw('texta679a097d834')}
+                  value={event.causation_id ?? null}
+                />
+                <Detail label={tI18nComplete.raw('texte511470b21a9')} value={event.project_id} />
+                <Detail label={tI18nComplete.raw('textcb9ac5c561da')} value={event.session_id} />
+                <Detail
+                  label={tI18nComplete.raw('text5a26f4425c82')}
+                  value={event.opencode_session_id ?? null}
+                />
+                <Detail
+                  label={tI18nComplete.raw('textef54a62ae880')}
+                  value={event.turn_id ?? null}
+                />
+                <Detail
+                  label={tI18nComplete.raw('text11d5959da5d3')}
+                  value={event.message_id ?? null}
+                />
+                <Detail
+                  label={tI18nComplete.raw('textfce8323af972')}
+                  value={event.tool_call_id ?? null}
+                />
+                <Detail
+                  label={tI18nComplete.raw('texte8c80b20c2f7')}
+                  value={event.execution_id ?? null}
+                />
                 <Detail
                   label="Duration"
                   value={event.duration_ms != null ? `${event.duration_ms} ms` : null}
                 />
-                <Detail label="Occurred at" value={occurred.toISOString()} />
+                <Detail
+                  label={tI18nComplete.raw('text9fe54d716290')}
+                  value={occurred.toISOString()}
+                />
               </div>
 
               {event.before !== null || event.after !== null ? (
@@ -970,15 +1012,30 @@ function AuditRow({
               ) : null}
               {event.input_summary || event.output_summary ? (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <JsonPane label="Redacted input summary" data={event.input_summary} />
-                  <JsonPane label="Redacted output summary" data={event.output_summary} />
+                  <JsonPane
+                    label={tI18nComplete.raw('textef62ef5cacd2')}
+                    data={event.input_summary}
+                  />
+                  <JsonPane
+                    label={tI18nComplete.raw('text186c238a4d46')}
+                    data={event.output_summary}
+                  />
                 </div>
               ) : null}
               {event.input_sha256 || event.output_sha256 || event.integrity_hash ? (
                 <div className="border-border bg-background grid overflow-hidden rounded-md border sm:grid-cols-3">
-                  <Detail label="Input SHA-256" value={event.input_sha256 ?? null} />
-                  <Detail label="Output SHA-256" value={event.output_sha256 ?? null} />
-                  <Detail label="Integrity hash" value={event.integrity_hash ?? null} />
+                  <Detail
+                    label={tI18nComplete.raw('text3b4a27ee118e')}
+                    value={event.input_sha256 ?? null}
+                  />
+                  <Detail
+                    label={tI18nComplete.raw('text05dcf5ae7043')}
+                    value={event.output_sha256 ?? null}
+                  />
+                  <Detail
+                    label={tI18nComplete.raw('text826c8e46dc22')}
+                    value={event.integrity_hash ?? null}
+                  />
                 </div>
               ) : null}
               {event.metadata && Object.keys(event.metadata).length > 0 ? (
@@ -1031,10 +1088,13 @@ function RequestPanel({
   action: AuditActionDescription;
   rawAction: string;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
     <div className="border-border bg-background overflow-hidden rounded-md border">
       <div className="border-border flex min-h-10 items-center justify-between gap-3 border-b px-3 py-2">
-        <p className="text-muted-foreground text-xs font-medium">Request</p>
+        <p className="text-muted-foreground text-xs font-medium">
+          {tI18nComplete.raw('text59f03d642b41')}
+        </p>
         <div className="flex min-w-0 items-center gap-1.5">
           {action.method ? (
             <Badge variant="outline" size="xs" className="font-mono font-medium">
@@ -1042,7 +1102,7 @@ function RequestPanel({
             </Badge>
           ) : null}
           {action.area ? (
-            <span className="text-muted-foreground truncate text-[11px]">{action.area}</span>
+            <span className="text-muted-foreground truncate text-xs">{action.area}</span>
           ) : null}
         </div>
       </div>
@@ -1051,7 +1111,7 @@ function RequestPanel({
           <code className="text-foreground block font-mono text-xs break-all">{action.route}</code>
         ) : null}
         <div className="bg-muted/30 flex min-h-10 items-center gap-2 rounded-md px-2.5">
-          <code className="text-muted-foreground min-w-0 flex-1 font-mono text-[11px] break-all">
+          <code className="text-muted-foreground min-w-0 flex-1 font-mono text-xs break-all">
             {rawAction}
           </code>
           <CopyButton code={rawAction} className="size-10 shrink-0" />
@@ -1072,16 +1132,19 @@ function ResourcePanel({
   projectName: string | null;
   sessionId: string | null;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
     <div className="border-border bg-background overflow-hidden rounded-md border">
       <div className="border-border flex min-h-10 items-center border-b px-3 py-2">
-        <p className="text-muted-foreground text-xs font-medium">Scope and resource</p>
+        <p className="text-muted-foreground text-xs font-medium">
+          {tI18nComplete.raw('text88134334f4c6')}
+        </p>
       </div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-3 p-3">
         <SummaryValue label="Resource" value={resource} />
         <SummaryValue label="Project" value={projectName} />
-        <SummaryValue label="Resource ID" value={resourceId} mono />
-        <SummaryValue label="Session ID" value={sessionId} mono />
+        <SummaryValue label={tI18nComplete.raw('textdb5f2f038452')} value={resourceId} mono />
+        <SummaryValue label={tI18nComplete.raw('textcb9ac5c561da')} value={sessionId} mono />
       </div>
     </div>
   );
@@ -1098,11 +1161,11 @@ function SummaryValue({
 }) {
   return (
     <div className="min-w-0 space-y-1">
-      <p className="text-muted-foreground text-[11px] font-medium">{label}</p>
+      <p className="text-muted-foreground text-xs font-medium">{label}</p>
       <p
         className={cn(
           'text-foreground text-xs break-all',
-          mono && 'font-mono text-[11px] tabular-nums',
+          mono && 'font-mono text-xs tabular-nums',
         )}
       >
         {value ?? '—'}
@@ -1114,9 +1177,9 @@ function SummaryValue({
 function Detail({ label, value }: { label: string; value: string | null }) {
   return (
     <div className="border-border min-w-0 space-y-1 border-b p-3 last:border-b-0 sm:border-r sm:nth-[2n]:border-r-0 sm:nth-last-[-n+2]:border-b-0 lg:nth-[2n]:border-r lg:nth-[4n]:border-r-0 lg:nth-last-[-n+4]:border-b-0">
-      <p className="text-muted-foreground text-[11px] font-medium">{label}</p>
+      <p className="text-muted-foreground text-xs font-medium">{label}</p>
       <p
-        className="text-foreground font-mono text-[11px] break-all tabular-nums"
+        className="text-foreground font-mono text-xs break-all tabular-nums"
         title={value ?? undefined}
       >
         {value ?? '—'}

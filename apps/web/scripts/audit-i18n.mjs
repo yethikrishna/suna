@@ -248,12 +248,17 @@ function walkFiles(dir, out = []) {
   return out;
 }
 
-function isHumanText(value) {
+function isHumanText(value, kind) {
   const text = value.replace(/\s+/g, ' ').trim();
   if (!text || allowedLiteralValues.has(text)) return false;
   if (text.length < 2) return false;
   if (/^[\W\d_]+$/.test(text)) return false;
-  if (/^[a-z0-9.:/?#[\]{}()_-]+$/i.test(text) && !/\s/.test(text)) return false;
+  if (
+    kind !== 'jsx-text' &&
+    /^[a-z0-9.:/?#[\]{}()_-]+$/i.test(text) &&
+    !/\s/.test(text)
+  )
+    return false;
   if (/^https?:\/\//.test(text)) return false;
   if (/^[A-Z0-9_]+$/.test(text)) return false;
   return /[A-Za-z\u00C0-\uFFFF]/.test(text);
@@ -276,18 +281,23 @@ function scanFile(file) {
 
   function add(kind, node, text) {
     const normalized = text.replace(/\s+/g, ' ').trim();
-    if (!isHumanText(normalized)) return;
+    if (!isHumanText(normalized, kind)) return;
     findings.push({
       file: path.relative(root, file),
       line: getLine(sourceFile, node.getStart(sourceFile)),
       kind,
-      text: normalized.slice(0, 140),
+      text: normalized,
     });
   }
 
   function visit(node) {
     if (ts.isJsxText(node)) {
-      add('jsx-text', node, node.getText(sourceFile));
+      const parentTag = ts.isJsxElement(node.parent)
+        ? node.parent.openingElement.tagName.getText(sourceFile)
+        : '';
+      if (!['code', 'pre', 'HighlightedCode'].includes(parentTag)) {
+        add('jsx-text', node, node.getText(sourceFile));
+      }
     }
 
     if (

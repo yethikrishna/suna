@@ -12,12 +12,40 @@
  * Those two sizes are the whole scale; nothing in the editor is smaller.
  */
 
-import type { ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
+
+import { cn } from '@/lib/utils';
+
+/**
+ * How a section draws itself. `flat` is the original: a heading over
+ * hairline-divided rows, for a section sitting on a `bg-popover` pane where a
+ * second tinted panel would add a border and no contrast. `panel` is the
+ * agent page's configuration pane (Marko, 2026-09-03: "visually show the
+ * member list separate from Access"): each section is its own
+ * `bg-popover rounded-md border` card with a divided header, so two sections
+ * on one tab read as two things, not one list with two headings.
+ *
+ * A context, not a prop, because the sections are composed by a shell that
+ * does not own their props — the shell sets the style once for everything
+ * under it.
+ */
+export type EditorSectionStyle = 'flat' | 'panel';
+const EditorSectionStyleContext = createContext<EditorSectionStyle>('flat');
+export function EditorSectionStyleProvider({
+  value,
+  children,
+}: {
+  value: EditorSectionStyle;
+  children: ReactNode;
+}) {
+  return (
+    <EditorSectionStyleContext.Provider value={value}>{children}</EditorSectionStyleContext.Provider>
+  );
+}
 
 /**
  * One titled group of settings. Rows inside are separated by hairlines rather
- * than boxed individually — the editor sits on `bg-popover` already, so a
- * second popover-tinted panel on top of it would draw a border and no contrast.
+ * than boxed individually. See `EditorSectionStyle` for the two dialects.
  */
 export function EditorSection({
   title,
@@ -28,14 +56,26 @@ export function EditorSection({
   description?: ReactNode;
   children: ReactNode;
 }) {
+  const style = useContext(EditorSectionStyleContext);
+  const heading = (
+    <div className="space-y-1">
+      <h3 className="text-foreground text-sm font-medium">{title}</h3>
+      {description ? (
+        <p className="text-muted-foreground text-xs leading-relaxed text-pretty">{description}</p>
+      ) : null}
+    </div>
+  );
+  if (style === 'panel') {
+    return (
+      <section className="bg-popover rounded-md border">
+        <div className="border-border/60 border-b px-4 pt-4 pb-3">{heading}</div>
+        <div className={cn('divide-border/60 divide-y px-4')}>{children}</div>
+      </section>
+    );
+  }
   return (
     <section className="space-y-2">
-      <div className="space-y-1">
-        <h3 className="text-foreground text-sm font-medium">{title}</h3>
-        {description ? (
-          <p className="text-muted-foreground text-xs leading-relaxed text-pretty">{description}</p>
-        ) : null}
-      </div>
+      {heading}
       <div className="divide-border/60 divide-y">{children}</div>
     </section>
   );

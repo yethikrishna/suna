@@ -78,8 +78,8 @@ export function AccessSection({
 }) {
   return (
     <EditorSection
-      title="Access"
-      description="Denied by default. This agent reaches nothing until you grant it here."
+      title="What it can reach"
+      description="Denied by default. This agent reaches nothing until you grant it here — and whoever is granted the agent inherits these."
     >
       <SettingBlock label="Skills" help="Instructions and scripts this agent can load.">
         <GrantSetField

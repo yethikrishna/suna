@@ -34,9 +34,9 @@
  * avatar, the name and the same two actions slides in at the top of the
  * document scroller, so "which agent" and "start it" never leave the screen.
  *
- * The pane is TABBED — Access, Triggers, Model, Workspace, Tools, Basics —
+ * The pane is TABBED — People, Access, Triggers, Model, Workspace, Tools, Basics —
  * rather than one long scroll: each tab is a short, self-contained screen,
- * and Access, the reason the page exists, is the one it opens on. The draft
+ * and People, the reason the page exists, is the one it opens on. The draft
  * is shared across tabs, so switching never drops an edit. `?section=<tab>`
  * deep-links a tab and follows the selection, so the Access hub can send
  * someone straight to an agent's grants.
@@ -61,6 +61,8 @@
  * remounts every draft rather than carrying one agent's edits onto another.
  */
 
+import { HighlightedCode } from '@/components/markdown/code';
+import { MarkdownWithFrontmatter } from '@/components/markdown/markdown-frontmatter';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -80,15 +82,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { errorToast, successToast } from '@/components/ui/toast';
-import { HighlightedCode } from '@/components/markdown/code';
-import { MarkdownWithFrontmatter } from '@/components/markdown/markdown-frontmatter';
 import { EmptyState } from '@/features/layout/section/empty-state';
 import { ErrorState } from '@/features/layout/section/error-state';
 import { configEntitySourcePath } from '@/features/workspace/customize/sections/component/config-entity-source-path';
 import {
   AGENT_CONFIG_SECTIONS,
-  AgentConfigSections,
   type AgentConfigSectionKey,
+  AgentConfigSections,
   DEFAULT_AGENT_CONFIG_SECTION,
   isAgentConfigSectionKey,
   useAgentDraft,
@@ -135,7 +135,12 @@ import {
 } from 'react';
 
 import { capabilityTabHref } from '@/features/workspace/capabilities/shared/capability-tab-routes';
-import { isMarkdownPath, languageForPath } from '@/features/workspace/capabilities/shared/entity/entity-files';
+import {
+  isMarkdownPath,
+  languageForPath,
+} from '@/features/workspace/capabilities/shared/entity/entity-files';
+
+import { EditorSectionStyleProvider } from '@/features/workspace/customize/sections/view/agent-editor-primitives';
 
 import { AgentColorMark } from './agent-color-mark';
 import { AgentModel, AgentScope } from './agent-detail-aside';
@@ -254,10 +259,7 @@ function AgentPageFrame({
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto lg:flex lg:overflow-hidden">
-        <div
-          ref={documentRef}
-          className="relative min-w-0 flex-1 lg:min-h-0 lg:overflow-y-auto"
-        >
+        <div ref={documentRef} className="relative min-w-0 flex-1 lg:min-h-0 lg:overflow-y-auto">
           {doc}
         </div>
         <aside
@@ -280,7 +282,9 @@ function AgentPageFrame({
 
 /** The document column's own padding and measure. */
 function DocumentColumn({ children }: { children: ReactNode }) {
-  return <div className="mx-auto w-full max-w-3xl px-6 pt-6 pb-24 lg:px-10 lg:pt-8">{children}</div>;
+  return (
+    <div className="mx-auto w-full max-w-3xl px-6 pt-6 pb-24 lg:px-10 lg:pt-8">{children}</div>
+  );
 }
 
 function CenteredState({ children }: { children: ReactNode }) {
@@ -402,7 +406,10 @@ function AgentActions({
               {isDefault ? 'Project default' : 'Make project default'}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem disabled={configure.pending} onSelect={() => setConfirmEditSource(true)}>
+            <DropdownMenuItem
+              disabled={configure.pending}
+              onSelect={() => setConfirmEditSource(true)}
+            >
               Edit source in a chat
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -428,7 +435,15 @@ function AgentActions({
 }
 
 /** The status chips beside the name. Only states worth flagging. */
-function AgentChips({ agent, config, size }: { agent: Agent; config: ProjectConfigSummary; size: 'sm' | 'xs' }) {
+function AgentChips({
+  agent,
+  config,
+  size,
+}: {
+  agent: Agent;
+  config: ProjectConfigSummary;
+  size: 'sm' | 'xs';
+}) {
   const mode = agent.mode?.toLowerCase();
   const isDefault = config.open_code_default_agent === agent.name;
   return (
@@ -487,7 +502,9 @@ function AgentHeader({
             Agents
           </Link>
           <CaretRightIcon aria-hidden className="text-muted-foreground/50 size-3.5 shrink-0" />
-          <span className="text-foreground truncate font-medium">{capitalizeWords(agent.name)}</span>
+          <span className="text-foreground truncate font-medium">
+            {capitalizeWords(agent.name)}
+          </span>
         </nav>
         <AgentActions projectId={projectId} agent={agent} config={config} canWrite={canWrite} />
       </div>
@@ -549,7 +566,12 @@ function CompactBar({
                 </span>
                 <AgentChips agent={agent} config={config} size="xs" />
               </span>
-              <AgentActions projectId={projectId} agent={agent} config={config} canWrite={canWrite} />
+              <AgentActions
+                projectId={projectId}
+                agent={agent}
+                config={config}
+                canWrite={canWrite}
+              />
             </div>
           </m.div>
         ) : null}
@@ -643,7 +665,7 @@ function PaneHeader({
         <TabsList
           type="underline"
           underlineSize="md"
-          className="h-auto w-full justify-start gap-4 border-b-0 px-5"
+          className="h-auto w-full justify-start gap-3.5 overflow-x-auto border-b-0 px-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           aria-label="Configuration sections"
         >
           {tabs.map((s) => (
@@ -661,7 +683,7 @@ function PaneHeader({
 
 const EDITABLE_SECTIONS: readonly AgentConfigSectionKey[] = AGENT_CONFIG_SECTIONS.map((s) => s.key);
 /** What a v1 project, or a reader without write, can still see. */
-const READ_ONLY_SECTIONS: readonly AgentConfigSectionKey[] = ['access', 'triggers', 'model'];
+const READ_ONLY_SECTIONS: readonly AgentConfigSectionKey[] = ['people', 'access', 'triggers', 'model'];
 
 function EditableAgentPage({
   projectId,
@@ -756,18 +778,22 @@ function EditableAgentPage({
           </DocumentColumn>
         </>
       }
-      paneHeader={<PaneHeader section={section} onSelect={selectSection} keys={EDITABLE_SECTIONS} />}
+      paneHeader={
+        <PaneHeader section={section} onSelect={selectSection} keys={EDITABLE_SECTIONS} />
+      }
       pane={
         <AgentConfigSections
           section={section}
           editor={editor}
           options={options}
           skillsOptions={skillsOptions}
-          triggers={<AgentTriggersSection
-            projectId={projectId}
-            agentName={agent.name}
-            defaultAgent={config.open_code_default_agent}
-          />}
+          triggers={
+            <AgentTriggersSection
+              projectId={projectId}
+              agentName={agent.name}
+              defaultAgent={config.open_code_default_agent}
+            />
+          }
           people={<AgentPeopleSection projectId={projectId} agentName={agent.name} />}
         />
       }
@@ -925,7 +951,12 @@ function SaveBar({
 function useSaveShortcut(onSave: () => void) {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key === 's') {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        !event.shiftKey &&
+        !event.altKey &&
+        event.key === 's'
+      ) {
         event.preventDefault();
         onSave();
       }
@@ -1108,35 +1139,37 @@ function ReadOnlyAgentPage({
         <PaneHeader section={section} onSelect={selectSection} keys={READ_ONLY_SECTIONS} />
       }
       pane={
-        <div className="space-y-6">
-          {showUpgradeHint ? (
-            <InfoBanner tone="info" title="Upgrade for the full agent editor">
-              This project uses a v1 manifest. Migrate to{' '}
-              <span className="font-mono">kortix.yaml</span> (kortix_version 2) to edit this
-              agent's instructions, model, tool permissions and access here.
-            </InfoBanner>
-          ) : null}
-          {section === 'access' ? (
-            <div className="space-y-6">
-              <AgentScope projectId={projectId} agentName={agent.name} scope={agent.scope} />
-              <AgentPeopleSection projectId={projectId} agentName={agent.name} />
-            </div>
-          ) : section === 'triggers' ? (
-            <AgentTriggersSection
-            projectId={projectId}
-            agentName={agent.name}
-            defaultAgent={config.open_code_default_agent}
-          />
-          ) : (
-            <div className="space-y-6">
-              <AgentModel projectId={projectId} agentName={agent.name} />
-              <p className="text-muted-foreground text-xs text-pretty">
-                The model this agent runs on is set in its source file. With the model gateway on,
-                a per-agent pin can override it above.
-              </p>
-            </div>
-          )}
-        </div>
+        <EditorSectionStyleProvider value="panel">
+          <div className="space-y-4">
+            {showUpgradeHint ? (
+              <InfoBanner tone="info" title="Upgrade for the full agent editor">
+                This project uses a v1 manifest. Migrate to{' '}
+                <span className="font-mono">kortix.yaml</span> (kortix_version 2) to edit this
+                agent's instructions, model, tool permissions and access here.
+              </InfoBanner>
+            ) : null}
+            {section === 'access' ? (
+              <div className="space-y-4">
+                <AgentPeopleSection projectId={projectId} agentName={agent.name} />
+                <AgentScope projectId={projectId} agentName={agent.name} scope={agent.scope} />
+              </div>
+            ) : section === 'triggers' ? (
+              <AgentTriggersSection
+                projectId={projectId}
+                agentName={agent.name}
+                defaultAgent={config.open_code_default_agent}
+              />
+            ) : (
+              <div className="space-y-6">
+                <AgentModel projectId={projectId} agentName={agent.name} />
+                <p className="text-muted-foreground text-xs text-pretty">
+                  The model this agent runs on is set in its source file. With the model gateway on,
+                  a per-agent pin can override it above.
+                </p>
+              </div>
+            )}
+          </div>
+        </EditorSectionStyleProvider>
       }
     />
   );

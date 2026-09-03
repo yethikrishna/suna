@@ -55,6 +55,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 import { AccessSection, WorkspaceSection } from './agent-editor-access-fields';
 import { BasicsSection, ModelSection } from './agent-editor-basics-fields';
+import { EditorSectionStyleProvider } from './agent-editor-primitives';
 import { ToolsSection } from './permission-editor';
 
 export {
@@ -244,6 +245,10 @@ export function useAgentEditorOptions(
  * are set once and rarely revisited, so they sit further down.
  */
 export const AGENT_CONFIG_SECTIONS = [
+  // People first: granting an agent to a person or a group IS the access
+  // path in Kortix (Marko, 2026-09-03), so who may use it leads, and what it
+  // may reach — which those people inherit — follows on its own tab.
+  { key: 'people', label: 'People' },
   { key: 'access', label: 'Access' },
   { key: 'triggers', label: 'Triggers' },
   { key: 'model', label: 'Model' },
@@ -255,7 +260,7 @@ export const AGENT_CONFIG_SECTIONS = [
 export type AgentConfigSectionKey = (typeof AGENT_CONFIG_SECTIONS)[number]['key'];
 
 /** The tab the pane opens on, and the one an unknown `?section=` falls back to. */
-export const DEFAULT_AGENT_CONFIG_SECTION: AgentConfigSectionKey = 'access';
+export const DEFAULT_AGENT_CONFIG_SECTION: AgentConfigSectionKey = 'people';
 
 export function isAgentConfigSectionKey(value: string | null): value is AgentConfigSectionKey {
   return AGENT_CONFIG_SECTIONS.some((s) => s.key === value);
@@ -266,10 +271,9 @@ export function isAgentConfigSectionKey(value: string | null): value is AgentCon
  * switch never drops an edit — and the save bar below the pane is global, so
  * a tab is a view, not a form of its own.
  *
- * Access carries two sections: what the agent may reach (the grant sets)
- * and who may reach the agent (`people`). They are one question from two
- * sides, and a person granting an agent to a group wants to see what that
- * group inherits without changing tab.
+ * People and Access are two tabs (Marko, 2026-09-03: "split the member
+ * grants and the access to what the agent has"): who may use the agent, and
+ * what the agent — and therefore they — may reach.
  */
 export function AgentConfigSections({
   section,
@@ -285,14 +289,18 @@ export function AgentConfigSections({
   skillsOptions: { id: string; label: string }[];
   /** The agent's triggers — a page-owned section, the Triggers tab. */
   triggers?: React.ReactNode;
-  /** Who may use the agent — a page-owned section, under Access. */
+  /** Who may use the agent — a page-owned section, the People tab. */
   people?: React.ReactNode;
 }) {
   const { draft, oc, set, setOc } = editor;
-  switch (section) {
-    case 'access':
-      return (
-        <div className="space-y-10">
+  // Every section is a card (`EditorSectionStyle` 'panel'), so a tab holding
+  // two of them — Access holds the people and the grants — shows two blocks.
+  const body = (() => {
+    switch (section) {
+      case 'people':
+        return <>{people}</>;
+      case 'access':
+        return (
           <AccessSection
             draft={draft}
             set={set}
@@ -300,24 +308,28 @@ export function AgentConfigSections({
             connectorOptions={options.connectorOptions}
             secretOptions={options.secretOptions}
           />
-          {people}
-        </div>
-      );
-    case 'triggers':
-      return <>{triggers}</>;
-    case 'model':
-      return <ModelSection oc={oc} setOc={setOc} showPrompt={false} />;
-    case 'workspace':
-      return <WorkspaceSection draft={draft} set={set} sandboxOptions={options.sandboxOptions} />;
-    case 'tools':
-      return (
-        <ToolsSection permission={oc.permission} onChange={(next) => setOc('permission', next)} />
-      );
-    case 'basics':
-      return (
-        <BasicsSection draft={draft} set={set} oc={oc} setOc={setOc} showDescription={false} />
-      );
-  }
+        );
+      case 'triggers':
+        return <>{triggers}</>;
+      case 'model':
+        return <ModelSection oc={oc} setOc={setOc} showPrompt={false} />;
+      case 'workspace':
+        return <WorkspaceSection draft={draft} set={set} sandboxOptions={options.sandboxOptions} />;
+      case 'tools':
+        return (
+          <ToolsSection permission={oc.permission} onChange={(next) => setOc('permission', next)} />
+        );
+      case 'basics':
+        return (
+          <BasicsSection draft={draft} set={set} oc={oc} setOc={setOc} showDescription={false} />
+        );
+    }
+  })();
+  return (
+    <EditorSectionStyleProvider value="panel">
+      <div className="space-y-4">{body}</div>
+    </EditorSectionStyleProvider>
+  );
 }
 
 /** Summarize a grant set — "All", "None", "3 picked" — for compact cards. */

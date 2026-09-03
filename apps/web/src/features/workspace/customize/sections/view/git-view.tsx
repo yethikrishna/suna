@@ -44,6 +44,7 @@ import {
   WarningIcon,
 } from '@phosphor-icons/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 
@@ -104,7 +105,7 @@ function gitCloneUrl(project: ProjectWithOrigin): string {
  * `text-xs` is set rather than inherited so it matches the row descriptions it
  * appears in and stays quiet in the header slot, where nothing else sets a size.
  */
-function DocsLink({ href, children = 'Learn more' }: { href: string; children?: ReactNode }) {
+function DocsLink({ href, children }: { href: string; children: ReactNode }) {
   return (
     <Link
       href={href}
@@ -145,10 +146,13 @@ function CommandLine({
 }) {
   return (
     <div className="bg-muted group/command-line -mx-2 flex min-w-0 items-center gap-2 rounded-sm px-3 py-1.5 transition-colors">
-      <code className="text-foreground scrollbar-hide min-w-0 flex-1 overflow-x-auto font-mono text-[12px] whitespace-nowrap">
+      <code
+        aria-label={label}
+        className="text-foreground scrollbar-hide min-w-0 flex-1 overflow-x-auto font-mono text-xs whitespace-nowrap"
+      >
         {value}
       </code>
-      <span className="shrink-0 opacity-0 transition-opacity duration-200 group-hover/command-line:opacity-100">
+      <span className="duration-moderate shrink-0 opacity-0 transition-opacity group-hover/command-line:opacity-100">
         <CopyButton code={value} size="sm" />
       </span>
     </div>
@@ -163,8 +167,14 @@ const TONE_DOT: Record<ConnectionTone, string> = {
 
 /** Status as a dot plus a word. A `Badge` would announce itself louder than the
  *  repository name it describes; a dot is read as a state, not as a label. */
-function StatusValue({ status }: { status: string | null | undefined }) {
-  const { tone, label } = connectionStatusLabel(status);
+function StatusValue({
+  status,
+  copy,
+}: {
+  status: string | null | undefined;
+  copy: Parameters<typeof connectionStatusLabel>[1];
+}) {
+  const { tone, label } = connectionStatusLabel(status, copy);
   return (
     <span className="flex items-center gap-2 text-sm">
       <span aria-hidden className={cn('size-1.5 shrink-0 rounded-full', TONE_DOT[tone])} />
@@ -228,15 +238,17 @@ export function projectRepoFallback(
 export function RepositoryValue({
   connection,
   repoUrl,
+  notLinked = 'Not linked yet',
 }: {
   connection: ProjectGitConnection | null | undefined;
   repoUrl?: string | null;
+  notLinked?: string;
 }) {
   const fallback = connection ? null : projectRepoFallback(repoUrl);
   const name =
     connection?.repo_owner && connection.repo_name
       ? `${connection.repo_owner}/${connection.repo_name}`
-      : connection?.repo_url || fallback?.label || repoUrl?.trim() || 'Not linked yet';
+      : connection?.repo_url || fallback?.label || repoUrl?.trim() || notLinked;
   const webUrl = connection?.repo_url
     ? repositoryWebUrl(connection.provider, connection.repo_url)
     : (fallback?.webUrl ?? null);
@@ -263,8 +275,8 @@ export function RepositoryValue({
   );
 }
 
-function SaveStatus() {
-  return <span className="text-muted-foreground shrink-0 text-xs tabular-nums">Saving…</span>;
+function SaveStatus({ label }: { label: string }) {
+  return <span className="text-muted-foreground shrink-0 text-xs tabular-nums">{label}</span>;
 }
 
 /**
@@ -292,6 +304,7 @@ function RepositoryGroup({
   connection: ProjectGitConnection | null | undefined;
   canManage: boolean;
 }) {
+  const t = useTranslations('settings.git');
   const queryClient = useQueryClient();
   const branchesQuery = useQuery({
     queryKey: qk.project.branches(project.project_id),
@@ -337,7 +350,7 @@ function RepositoryGroup({
       queryClient.invalidateQueries({ queryKey: qk.projects.scope() });
       queryClient.invalidateQueries({ queryKey: qk.project.branches(project.project_id) });
     },
-    onError: (error: Error) => errorToast(error.message || 'Failed to update repository'),
+    onError: (error: Error) => errorToast(error.message || t('updateFailed')),
   });
 
   const { mutate, isPending } = mutation;
@@ -369,7 +382,7 @@ function RepositoryGroup({
   return (
     <section className="space-y-3">
       {connection?.last_error_message ? (
-        <InfoBanner tone="warning" icon={WarningIcon} title="Kortix can't reach this repository">
+        <InfoBanner tone="warning" icon={WarningIcon} title={t('unreachable')}>
           {connection.last_error_message}
         </InfoBanner>
       ) : null}
@@ -380,25 +393,40 @@ function RepositoryGroup({
             project's own address — so this reads the same fallback the value
             does rather than saying a flat "Hosted on Git." beside a GitHub
             link. */}
-        <SettingsRow label="Repository" description={providerSentence(repositoryProvider)}>
-          <RepositoryValue connection={connection} repoUrl={project.repo_url} />
-        </SettingsRow>
-
-        <SettingsRow label="Status">
-          <StatusValue status={connection?.status} />
-        </SettingsRow>
-
         <SettingsRow
-          label="Base branch"
-          description="New sessions and change requests start from this branch."
+          label={t('repository')}
+          description={providerSentence(repositoryProvider, {
+            hosted: (provider) => t('hostedOn', { provider }),
+            stored: (provider) => t('storedIn', { provider }),
+          })}
         >
-          {saving ? <SaveStatus /> : null}
+          <RepositoryValue
+            connection={connection}
+            repoUrl={project.repo_url}
+            notLinked={t('notLinked')}
+          />
+        </SettingsRow>
+
+        <SettingsRow label={t('status')}>
+          <StatusValue
+            status={connection?.status}
+            copy={{
+              connected: t('statuses.connected'),
+              attention: t('statuses.attention'),
+              connecting: t('statuses.connecting'),
+              disconnected: t('statuses.disconnected'),
+            }}
+          />
+        </SettingsRow>
+
+        <SettingsRow label={t('baseBranch')} description={t('baseBranchDescription')}>
+          {saving ? <SaveStatus label={t('saving')} /> : null}
           <Select
             value={defaultBranch}
             onValueChange={setDefaultBranch}
             disabled={!canManage || isPending}
           >
-            <SelectTrigger aria-label="Base branch" className="h-8 w-44 font-mono text-xs">
+            <SelectTrigger aria-label={t('baseBranch')} className="h-8 w-44 font-mono text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent align="end">
@@ -412,17 +440,16 @@ function RepositoryGroup({
         </SettingsRow>
 
         <SettingsRow
-          label="Manifest file"
+          label={t('manifestFile')}
           description={
             <>
-              The file in your repository that tells Kortix how to run this workspace.{' '}
-              <DocsLink href={DOCS_MANIFEST} />
+              {t('manifestDescription')} <DocsLink href={DOCS_MANIFEST}>{t('learnMore')}</DocsLink>
             </>
           }
         >
           <Input
             id="manifest-path"
-            aria-label="Manifest file"
+            aria-label={t('manifestFile')}
             value={manifestPath}
             onChange={(e) => setManifestPath(e.target.value)}
             disabled={!canManage || isPending}
@@ -457,7 +484,7 @@ function Step({
 }) {
   return (
     <li className="flex gap-3 px-4 py-3.5">
-      <span className="bg-muted text-muted-foreground flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-medium tabular-nums">
+      <span className="bg-muted text-muted-foreground flex size-5 shrink-0 items-center justify-center rounded-full text-xs font-medium tabular-nums">
         {index}
       </span>
       <div className="min-w-0 flex-1 space-y-2.5">
@@ -482,14 +509,15 @@ function Step({
  * match that assertion and would silently un-pin the order.
  */
 function LocalSetup({ projectId }: { projectId: string }) {
+  const t = useTranslations('settings.git');
   const installCommand = useDeploymentCliInstallCommand(getEnv().VERSION);
 
   return (
     <section className="space-y-3">
       <SettingsSubsectionHeader
-        title="Work on this locally"
-        description="Put a copy of this workspace on your own computer and edit it in your own editor."
-        action={<DocsLink href={DOCS_CLI} />}
+        title={t('localTitle')}
+        description={t('localDescription')}
+        action={<DocsLink href={DOCS_CLI}>{t('learnMore')}</DocsLink>}
       />
       {/* Carries `SettingsRowGroup`'s exact classes on an `<ol>` rather than
           using the component, which renders a `div`. These are numbered steps,
@@ -498,27 +526,15 @@ function LocalSetup({ projectId }: { projectId: string }) {
           Everything visual matches the groups above it, so the pane still reads
           as one system. */}
       <ol className="bg-popover divide-border divide-y overflow-hidden rounded-md border">
-        <Step
-          index={1}
-          title="Install the Kortix command line"
-          hint="A one-time setup on macOS or Linux. Skip this if you already have it."
-        >
-          <CommandLine value={installCommand} label="Install command" />
+        <Step index={1} title={t('installTitle')} hint={t('installHint')}>
+          <CommandLine value={installCommand} label={t('installCommand')} />
         </Step>
-        <Step
-          index={2}
-          title="Copy the workspace to your computer"
-          hint="Downloads the code into a new folder and links that folder to this workspace."
-        >
-          <CommandLine value={`kortix projects clone ${projectId}`} label="Clone command" />
+        <Step index={2} title={t('cloneTitle')} hint={t('cloneHint')}>
+          <CommandLine value={`kortix projects clone ${projectId}`} label={t('cloneCommand')} />
         </Step>
-        <Step
-          index={3}
-          title="Finish setup inside the new folder"
-          hint="Writes the local config, then fetches this workspace's secrets so the code can run."
-        >
-          <CommandLine value="kortix init --force" label="Setup command" />
-          <CommandLine value="kortix env pull" label="Secrets command" />
+        <Step index={3} title={t('setupTitle')} hint={t('setupHint')}>
+          <CommandLine value="kortix init --force" label={t('setupCommand')} />
+          <CommandLine value="kortix env pull" label={t('secretsCommand')} />
         </Step>
       </ol>
     </section>
@@ -537,6 +553,7 @@ function LocalSetup({ projectId }: { projectId: string }) {
  * the credential.
  */
 function OwnGitClient({ project }: { project: ProjectWithOrigin }) {
+  const t = useTranslations('settings.git');
   const [open, setOpen] = useState(false);
 
   return (
@@ -564,16 +581,17 @@ function OwnGitClient({ project }: { project: ProjectWithOrigin }) {
           >
             <span className="min-w-0 flex-1 space-y-0.5">
               <span className="text-foreground block text-sm font-medium">
-                Use your own Git client
+                {t('ownClientTitle')}
               </span>
               <span className="text-muted-foreground block text-xs font-normal text-pretty">
-                Clone with plain <code className="font-mono">git</code> instead of the Kortix
-                command line.
+                {t.rich('ownClientDescription', {
+                  code: (chunks) => <code className="font-mono">{chunks}</code>,
+                })}
               </span>
             </span>
             <CaretDownIcon
               className={cn(
-                'text-muted-foreground mt-0.5 size-4 shrink-0 transition-transform duration-200',
+                'text-muted-foreground duration-moderate mt-0.5 size-4 shrink-0 transition-transform motion-reduce:transition-none',
                 open && 'rotate-180',
               )}
             />
@@ -582,10 +600,9 @@ function OwnGitClient({ project }: { project: ProjectWithOrigin }) {
         <DisclosureContent variant="outline" contentClassName="border-border border-t">
           <div className="space-y-2 px-4 py-3.5">
             <p className="text-muted-foreground text-xs text-pretty">
-              Clone from this address with any Git client. Kortix signs the request for you, so
-              there is no access token to create, paste, or keep on your machine.
+              {t('cloneAddressDescription')}
             </p>
-            <CommandLine value={gitCloneUrl(project)} label="Clone address" kind="address" />
+            <CommandLine value={gitCloneUrl(project)} label={t('cloneAddress')} kind="address" />
           </div>
         </DisclosureContent>
       </Disclosure>
@@ -625,6 +642,7 @@ function RepoAccessSection({
   managed: boolean;
   canManageMembers: boolean;
 }) {
+  const t = useTranslations('settings.git');
   // Still gated on the capability — someone who cannot grant repository access
   // has no use for either the form or an explanation of where to grant it.
   if (!canManageMembers) return null;
@@ -632,12 +650,8 @@ function RepoAccessSection({
   return (
     <section className="space-y-3">
       <SettingsSubsectionHeader
-        title="People with access"
-        description={
-          managed
-            ? 'Invite someone by their GitHub username. GitHub emails them an invite to accept.'
-            : 'Who can read and write this workspace’s repository.'
-        }
+        title={t('peopleTitle')}
+        description={managed ? t('peopleManagedDescription') : t('peopleExternalDescription')}
       />
       {managed ? (
         <RepoCollaboratorInvite projectId={projectId} />
@@ -669,6 +683,7 @@ function ExternallyManagedRepoAccess({
 }: {
   connection: ProjectGitConnection | null | undefined;
 }) {
+  const t = useTranslations('settings.git');
   const provider = connection?.provider;
   // GitHub only. `repositoryWebUrl` also answers for GitLab, but the deep link
   // below is `/settings/access`, which is GitHub's path — GitLab's is
@@ -683,14 +698,14 @@ function ExternallyManagedRepoAccess({
     <div className="bg-popover rounded-md border px-4 py-3">
       <p className="text-muted-foreground text-xs text-pretty">
         {provider === 'github'
-          ? 'Kortix did not create this repository, so it cannot add collaborators to it. Manage access from the repository settings on GitHub.'
-          : `This workspace’s repository is hosted on ${providerLabel(provider)}, which does not support collaborator invites from Kortix. Manage access where the repository lives.`}
+          ? t('externalGithubDescription')
+          : t('externalProviderDescription', { provider: providerLabel(provider) })}
       </p>
       {webUrl ? (
         <Button asChild variant="outline" size="sm" className="mt-3 gap-1.5">
           <a href={`${webUrl}/settings/access`} target="_blank" rel="noopener noreferrer">
             <ExternalLink className="size-3.5 shrink-0" />
-            Manage on GitHub
+            {t('manageOnGithub')}
           </a>
         </Button>
       ) : null}
@@ -699,6 +714,7 @@ function ExternallyManagedRepoAccess({
 }
 
 function RepoCollaboratorInvite({ projectId }: { projectId: string }) {
+  const t = useTranslations('settings.git');
   const [username, setUsername] = useState('');
   const [permission, setPermission] = useState<'read' | 'write'>('write');
 
@@ -706,13 +722,13 @@ function RepoCollaboratorInvite({ projectId }: { projectId: string }) {
     mutationFn: () => inviteRepoCollaborator(projectId, username.trim(), permission),
     onSuccess: (res) => {
       if (res.alreadyCollaborator) {
-        successToast(`@${res.username} already has access to this repo`);
+        successToast(t('alreadyHasAccess', { username: res.username }));
       } else {
-        successToast(`Invite sent to @${res.username} — they accept it on GitHub to get access`);
+        successToast(t('inviteSent', { username: res.username }));
       }
       setUsername('');
     },
-    onError: (error: Error) => errorToast(error.message || 'Failed to add collaborator'),
+    onError: (error: Error) => errorToast(error.message || t('inviteFailed')),
   });
 
   const submit = (e: FormEvent) => {
@@ -736,10 +752,10 @@ function RepoCollaboratorInvite({ projectId }: { projectId: string }) {
             <GithubIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
             <Input
               id="repo-collaborator-username"
-              aria-label="GitHub username"
+              aria-label={t('githubUsername')}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="GitHub username"
+              placeholder={t('githubUsername')}
               // NOT `variant="popover"`. That variant is `bg-popover`, the same
               // fill as the panel around it, so the input dissolved into its own
               // container. The default `bg-input` is what makes it read as
@@ -755,14 +771,14 @@ function RepoCollaboratorInvite({ projectId }: { projectId: string }) {
           <Select value={permission} onValueChange={(v) => setPermission(v as 'read' | 'write')}>
             <SelectTrigger
               id="repo-collaborator-permission"
-              aria-label="Access level"
+              aria-label={t('accessLevel')}
               className="h-8 w-full rounded-sm"
             >
               <SelectValue />
             </SelectTrigger>
             <SelectContent align="end">
-              <SelectItem value="write">Can edit</SelectItem>
-              <SelectItem value="read">Can view</SelectItem>
+              <SelectItem value="write">{t('canEdit')}</SelectItem>
+              <SelectItem value="read">{t('canView')}</SelectItem>
             </SelectContent>
           </Select>
 
@@ -773,7 +789,7 @@ function RepoCollaboratorInvite({ projectId }: { projectId: string }) {
             disabled={!username.trim() || inviteMutation.isPending}
           >
             {inviteMutation.isPending ? <Loading className="size-3.5 shrink-0" /> : null}
-            Invite
+            {t('invite')}
           </Button>
         </form>
       </div>
@@ -782,6 +798,7 @@ function RepoCollaboratorInvite({ projectId }: { projectId: string }) {
 }
 
 export function GitView({ projectId }: { projectId: string }) {
+  const t = useTranslations('settings.git');
   const detail = useQuery({
     queryKey: qk.project.detail(projectId),
     queryFn: () => getProjectDetail(projectId),
@@ -816,7 +833,7 @@ export function GitView({ projectId }: { projectId: string }) {
           heading; a second one here would be a duplicate, the same fix
           `snapshots-tab.tsx` got when Snapshots merged into Sandbox
           templates. */}
-      <SettingsSubsectionHeader title="Git repo" />
+      <SettingsSubsectionHeader title={t('title')} />
 
       {detail.isLoading ? (
         <div className="space-y-5">
@@ -828,12 +845,12 @@ export function GitView({ projectId }: { projectId: string }) {
       {detail.isError ? (
         <ErrorState
           size="sm"
-          title="Could not load this workspace's repository"
+          title={t('loadFailed')}
           description={(detail.error as Error).message}
           action={
             <Button variant="outline" size="sm" onClick={() => detail.refetch()}>
               <RefreshCw className="size-3.5" />
-              Retry
+              {t('retry')}
             </Button>
           }
         />

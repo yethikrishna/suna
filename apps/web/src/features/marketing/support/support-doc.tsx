@@ -290,34 +290,3 @@ export function Note({ children }: { children: ReactNode }) {
     </div>
   );
 }
-
-/**
- * A term and its explanation. Used for the two credit kinds, the four ways to
- * get credits, and the two usage screens — everything that was a `Card` with a
- * `CardTitle` and a `CardDescription` and nothing else in it.
- */
-export function DefinitionList({ children }: { children: ReactNode }) {
-  return <dl className="divide-border divide-y border-y">{children}</dl>;
-}
-
-export function Definition({
-  term,
-  children,
-  aside,
-}: {
-  term: string;
-  children: ReactNode;
-  aside?: string;
-}) {
-  return (
-    <div className="grid gap-1 py-4 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-6">
-      <dt className="text-foreground text-sm font-medium tracking-tight">
-        {term}
-        {aside ? (
-          <span className="text-muted-foreground/60 block text-xs font-normal">{aside}</span>
-        ) : null}
-      </dt>
-      <dd className="text-muted-foreground text-[15px] leading-7 text-pretty">{children}</dd>
-    </div>
-  );
-}

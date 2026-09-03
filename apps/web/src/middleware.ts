@@ -67,7 +67,7 @@ const PUBLIC_ROUTES = [
   '/connect', // Agent-minted Pipedream Quick Connect links — token-gated, MUST be openable with no login (distinct from authed /connectors)
   '/master-login', // Master password admin login
   '/checkout', // Public checkout wrapper for Apple compliance
-  '/support', // Support hub and its articles (prefix match covers /support/credits)
+  '/support', // Support hub — FAQ, contact channels, account deletion
   '/docs', // Product documentation (Fumadocs) should be public
   '/about', // About page should be public
   '/agent-computer', // Agent computer marketing page should be public

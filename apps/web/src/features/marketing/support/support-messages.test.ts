@@ -15,19 +15,20 @@ import { locales } from '@/i18n/config';
  *    script and is currently red for an unrelated `appHomePage` gap — so a new
  *    hole here would land inside an already-failing report and be missed.
  *
- * Both pages are `'use client'` and their copy is anonymous-locale English in
- * local dev (a pre-existing `x-locale` request/response header mismatch in
+ * The page is `'use client'` and its copy is anonymous-locale English in local
+ * dev (a pre-existing `x-locale` request/response header mismatch in
  * `src/i18n/request.ts` — the `<html lang>`, canonical and hreflang are all
  * correct, only the body copy falls back). That makes a rendered-DOM assertion
  * unable to prove the other seven locales, which is exactly why this test reads
  * the message files directly.
+ *
+ * `support.credits` used to be the second namespace here. The credits guide is
+ * reference material, so it moved to the English-only docs tree at
+ * `content/docs/credits.mdx` and took its 61 keys per locale with it.
  */
 
 const TRANSLATIONS = path.join(import.meta.dir, '../../../../translations');
-const PAGES = [
-  'src/app/(public)/(marketing)/support/page.tsx',
-  'src/app/(public)/(marketing)/support/credits/page.tsx',
-];
+const PAGES = ['src/app/(public)/(marketing)/support/page.tsx'];
 
 /** `useTranslations('support.hub')` → the namespace the file's `t` is bound to. */
 function namespaceOf(source: string): string {

@@ -931,13 +931,15 @@ export const menuRegistry: MenuItemDef[] = [
   },
   {
     id: 'credits-explained',
-    label: 'Credits Explained',
+    label: 'Credits & usage',
     icon: Coins,
     group: 'navigation',
     showIn: ['commandPalette'],
     kind: 'navigate',
-    href: '/support/credits',
-    keywords: 'credits coins billing usage tokens cost explain',
+    href: '/docs/credits',
+    // `explained` stays in the keywords because /credits-explained was the
+    // original public URL and is still what people type for this page.
+    keywords: 'credits coins billing usage tokens cost explain explained',
   },
   {
     id: 'support',

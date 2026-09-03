@@ -72,7 +72,6 @@ export const STATIC_PUBLIC_ROUTES = [
   '/self-hosted',
   '/solutions',
   '/support',
-  '/support/credits',
   '/use-cases',
 ] as const;
 
@@ -187,17 +186,6 @@ const MARKETING_RECORDS: PublicContentRecord[] = [
     description:
       'Reach Kortix support, read the guides, and find the answers to the questions people ask most.',
     htmlPath: '/support',
-  },
-  // The support hub's first article. It absorbed /help and /help/credits, which
-  // were a second support surface wearing the app sidebar; both paths 308 here
-  // from `next.config.ts`, as does the older /credits-explained.
-  {
-    kind: 'marketing',
-    slug: 'support/credits',
-    title: 'Kortix credits explained',
-    description:
-      'What credits are, how Kortix sessions consume them, and how to manage your balance and subscription.',
-    htmlPath: '/support/credits',
   },
   // The product pages. Each one's layout.tsx reads its title/description back
   // through `marketingMetadata(htmlPath)`, so this record is the single place

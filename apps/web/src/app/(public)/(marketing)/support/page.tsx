@@ -154,7 +154,7 @@ function SupportPageContent() {
                   title={t('creditsCardTitle')}
                   description={t('creditsCardDescription')}
                   meta={t('creditsCardMeta')}
-                  href="/support/credits"
+                  href="/docs/credits"
                 />
               </div>
             </div>

@@ -11,9 +11,10 @@ import {
 type SitemapEntry = MetadataRoute.Sitemap[number];
 
 // The middleware's locale matcher is a prefix match on MARKETING_ROUTES, so
-// /de/support/credits already rewrites and self-canonicalizes. Listing the
-// article here is what puts its per-locale URLs and hreflang set in the sitemap.
-const LOCALIZED_ROUTES = ['/', '/legal', '/support', '/support/credits'] as const;
+// /de/support already rewrites and self-canonicalizes. Listing a route here is
+// what puts its per-locale URLs and hreflang set in the sitemap. The docs tree
+// is English-only and is listed through STATIC_PUBLIC_ROUTES instead.
+const LOCALIZED_ROUTES = ['/', '/legal', '/support'] as const;
 
 function htmlEntry(pathname: string, lastModified?: string): SitemapEntry {
   return {

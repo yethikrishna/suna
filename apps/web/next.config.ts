@@ -401,12 +401,13 @@ const nextConfig = (): NextConfig => ({
       // into /support, so every help URL lands on its counterpart there.
       //
       // Permanent (308), because these are indexed public URLs and the merge is
-      // not going to be undone. /help/:path* catches nothing today — the tree
-      // held only the index and credits — and exists so a stale deep link ends
-      // on the hub instead of the marketing 404.
+      // not going to be undone. /help went to the hub; /help/credits went to
+      // the credits guide, which now lives in the docs tree. /help/:path*
+      // catches nothing today — the tree held only the index and credits — and
+      // exists so a stale deep link ends on the hub instead of the marketing 404.
       {
         source: '/help/credits',
-        destination: '/support/credits',
+        destination: '/docs/credits',
         permanent: true,
       },
       {
@@ -419,12 +420,21 @@ const nextConfig = (): NextConfig => ({
         destination: '/support',
         permanent: true,
       },
+      // The credits guide is reference material, so it lives in the docs tree
+      // rather than as a marketing article. It was briefly at /support/credits
+      // on this branch; that URL never shipped to production, so this entry is
+      // for preview links and review references, not for search indexes.
+      {
+        source: '/support/credits',
+        destination: '/docs/credits',
+        permanent: true,
+      },
       // Removed pages that may live on in old links and search indexes.
       // /credits-explained became the support credits article; the /compare
       // section was retired with no direct replacement.
       {
         source: '/credits-explained',
-        destination: '/support/credits',
+        destination: '/docs/credits',
         permanent: true,
       },
       {

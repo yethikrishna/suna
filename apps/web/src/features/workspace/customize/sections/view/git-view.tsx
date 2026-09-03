@@ -823,7 +823,9 @@ export function GitView({ projectId }: { projectId: string }) {
           heading; a second one here would be a duplicate, the same fix
           `snapshots-tab.tsx` got when Snapshots merged into Sandbox
           templates. */}
-      <SettingsSubsectionHeader title="Git repo" />
+      {/* No subsection heading: this view is the Settings tab's own "Git repo"
+          section since 2026-09-03, and the section pane already carries that
+          title (`project-settings-page.tsx`). */}
 
       {detail.isLoading ? (
         <div className="space-y-5">

@@ -14,7 +14,7 @@ import { CheckIcon } from '@phosphor-icons/react';
 import { type ReactNode, useState } from 'react';
 import { KORTIX_CLI_CATALOG } from './agent-editor-catalog';
 
-type GrantMode = 'all' | 'pick' | 'none';
+export type GrantMode = 'all' | 'pick' | 'none';
 
 /** Summarize a grant set — "All", "None", "3 picked" — for a card header. */
 export function grantSummary(v: AgentGrantSetV2 | undefined): {
@@ -33,18 +33,26 @@ const GRANT_MODES: { value: GrantMode; label: string }[] = [
   { value: 'none', label: 'None' },
 ];
 
-function GrantModeField({
+export function GrantModeField({
   value,
   onChange,
   allLabel,
   noneLabel,
+  alwaysRender = false,
   children,
 }: {
   value: AgentGrantSetV2 | undefined;
   onChange: (v: AgentGrantSetV2) => void;
   allLabel: string;
   noneLabel: string;
-  children: (ctx: { selected: Set<string>; toggle: (id: string) => void }) => React.ReactNode;
+  /** Render `children` in every mode, not only Pick — for a catalog that
+   *  stays on screen and shows each card as included / excluded. */
+  alwaysRender?: boolean;
+  children: (ctx: {
+    selected: Set<string>;
+    toggle: (id: string) => void;
+    mode: GrantMode;
+  }) => React.ReactNode;
 }) {
   const mode: GrantMode =
     value === 'all' ? 'all' : value === 'none' || value === undefined ? 'none' : 'pick';
@@ -89,7 +97,9 @@ function GrantModeField({
           <span className="text-muted-foreground text-xs">{noneLabel}</span>
         )}
       </div>
-      {effectiveMode === 'pick' ? children({ selected, toggle }) : null}
+      {effectiveMode === 'pick' || alwaysRender
+        ? children({ selected, toggle, mode: effectiveMode })
+        : null}
     </div>
   );
 }

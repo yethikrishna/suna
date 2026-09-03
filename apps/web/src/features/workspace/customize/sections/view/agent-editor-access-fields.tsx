@@ -46,7 +46,13 @@ type SetKortix = <K extends keyof AgentConfigBlock>(key: K, value: AgentConfigBl
  * explanation lived in a tooltip, so the state was invisible until you hovered
  * it — and a lock reads as "secured", which is not what this means.
  */
-function RequiredConnectorToggle({ active, onToggle }: { active: boolean; onToggle: () => void }) {
+export function RequiredConnectorToggle({
+  active,
+  onToggle,
+}: {
+  active: boolean;
+  onToggle: () => void;
+}) {
   return (
     <Hint
       label={
@@ -74,7 +80,7 @@ function RequiredConnectorToggle({ active, onToggle }: { active: boolean; onTogg
 }
 
 /** The summary chip at a grant card's right edge — "All", "3 picked", "None". */
-function GrantChip({ value }: { value: AgentGrantSetV2 | undefined }) {
+export function GrantChip({ value }: { value: AgentGrantSetV2 | undefined }) {
   const summary = grantSummary(value);
   return (
     <Badge
@@ -94,7 +100,7 @@ function GrantChip({ value }: { value: AgentGrantSetV2 | undefined }) {
  * the general page … to see & browse em all"). Full CRUD in place is the
  * follow-up.
  */
-function GrantHeaderTrailing({
+export function GrantHeaderTrailing({
   value,
   tab,
   label,

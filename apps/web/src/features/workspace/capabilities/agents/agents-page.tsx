@@ -1,5 +1,6 @@
 'use client';
 
+import { NewEntityMenu } from '@/features/workspace/capabilities/shared/new-entity-menu';
 import { useMemo, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -41,7 +42,6 @@ import { capitalizeWords } from '@kortix/shared';
 import {
   CaretRightIcon,
   MagnifyingGlassIcon,
-  PlusIcon,
   RobotIcon,
   StarIcon as StarSolid,
 } from '@phosphor-icons/react';
@@ -51,9 +51,7 @@ import { CapabilityPageShell } from '@/features/workspace/capabilities/shared/ca
 import { agentHref } from '@/features/workspace/capabilities/shared/capability-tab-routes';
 import { CatalogCard } from '@/features/workspace/capabilities/shared/catalog/catalog-card';
 import { catalogEmptyKind } from '@/features/workspace/capabilities/shared/catalog/catalog-empty';
-import {
-  CatalogNoMatch,
-} from '@/features/workspace/capabilities/shared/catalog/catalog-empty-state';
+import { CatalogNoMatch } from '@/features/workspace/capabilities/shared/catalog/catalog-empty-state';
 import { CatalogGrid } from '@/features/workspace/capabilities/shared/catalog/catalog-grid';
 
 import { filterAgents } from './agent-filter';
@@ -88,8 +86,7 @@ export function AgentsPage({ projectId }: { projectId: string }) {
   const canWrite =
     useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_AGENT_WRITE, { accountId }).allowed === true;
   const canReadTriggers =
-    useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_TRIGGER_READ, { accountId }).allowed ===
-    true;
+    useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_TRIGGER_READ, { accountId }).allowed === true;
   const canManageMembers =
     useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_MEMBERS_MANAGE, { accountId }).allowed ===
     true;
@@ -163,19 +160,15 @@ export function AgentsPage({ projectId }: { projectId: string }) {
   // mismatched on a row that is centred, so both edges were off.
   const createButton = (label: string) =>
     canWrite ? (
-      <Button
-        variant="secondary"
-        size="sm"
-        onClick={() => configure.start(newConfigPrompt('agent'))}
-        disabled={configure.pending}
-      >
-        {configure.pending ? (
-          <Loading className="size-4 shrink-0" />
-        ) : (
-          <PlusIcon className="size-4" />
-        )}
-        {label}
-      </Button>
+      <NewEntityMenu
+        label={label}
+        pending={configure.pending}
+        onChat={() => configure.start(newConfigPrompt('agent'))}
+        manual={{
+          description: 'Add an agents entry to kortix.yaml in Files.',
+          href: `/projects/${projectId}/files`,
+        }}
+      />
     ) : null;
 
   return (
@@ -286,7 +279,11 @@ function AgentCardFacts({
   peopleCount: number | null;
 }) {
   const model = agent.model ? agent.model.split('/').pop() : null;
-  const sep = <span aria-hidden className="text-muted-foreground/40">·</span>;
+  const sep = (
+    <span aria-hidden className="text-muted-foreground/40">
+      ·
+    </span>
+  );
   return (
     <>
       <span className={cn('truncate', model && 'font-mono')}>{model ?? 'Default model'}</span>
@@ -298,7 +295,9 @@ function AgentCardFacts({
         <>
           {sep}
           <span className="tabular-nums">
-            {peopleCount === 0 ? 'Admins only' : `${peopleCount} ${peopleCount === 1 ? 'grant' : 'grants'}`}
+            {peopleCount === 0
+              ? 'Admins only'
+              : `${peopleCount} ${peopleCount === 1 ? 'grant' : 'grants'}`}
           </span>
         </>
       ) : null}

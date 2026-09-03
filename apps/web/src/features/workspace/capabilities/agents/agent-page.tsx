@@ -136,6 +136,7 @@ import { useIsMobile } from '@/hooks/utils';
 import { EditorSectionStyleProvider } from '@/features/workspace/customize/sections/view/agent-editor-primitives';
 
 import { AgentModel, AgentScope } from './agent-detail-aside';
+import { ConnectorsGrantPage, SecretsGrantPage, SkillsGrantPage } from './agent-grant-pages';
 import { AgentPeopleSection } from './agent-people-section';
 import { AgentShareControl } from './agent-share-control';
 import { AgentTriggersSection } from './agent-triggers-section';
@@ -810,6 +811,9 @@ function EditableAgentPage({
           editor={editor}
           options={options}
           skillsOptions={skillsOptions}
+          skills={<SkillsGrantPage projectId={projectId} config={config} editor={editor} />}
+          connectors={<ConnectorsGrantPage projectId={projectId} editor={editor} />}
+          secrets={<SecretsGrantPage projectId={projectId} editor={editor} />}
           overview={
             <OverviewPane
               description={editor.oc.description ?? ''}

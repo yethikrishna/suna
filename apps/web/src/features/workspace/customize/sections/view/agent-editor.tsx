@@ -321,6 +321,9 @@ export function AgentConfigSections({
   overview,
   triggers,
   people,
+  skills,
+  connectors,
+  secrets,
 }: {
   section: AgentConfigSectionKey;
   editor: AgentDraft;
@@ -332,6 +335,12 @@ export function AgentConfigSections({
   triggers?: React.ReactNode;
   /** Who may use the agent — a page-owned section, the People tab. */
   people?: React.ReactNode;
+  /** The catalog-backed grant pages (`agent-grant-pages.tsx`) — the same
+   *  cards and modals as the project-wide tabs. When a host passes them the
+   *  plain checklist sections below are the fallback only. */
+  skills?: React.ReactNode;
+  connectors?: React.ReactNode;
+  secrets?: React.ReactNode;
 }) {
   const { draft, oc, set, setOc } = editor;
   // Every section is a card (`EditorSectionStyle` 'panel'), so a tab holding
@@ -343,11 +352,17 @@ export function AgentConfigSections({
       case 'people':
         return <>{people}</>;
       case 'skills':
-        return <SkillsSection draft={draft} set={set} options={skillsOptions} />;
+        return skills ?? <SkillsSection draft={draft} set={set} options={skillsOptions} />;
       case 'connectors':
-        return <ConnectorsSection draft={draft} set={set} options={options.connectorOptions} />;
+        return (
+          connectors ?? (
+            <ConnectorsSection draft={draft} set={set} options={options.connectorOptions} />
+          )
+        );
       case 'secrets':
-        return <SecretsSection draft={draft} set={set} options={options.secretOptions} />;
+        return (
+          secrets ?? <SecretsSection draft={draft} set={set} options={options.secretOptions} />
+        );
       case 'actions':
         return <ProjectActionsSection draft={draft} set={set} />;
       case 'triggers':

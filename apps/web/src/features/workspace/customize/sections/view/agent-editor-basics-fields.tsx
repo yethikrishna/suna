@@ -31,6 +31,7 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { ModelSelector } from '@/features/session/model-selector';
+import { ReasoningEffortSelector } from '@/features/session/reasoning-effort-selector';
 import { flattenModels } from '@/features/session/session-chat-input';
 import { storedModelRefToKey } from '@/lib/llm-gateway';
 import type { AgentConfigBlock, RuntimeAgentConfig } from '@kortix/sdk';
@@ -163,12 +164,22 @@ export function ModelSection({
   const selectedModelKey = oc.model
     ? storedModelRefToKey(oc.model, llmGatewayFlag.enabled === true)
     : null;
+  // The pinned model's published variants — the same list the composer's
+  // thinking-effort pill offers. With a list, the knob is that pill (Marko,
+  // 2026-09-03: "look in chat input how we do it"); without one (no pin, or a
+  // model that publishes none) the raw variant id stays typeable.
+  const selectedModel = selectedModelKey
+    ? models.find(
+        (m) =>
+          m.providerID === selectedModelKey.providerID && m.modelID === selectedModelKey.modelID,
+      )
+    : undefined;
+  const variantChoices = selectedModel?.variants ? Object.keys(selectedModel.variants) : [];
 
   // The sampling knobs and the step cap are set on a handful of agents and
   // read by fewer. They open only when one of them carries a value, so an
   // agent that tunes nothing shows one row — the model — and nothing else.
   const advancedSet =
-    oc.variant !== undefined ||
     !isSliderAtDefault(oc.temperature, 0) ||
     !isSliderAtDefault(oc.top_p, 1) ||
     oc.steps !== undefined;
@@ -200,6 +211,39 @@ export function ModelSection({
             />
           </div>
         </SettingRow>
+
+        {variantChoices.length > 0 ? (
+          <SettingRow
+            label="Thinking effort"
+            help={oc.variant ? 'Pinned for this agent.' : 'Auto — the model decides per turn.'}
+          >
+            <div className="flex sm:justify-end">
+              <ReasoningEffortSelector
+                variants={variantChoices}
+                selectedVariant={oc.variant ?? null}
+                onVariantChange={(v) => setOc('variant', v ?? undefined)}
+              />
+            </div>
+          </SettingRow>
+        ) : (
+          <SettingRow
+            label="Variant"
+            help={
+              selectedModelKey
+                ? 'This model publishes no variants. A raw variant id still applies.'
+                : 'Pin a model above to pick from its variants, or type a variant id.'
+            }
+          >
+            <Input
+              aria-label="Variant"
+              value={oc.variant ?? ''}
+              placeholder="Provider default"
+              variant="popover"
+              className="h-9 w-full text-sm"
+              onChange={(e) => setOc('variant', e.target.value)}
+            />
+          </SettingRow>
+        )}
 
         {/* A wall of text most agents never set — collapsed, like the tool
           permissions at the foot of the editor. */}
@@ -249,17 +293,6 @@ export function ModelSection({
           </Badge>
         }
       >
-        <SettingRow label="Variant" help="Provider variant to request, such as thinking.">
-          <Input
-            aria-label="Variant"
-            value={oc.variant ?? ''}
-            placeholder="Provider default"
-            variant="popover"
-            className="h-9 w-full text-sm"
-            onChange={(e) => setOc('variant', e.target.value)}
-          />
-        </SettingRow>
-
         <SliderRow
           label="Temperature"
           help="0 gives the same answer every time. 2 is the most random."

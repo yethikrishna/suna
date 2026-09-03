@@ -4,6 +4,7 @@ import type { CSSProperties, ReactNode } from 'react';
 
 import Link from 'next/link';
 
+import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 
 export interface CatalogCardProps {
@@ -23,6 +24,17 @@ export interface CatalogCardProps {
   disabled?: boolean;
   className?: string;
   style?: CSSProperties;
+  /** A card in a PICK list — the agent editor's grant pages. The checkbox
+   *  toggles membership; the body still opens the entity (`onClick`), so one
+   *  card answers both "is it granted?" and "what is it?". Two sibling
+   *  controls, never one nested in the other. */
+  select?: {
+    checked: boolean;
+    onCheckedChange: () => void;
+    /** Off in All / None mode — the set is decided for every card. */
+    disabled?: boolean;
+    label: string;
+  };
 }
 
 export function CatalogCard({
@@ -37,6 +49,7 @@ export function CatalogCard({
   disabled,
   className,
   style,
+  select,
 }: CatalogCardProps) {
   const classes = cn(
     'bg-accent/50 group border-border/60  flex w-full items-start gap-3 rounded-md border px-4 py-3.5 text-left',
@@ -69,6 +82,31 @@ export function CatalogCard({
     </>
   );
 
+  if (select) {
+    return (
+      <div
+        style={style}
+        data-selected={select.checked || undefined}
+        className={cn(classes, select.checked && 'border-border bg-accent')}
+      >
+        <Checkbox
+          aria-label={select.label}
+          checked={select.checked}
+          disabled={disabled || select.disabled}
+          onCheckedChange={() => select.onCheckedChange()}
+          className="mt-0.5"
+        />
+        <button
+          type="button"
+          onClick={onClick}
+          disabled={disabled}
+          className="flex min-w-0 flex-1 items-start gap-3 text-left focus-visible:outline-none"
+        >
+          {body}
+        </button>
+      </div>
+    );
+  }
   if (href) {
     return (
       <Link

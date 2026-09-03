@@ -280,7 +280,7 @@ function AgentPageFrame({
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      <div className="border-border/60 shrink-0 border-b px-4 pt-5 pb-4">{header}</div>
+      <div className="border-border/60 shrink-0 border-b px-5 pt-5 pb-4">{header}</div>
       <div
         className={cn(
           'min-h-0 flex-1',
@@ -339,7 +339,7 @@ function CenteredState({ children }: { children: ReactNode }) {
 function AgentPageSkeleton() {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      <div className="border-border/60 shrink-0 space-y-4 border-b px-4 pt-5 pb-4">
+      <div className="border-border/60 shrink-0 space-y-4 border-b px-5 pt-5 pb-4">
         <Skeleton className="h-4 w-32 rounded-sm" />
         <Skeleton className="h-8 w-56 rounded-sm" />
       </div>

@@ -85,6 +85,50 @@
       }
     }
   },
+  "projectHome": {
+    "welcome": {
+      "heading": "Gib <project></project> eine echte Aufgabe.",
+      "fallbackName": "ihm",
+      "confetti": "Konfetti werfen"
+    },
+    "runtime": {
+      "metaLabel": "Meta-Laufzeit",
+      "metaDescription": "Meta verwendet eine feste minimale Sandbox. Für Projektarbeit startet Meta spezialisierte Sitzungen."
+    },
+    "sandbox": {
+      "label": "Sandbox-Vorlage",
+      "agentEnvironment": "Agentenumgebung",
+      "agentEnvironmentDescription": "Verwendet die ausgewählte Agenten-, Projekt- oder Plattformvorgabe.",
+      "selected": "Ausgewählt",
+      "platformDefault": "Plattformvorgabe · klont den Arbeitsbereich beim Start",
+      "image": "Image: {image}",
+      "dockerfile": "Dockerfile: {path}",
+      "ready": "Bereit",
+      "building": "Wird erstellt — die Sitzung wartet",
+      "notBuilt": "Nicht erstellt — die erste Sitzung erstellt sie"
+    },
+    "setup": {
+      "title": "Erste Schritte",
+      "progress": "{completed} von {total}",
+      "progressLabel": "{completed} von {total} Einrichtungsschritten abgeschlossen",
+      "hide": "Ausblenden",
+      "hideLabel": "Checkliste für erste Schritte ausblenden",
+      "steps": {
+        "connectors": "Tool verbinden",
+        "triggers": "Trigger planen",
+        "skills": "Skill hinzufügen",
+        "slack": "Slack verbinden",
+        "team": "Team einladen",
+        "agent": "Agenten einrichten"
+      }
+    },
+    "starters": {
+      "title": "Beginne mit",
+      "shuffle": "Neu mischen",
+      "shuffleLabel": "Startvorschläge neu mischen"
+    },
+    "files": { "loadError": "Projekt konnte nicht geladen werden" }
+  },
   "settings": {
     "title": "Einstellungen",
     "tabs": {

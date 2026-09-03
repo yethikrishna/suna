@@ -156,7 +156,7 @@ describe('a hidden checklist costs nothing', () => {
   // "0 of 6" on its way to the real number, because the band it lives in does
   // not exist yet.
   test('the counter has no presence gate of its own', () => {
-    expect(checklistSource).toContain('{completed} of {steps.length}');
+    expect(checklistSource).toContain("t('setup.progress', { completed, total: steps.length })");
     expect(checklistSource).not.toContain('{settled && (');
   });
 
@@ -196,7 +196,7 @@ describe('the checklist motion follows the house rules', () => {
   test('the re-rank is a layout move on the in-out curve, and opts out under reduced motion', () => {
     expect(checklistSource).toContain('<m.div layout transition={REORDER}>');
     expect(checklistSource).toContain('const REORDER = { duration: 0.2, ease: [0.77, 0, 0.175, 1] }');
-    expect(checklistSource).toContain('return reduceMotion ? row : (');
+    expect(checklistSource).toMatch(/return reduceMotion \? \(\s*row\s*\) : \(/);
   });
 
   test('the list is ordered through the pure helper, never by sorting the prop', () => {

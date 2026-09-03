@@ -88,6 +88,50 @@
       }
     }
   },
+  "projectHome": {
+    "welcome": {
+      "heading": "Dale a <project></project> una tarea real.",
+      "fallbackName": "este espacio",
+      "confetti": "Lanzar confeti"
+    },
+    "runtime": {
+      "metaLabel": "Entorno Meta",
+      "metaDescription": "Meta usa un entorno aislado mínimo fijo e inicia sesiones especializadas para el trabajo del proyecto."
+    },
+    "sandbox": {
+      "label": "Plantilla del entorno aislado",
+      "agentEnvironment": "Entorno del agente",
+      "agentEnvironmentDescription": "Usa el valor predeterminado del agente, del proyecto o de la plataforma.",
+      "selected": "Seleccionado",
+      "platformDefault": "Valor predeterminado de la plataforma · clona el espacio al iniciar",
+      "image": "Imagen: {image}",
+      "dockerfile": "Dockerfile: {path}",
+      "ready": "Listo",
+      "building": "Construyendo — la sesión esperará",
+      "notBuilt": "Sin construir — la primera sesión lo construirá"
+    },
+    "setup": {
+      "title": "Primeros pasos",
+      "progress": "{completed} de {total}",
+      "progressLabel": "{completed} de {total} pasos de configuración completados",
+      "hide": "Ocultar",
+      "hideLabel": "Ocultar la lista de primeros pasos",
+      "steps": {
+        "connectors": "Conectar una herramienta",
+        "triggers": "Programar un trigger",
+        "skills": "Añadir una habilidad",
+        "slack": "Conectar Slack",
+        "team": "Invitar a tu equipo",
+        "agent": "Configurar tu agente"
+      }
+    },
+    "starters": {
+      "title": "Empieza con",
+      "shuffle": "Mezclar",
+      "shuffleLabel": "Mezclar las sugerencias iniciales"
+    },
+    "files": { "loadError": "No se pudo cargar el proyecto" }
+  },
   "settings": {
     "title": "Ajustes",
     "tabs": {

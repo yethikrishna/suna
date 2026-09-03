@@ -85,6 +85,50 @@
       }
     }
   },
+  "projectHome": {
+    "welcome": {
+      "heading": "Donnez à <project></project> une tâche concrète.",
+      "fallbackName": "cet espace",
+      "confetti": "Lancer des confettis"
+    },
+    "runtime": {
+      "metaLabel": "Environnement Meta",
+      "metaDescription": "Meta utilise un bac à sable minimal fixe et lance des sessions spécialisées pour le projet."
+    },
+    "sandbox": {
+      "label": "Modèle de bac à sable",
+      "agentEnvironment": "Environnement de l’agent",
+      "agentEnvironmentDescription": "Utilise la valeur par défaut de l’agent, du projet ou de la plateforme.",
+      "selected": "Sélectionné",
+      "platformDefault": "Valeur par défaut de la plateforme · clone l’espace au démarrage",
+      "image": "Image : {image}",
+      "dockerfile": "Dockerfile : {path}",
+      "ready": "Prêt",
+      "building": "Construction en cours — la session attendra",
+      "notBuilt": "Non construit — la première session le construira"
+    },
+    "setup": {
+      "title": "Bien démarrer",
+      "progress": "{completed} sur {total}",
+      "progressLabel": "{completed} étapes de configuration terminées sur {total}",
+      "hide": "Masquer",
+      "hideLabel": "Masquer la liste de démarrage",
+      "steps": {
+        "connectors": "Connecter un outil",
+        "triggers": "Planifier un déclencheur",
+        "skills": "Ajouter une compétence",
+        "slack": "Connecter Slack",
+        "team": "Inviter votre équipe",
+        "agent": "Configurer votre agent"
+      }
+    },
+    "starters": {
+      "title": "Commencer par",
+      "shuffle": "Mélanger",
+      "shuffleLabel": "Mélanger les suggestions de départ"
+    },
+    "files": { "loadError": "Échec du chargement du projet" }
+  },
   "settings": {
     "title": "Paramètres",
     "tabs": {

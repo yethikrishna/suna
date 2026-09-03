@@ -88,6 +88,50 @@
       }
     }
   },
+  "projectHome": {
+    "welcome": {
+      "heading": "Dai a <project></project> qualcosa di concreto su cui lavorare.",
+      "fallbackName": "questo spazio",
+      "confetti": "Lancia coriandoli"
+    },
+    "runtime": {
+      "metaLabel": "Runtime Meta",
+      "metaDescription": "Meta usa una sandbox minima fissa e avvia sessioni specializzate per il lavoro sul progetto."
+    },
+    "sandbox": {
+      "label": "Modello sandbox",
+      "agentEnvironment": "Ambiente dell’agente",
+      "agentEnvironmentDescription": "Usa l’impostazione predefinita dell’agente, del progetto o della piattaforma.",
+      "selected": "Selezionato",
+      "platformDefault": "Predefinito della piattaforma · clona lo spazio di lavoro all’avvio",
+      "image": "Immagine: {image}",
+      "dockerfile": "Dockerfile: {path}",
+      "ready": "Pronto",
+      "building": "Creazione in corso — la sessione attenderà",
+      "notBuilt": "Non creato — la prima sessione lo creerà"
+    },
+    "setup": {
+      "title": "Per iniziare",
+      "progress": "{completed} di {total}",
+      "progressLabel": "{completed} di {total} passaggi di configurazione completati",
+      "hide": "Nascondi",
+      "hideLabel": "Nascondi l’elenco delle attività iniziali",
+      "steps": {
+        "connectors": "Collega uno strumento",
+        "triggers": "Pianifica un trigger",
+        "skills": "Aggiungi una skill",
+        "slack": "Collega Slack",
+        "team": "Invita il tuo team",
+        "agent": "Configura il tuo agente"
+      }
+    },
+    "starters": {
+      "title": "Inizia con",
+      "shuffle": "Mescola",
+      "shuffleLabel": "Mescola i suggerimenti iniziali"
+    },
+    "files": { "loadError": "Impossibile caricare il progetto" }
+  },
   "settings": {
     "title": "Impostazioni",
     "tabs": {

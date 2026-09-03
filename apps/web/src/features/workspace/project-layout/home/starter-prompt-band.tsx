@@ -1,6 +1,7 @@
 'use client';
 
 import { ArrowsClockwiseIcon } from '@phosphor-icons/react';
+import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';
 import Hint from '@/components/ui/hint';
@@ -52,6 +53,7 @@ export function StarterPromptBand({
   onPick: (text: string) => void;
   className?: string;
 }) {
+  const t = useTranslations('projectHome');
   /*
    * Today's five. The store resolves them at import time on the client
    * (`stores/starter-prompt-rotation-store.ts`), so this selector returns the
@@ -76,12 +78,12 @@ export function StarterPromptBand({
   ];
 
   return (
-    <section aria-label="Start with" className={cn(BAND_PANEL_CLASS, className)}>
+    <section aria-label={t('starters.title')} className={cn(BAND_PANEL_CLASS, className)}>
       <div className={BAND_HEADER_CLASS}>
         {/* No count and no progress bar — there is nothing here to finish —
             and no dismiss control, because this IS the resting state. There is
             nothing to dismiss it to. */}
-        <h2 className={BAND_TITLE_CLASS}>Start with</h2>
+        <h2 className={BAND_TITLE_CLASS}>{t('starters.title')}</h2>
 
         {/*
           Shuffle.
@@ -103,13 +105,13 @@ export function StarterPromptBand({
           — you pressed it, the rows changed — and the changed rows ARE the
           feedback. The press scale is the only motion, and it is the house one.
         */}
-        <Hint label="Shuffle" side="top">
+        <Hint label={t('starters.shuffle')} side="top">
           <Button
             type="button"
             variant="ghost"
             size="icon-xs"
             onClick={reshuffle}
-            aria-label="Shuffle the starter prompts"
+            aria-label={t('starters.shuffleLabel')}
             className="text-muted-foreground shrink-0 transition-[color,background-color,scale] active:scale-[0.96]"
           >
             <ArrowsClockwiseIcon className="size-3.5" />

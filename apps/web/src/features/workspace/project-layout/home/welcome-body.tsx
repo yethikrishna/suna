@@ -77,7 +77,7 @@ export function ProjectHomeWelcomeBody({
   /** When provided, starter-prompt chips render directly below the composer. */
   onPickSuggestion?: (text: string) => void;
 }) {
-  const tI18nHardcoded = useTranslations('hardcodedUi');
+  const t = useTranslations('projectHome');
   // One source for the project name — see `useProjectName`'s doc comment.
   const name = useProjectName(projectId) ?? '';
   // The SAME `qk.project.detail(projectId)` entry `useProjectName` reads, so
@@ -103,7 +103,7 @@ export function ProjectHomeWelcomeBody({
   // while the rest is muted, so the fallback has to read as a NAME in that
   // slot — "this project" is a description wearing a name's highlight, and it
   // stretches the line for a case where we know the least.
-  const displayName = name.trim() || 'it';
+  const displayName = name.trim() || t('welcome.fallbackName');
 
   return (
     <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -151,8 +151,10 @@ export function ProjectHomeWelcomeBody({
             keeps the last line off a single orphan word.
           */}
           <h1 className="text-muted-foreground w-full px-4 text-3xl leading-[1.2] tracking-tight text-balance max-sm:text-2xl">
-            Give{' '}
-            {/*
+            {t.rich('welcome.heading', {
+              project: () => (
+                <>
+                  {/*
               A real <button>, not a <span> with an onClick: this is the only
               interactive thing in the heading, and it has to be reachable by
               keyboard and announced as pressable. A button is phrasing content,
@@ -171,36 +173,36 @@ export function ProjectHomeWelcomeBody({
               noise on every load for a control nobody needs to find. The
               pointer cursor and the tooltip are the whole invitation.
             */}
-            {wearsChosenIcon ? (
-              <button
-                type="button"
-                title="Throw some confetti"
-                onClick={(event) => {
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  setBurst((current) => ({
-                    id: (current?.id ?? 0) + 1,
-                    // Canvas fractions, measured against the viewport, because
-                    // the confetti canvas is portalled to <body> at `fixed
-                    // inset-0`. Centre of the word, so the burst comes out of
-                    // the name rather than from somewhere near it.
-                    origin: {
-                      x: (rect.left + rect.width / 2) / window.innerWidth,
-                      y: (rect.top + rect.height / 2) / window.innerHeight,
-                    },
-                  }));
-                }}
-                className="text-foreground focus-visible:ring-ring inline cursor-pointer rounded-sm focus-visible:ring-2 focus-visible:outline-none"
-              >
-                {displayName}
-              </button>
-            ) : (
-              // Same colour, no affordance: the name still carries the
-              // sentence's one highlight, it just is not pressable.
-              <span className="text-foreground">{displayName}</span>
-            )}{' '}
-            {tI18nHardcoded.raw(
-              'autoFeaturesCoWorkerProjectLayoutProjectHomeJsxTextSomething18ab9904',
-            )}
+                  {wearsChosenIcon ? (
+                    <button
+                      type="button"
+                      title={t('welcome.confetti')}
+                      onClick={(event) => {
+                        const rect = event.currentTarget.getBoundingClientRect();
+                        setBurst((current) => ({
+                          id: (current?.id ?? 0) + 1,
+                          // Canvas fractions, measured against the viewport, because
+                          // the confetti canvas is portalled to <body> at `fixed
+                          // inset-0`. Centre of the word, so the burst comes out of
+                          // the name rather than from somewhere near it.
+                          origin: {
+                            x: (rect.left + rect.width / 2) / window.innerWidth,
+                            y: (rect.top + rect.height / 2) / window.innerHeight,
+                          },
+                        }));
+                      }}
+                      className="text-foreground focus-visible:ring-ring inline cursor-pointer rounded-sm focus-visible:ring-2 focus-visible:outline-none"
+                    >
+                      {displayName}
+                    </button>
+                  ) : (
+                    // Same colour, no affordance: the name still carries the
+                    // sentence's one highlight, it just is not pressable.
+                    <span className="text-foreground">{displayName}</span>
+                  )}
+                </>
+              ),
+            })}
           </h1>
 
           {/* Keyed on the press count, so each press is a fresh mount and a

@@ -81,6 +81,46 @@
       }
     }
   },
+  "projectHome": {
+    "welcome": {
+      "heading": "给 <project></project> 一项实际任务。",
+      "fallbackName": "此工作区",
+      "confetti": "撒些彩纸"
+    },
+    "runtime": {
+      "metaLabel": "Meta 运行环境",
+      "metaDescription": "Meta 使用固定的最小沙盒，并为项目工作启动专门会话。"
+    },
+    "sandbox": {
+      "label": "沙盒模板",
+      "agentEnvironment": "智能体环境",
+      "agentEnvironmentDescription": "使用所选智能体、项目或平台的默认设置。",
+      "selected": "已选择",
+      "platformDefault": "平台默认 · 启动时克隆工作区",
+      "image": "镜像：{image}",
+      "dockerfile": "Dockerfile：{path}",
+      "ready": "就绪",
+      "building": "正在构建 — 会话将等待",
+      "notBuilt": "尚未构建 — 首次会话将进行构建"
+    },
+    "setup": {
+      "title": "开始使用",
+      "progress": "{completed}/{total}",
+      "progressLabel": "已完成 {completed}/{total} 个设置步骤",
+      "hide": "隐藏",
+      "hideLabel": "隐藏开始使用清单",
+      "steps": {
+        "connectors": "连接工具",
+        "triggers": "安排触发器",
+        "skills": "添加技能",
+        "slack": "连接 Slack",
+        "team": "邀请团队",
+        "agent": "设置智能体"
+      }
+    },
+    "starters": { "title": "从这里开始", "shuffle": "换一组", "shuffleLabel": "更换初始提示" },
+    "files": { "loadError": "项目加载失败" }
+  },
   "settings": {
     "title": "设置",
     "tabs": {

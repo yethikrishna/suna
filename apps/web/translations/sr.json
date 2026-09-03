@@ -85,6 +85,50 @@
       }
     }
   },
+  "projectHome": {
+    "welcome": {
+      "heading": "Дајте простору <project></project> конкретан задатак.",
+      "fallbackName": "овај радни простор",
+      "confetti": "Баци конфете"
+    },
+    "runtime": {
+      "metaLabel": "Meta окружење",
+      "metaDescription": "Meta користи фиксно минимално изоловано окружење и покреће специјализоване сесије за рад на пројекту."
+    },
+    "sandbox": {
+      "label": "Шаблон изолованог окружења",
+      "agentEnvironment": "Окружење агента",
+      "agentEnvironmentDescription": "Користи подразумевану вредност изабраног агента, пројекта или платформе.",
+      "selected": "Изабрано",
+      "platformDefault": "Подразумевано за платформу · клонира радни простор при покретању",
+      "image": "Слика: {image}",
+      "dockerfile": "Dockerfile: {path}",
+      "ready": "Спремно",
+      "building": "Прављење је у току — сесија ће сачекати",
+      "notBuilt": "Није направљено — прва сесија ће га направити"
+    },
+    "setup": {
+      "title": "Почетни кораци",
+      "progress": "{completed} од {total}",
+      "progressLabel": "Завршено је {completed} од {total} корака подешавања",
+      "hide": "Сакриј",
+      "hideLabel": "Сакриј листу почетних корака",
+      "steps": {
+        "connectors": "Повежи алат",
+        "triggers": "Закажи окидач",
+        "skills": "Додај вештину",
+        "slack": "Повежи Slack",
+        "team": "Позови тим",
+        "agent": "Подеси агента"
+      }
+    },
+    "starters": {
+      "title": "Почните са",
+      "shuffle": "Промешај",
+      "shuffleLabel": "Промешај почетне предлоге"
+    },
+    "files": { "loadError": "Пројекат није могао да се учита" }
+  },
   "settings": {
     "title": "Подешавања",
     "tabs": {

@@ -85,6 +85,50 @@
       }
     }
   },
+  "projectHome": {
+    "welcome": {
+      "heading": "Give <project></project> something real to work on.",
+      "fallbackName": "it",
+      "confetti": "Throw some confetti"
+    },
+    "runtime": {
+      "metaLabel": "Meta runtime",
+      "metaDescription": "Meta uses a fixed minimal sandbox. It starts specialized sessions for project work."
+    },
+    "sandbox": {
+      "label": "Sandbox template",
+      "agentEnvironment": "Agent environment",
+      "agentEnvironmentDescription": "Uses the selected agent, project, or platform default.",
+      "selected": "Selected",
+      "platformDefault": "Platform default · clones workspace at boot",
+      "image": "Image: {image}",
+      "dockerfile": "Dockerfile: {path}",
+      "ready": "Ready",
+      "building": "Building — session will wait",
+      "notBuilt": "Not built — first session will build it"
+    },
+    "setup": {
+      "title": "Get started",
+      "progress": "{completed} of {total}",
+      "progressLabel": "{completed} of {total} setup steps complete",
+      "hide": "Hide this",
+      "hideLabel": "Hide the get started checklist",
+      "steps": {
+        "connectors": "Connect a tool",
+        "triggers": "Schedule a trigger",
+        "skills": "Add a skill",
+        "slack": "Connect Slack",
+        "team": "Invite your team",
+        "agent": "Set up your agent"
+      }
+    },
+    "starters": {
+      "title": "Start with",
+      "shuffle": "Shuffle",
+      "shuffleLabel": "Shuffle the starter prompts"
+    },
+    "files": { "loadError": "Failed to load project" }
+  },
   "settings": {
     "title": "Settings",
     "tabs": {

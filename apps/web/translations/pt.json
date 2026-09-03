@@ -85,6 +85,50 @@
       }
     }
   },
+  "projectHome": {
+    "welcome": {
+      "heading": "Dê a <project></project> uma tarefa real.",
+      "fallbackName": "este espaço",
+      "confetti": "Jogar confete"
+    },
+    "runtime": {
+      "metaLabel": "Ambiente Meta",
+      "metaDescription": "O Meta usa uma sandbox mínima fixa e inicia sessões especializadas para o trabalho do projeto."
+    },
+    "sandbox": {
+      "label": "Modelo de sandbox",
+      "agentEnvironment": "Ambiente do agente",
+      "agentEnvironmentDescription": "Usa o padrão selecionado do agente, projeto ou plataforma.",
+      "selected": "Selecionado",
+      "platformDefault": "Padrão da plataforma · clona o espaço ao iniciar",
+      "image": "Imagem: {image}",
+      "dockerfile": "Dockerfile: {path}",
+      "ready": "Pronto",
+      "building": "Criando — a sessão aguardará",
+      "notBuilt": "Não criado — a primeira sessão fará a criação"
+    },
+    "setup": {
+      "title": "Primeiros passos",
+      "progress": "{completed} de {total}",
+      "progressLabel": "{completed} de {total} etapas de configuração concluídas",
+      "hide": "Ocultar",
+      "hideLabel": "Ocultar a lista de primeiros passos",
+      "steps": {
+        "connectors": "Conectar uma ferramenta",
+        "triggers": "Agendar um acionador",
+        "skills": "Adicionar uma habilidade",
+        "slack": "Conectar o Slack",
+        "team": "Convidar sua equipe",
+        "agent": "Configurar seu agente"
+      }
+    },
+    "starters": {
+      "title": "Comece com",
+      "shuffle": "Embaralhar",
+      "shuffleLabel": "Embaralhar as sugestões iniciais"
+    },
+    "files": { "loadError": "Falha ao carregar o projeto" }
+  },
   "settings": {
     "title": "Configurações",
     "tabs": {

@@ -85,6 +85,50 @@
       }
     }
   },
+  "projectHome": {
+    "welcome": {
+      "heading": "<project></project> に実際の仕事を任せましょう。",
+      "fallbackName": "このワークスペース",
+      "confetti": "紙吹雪を投げる"
+    },
+    "runtime": {
+      "metaLabel": "Meta ランタイム",
+      "metaDescription": "Meta は固定の最小サンドボックスを使用し、プロジェクト作業用の専門セッションを開始します。"
+    },
+    "sandbox": {
+      "label": "サンドボックステンプレート",
+      "agentEnvironment": "エージェント環境",
+      "agentEnvironmentDescription": "選択したエージェント、プロジェクト、またはプラットフォームのデフォルトを使用します。",
+      "selected": "選択済み",
+      "platformDefault": "プラットフォームのデフォルト · 起動時にワークスペースを複製",
+      "image": "イメージ：{image}",
+      "dockerfile": "Dockerfile：{path}",
+      "ready": "準備完了",
+      "building": "ビルド中 — セッションは待機します",
+      "notBuilt": "未ビルド — 最初のセッションがビルドします"
+    },
+    "setup": {
+      "title": "はじめに",
+      "progress": "{completed}/{total}",
+      "progressLabel": "{total} 件の設定手順のうち {completed} 件が完了",
+      "hide": "非表示",
+      "hideLabel": "はじめにチェックリストを非表示",
+      "steps": {
+        "connectors": "ツールを接続",
+        "triggers": "トリガーをスケジュール",
+        "skills": "スキルを追加",
+        "slack": "Slack を接続",
+        "team": "チームを招待",
+        "agent": "エージェントを設定"
+      }
+    },
+    "starters": {
+      "title": "こちらから開始",
+      "shuffle": "入れ替え",
+      "shuffleLabel": "スタータープロンプトを入れ替える"
+    },
+    "files": { "loadError": "プロジェクトを読み込めませんでした" }
+  },
   "settings": {
     "title": "設定",
     "tabs": {

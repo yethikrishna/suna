@@ -400,6 +400,66 @@
         "neuro": "Neuro",
         "blank": "Leer"
       }
+    },
+    "sessions": {
+      "notifications": "Benachrichtigungen",
+      "notificationsDescription": "Browser-Benachrichtigungen zu Ereignissen in Ihren Sitzungen.",
+      "unsupported": "Ihr Browser unterstützt keine Benachrichtigungen.",
+      "enableNotifications": "Benachrichtigungen aktivieren",
+      "permissionGranted": "Browser-Berechtigung erteilt",
+      "permissionDenied": "Vom Browser blockiert — ändern Sie die Berechtigung in den Website-Einstellungen",
+      "permissionDefault": "Beim Aktivieren wird die Browser-Berechtigung angefragt",
+      "notificationTypes": "Benachrichtigungstypen",
+      "behavior": "Verhalten",
+      "sendTestNotification": "Testbenachrichtigung senden",
+      "types": {
+        "onCompletion": {
+          "label": "Aufgabenabschlüsse",
+          "description": "Wenn eine Sitzung ihre Aufgabe beendet"
+        },
+        "onError": {
+          "label": "Fehler",
+          "description": "Wenn in einer Sitzung ein Fehler auftritt"
+        },
+        "onQuestion": { "label": "Fragen", "description": "Wenn Kortix Ihre Eingabe benötigt" },
+        "onPermission": {
+          "label": "Berechtigungsanfragen",
+          "description": "Wenn Kortix eine Berechtigung für ein Werkzeug benötigt"
+        }
+      },
+      "notificationBehavior": {
+        "onlyWhenHidden": {
+          "label": "Nur bei ausgeblendetem Tab",
+          "description": "Nur benachrichtigen, wenn ein anderer Tab aktiv ist"
+        },
+        "playSound": {
+          "label": "Benachrichtigungston",
+          "description": "Bei einer Benachrichtigung einen Ton abspielen"
+        }
+      },
+      "sounds": "Töne",
+      "soundsDescription": "Tonpaket für Sitzungsereignisse.",
+      "soundPacks": {
+        "off": { "label": "Aus", "description": "Alle Töne deaktiviert" },
+        "opencode": { "label": "Standard", "description": "Standard-Tonpaket" },
+        "kortix": { "label": "Seshion-Paket", "description": "Pfeifen" }
+      },
+      "volume": "Lautstärke",
+      "preview": "Vorschau",
+      "soundEvents": {
+        "completion": {
+          "label": "Aufgabe abgeschlossen",
+          "description": "Wenn die KI eine Aufgabe beendet"
+        },
+        "error": { "label": "Fehler", "description": "Wenn in einer Sitzung ein Fehler auftritt" },
+        "notification": {
+          "label": "Benachrichtigung",
+          "description": "Fragen und Berechtigungsanfragen"
+        },
+        "send": { "label": "Nachricht gesendet", "description": "Wenn Sie eine Nachricht senden" }
+      },
+      "testNotificationTitle": "Testbenachrichtigung",
+      "testNotificationBody": "Benachrichtigungen funktionieren korrekt!"
     }
   },
   "triggers": {

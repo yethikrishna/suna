@@ -397,6 +397,48 @@
         "neuro": "神经",
         "blank": "空白"
       }
+    },
+    "sessions": {
+      "notifications": "通知",
+      "notificationsDescription": "浏览器针对会话事件发送的通知。",
+      "unsupported": "您的浏览器不支持通知。",
+      "enableNotifications": "启用通知",
+      "permissionGranted": "已获得浏览器权限",
+      "permissionDenied": "已被浏览器阻止 — 请在网站设置中更新权限",
+      "permissionDefault": "启用时将请求浏览器权限",
+      "notificationTypes": "通知类型",
+      "behavior": "通知方式",
+      "sendTestNotification": "发送测试通知",
+      "types": {
+        "onCompletion": { "label": "任务完成", "description": "会话完成任务时" },
+        "onError": { "label": "错误", "description": "会话遇到错误时" },
+        "onQuestion": { "label": "问题", "description": "Kortix 需要您的输入才能继续时" },
+        "onPermission": { "label": "权限请求", "description": "Kortix 需要使用工具的权限时" }
+      },
+      "notificationBehavior": {
+        "onlyWhenHidden": {
+          "label": "仅在标签页隐藏时",
+          "description": "仅在您切换到其他标签页时通知"
+        },
+        "playSound": { "label": "通知声音", "description": "发送通知时播放声音" }
+      },
+      "sounds": "声音",
+      "soundsDescription": "用于会话事件的声音包。",
+      "soundPacks": {
+        "off": { "label": "关闭", "description": "所有声音均已关闭" },
+        "opencode": { "label": "默认", "description": "默认声音包" },
+        "kortix": { "label": "Seshion 声音包", "description": "口哨声" }
+      },
+      "volume": "音量",
+      "preview": "试听",
+      "soundEvents": {
+        "completion": { "label": "任务完成", "description": "AI 完成任务时" },
+        "error": { "label": "错误", "description": "会话遇到错误时" },
+        "notification": { "label": "通知", "description": "问题和权限请求" },
+        "send": { "label": "消息已发送", "description": "您发送消息时" }
+      },
+      "testNotificationTitle": "测试通知",
+      "testNotificationBody": "通知功能运行正常！"
     }
   },
   "triggers": {

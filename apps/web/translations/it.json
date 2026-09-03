@@ -403,6 +403,66 @@
         "neuro": "Neuro",
         "blank": "Vuoto"
       }
+    },
+    "sessions": {
+      "notifications": "Notifiche",
+      "notificationsDescription": "Notifiche del browser per gli eventi delle tue sessioni.",
+      "unsupported": "Il browser non supporta le notifiche.",
+      "enableNotifications": "Abilita notifiche",
+      "permissionGranted": "Autorizzazione del browser concessa",
+      "permissionDenied": "Bloccate dal browser — modifica l'autorizzazione nelle impostazioni del sito",
+      "permissionDefault": "All'attivazione verrà richiesta l'autorizzazione del browser",
+      "notificationTypes": "Tipi di notifica",
+      "behavior": "Comportamento",
+      "sendTestNotification": "Invia notifica di prova",
+      "types": {
+        "onCompletion": {
+          "label": "Attività completate",
+          "description": "Quando una sessione termina la sua attività"
+        },
+        "onError": { "label": "Errori", "description": "Quando una sessione rileva un errore" },
+        "onQuestion": {
+          "label": "Domande",
+          "description": "Quando Kortix richiede il tuo intervento"
+        },
+        "onPermission": {
+          "label": "Richieste di autorizzazione",
+          "description": "Quando Kortix richiede l'autorizzazione per usare uno strumento"
+        }
+      },
+      "notificationBehavior": {
+        "onlyWhenHidden": {
+          "label": "Solo quando la scheda è nascosta",
+          "description": "Notifica solo quando utilizzi un'altra scheda"
+        },
+        "playSound": {
+          "label": "Suono di notifica",
+          "description": "Riproduci un suono quando viene inviata una notifica"
+        }
+      },
+      "sounds": "Suoni",
+      "soundsDescription": "Pacchetto audio per gli eventi della sessione.",
+      "soundPacks": {
+        "off": { "label": "Disattivati", "description": "Tutti i suoni sono disattivati" },
+        "opencode": { "label": "Predefinito", "description": "Pacchetto audio predefinito" },
+        "kortix": { "label": "Pacchetto Seshion", "description": "Fischio" }
+      },
+      "volume": "Volume",
+      "preview": "Anteprima",
+      "soundEvents": {
+        "completion": {
+          "label": "Attività completata",
+          "description": "Quando l'IA termina un'attività"
+        },
+        "error": { "label": "Errore", "description": "Quando una sessione rileva un errore" },
+        "notification": {
+          "label": "Notifica",
+          "description": "Domande e richieste di autorizzazione"
+        },
+        "send": { "label": "Messaggio inviato", "description": "Quando invii un messaggio" }
+      },
+      "testNotificationTitle": "Notifica di prova",
+      "testNotificationBody": "Le notifiche funzionano correttamente!"
     }
   },
   "triggers": {

@@ -218,6 +218,63 @@
         "blank": "Blank"
       }
     },
+    "sessions": {
+      "notifications": "Notifications",
+      "notificationsDescription": "Browser notifications for what happens in your sessions.",
+      "unsupported": "Your browser does not support notifications.",
+      "enableNotifications": "Enable notifications",
+      "permissionGranted": "Browser permission granted",
+      "permissionDenied": "Blocked by browser — update in browser site settings",
+      "permissionDefault": "Will request browser permission when enabled",
+      "notificationTypes": "Notification types",
+      "behavior": "Behavior",
+      "sendTestNotification": "Send test notification",
+      "types": {
+        "onCompletion": {
+          "label": "Task completions",
+          "description": "When a session finishes its task"
+        },
+        "onError": { "label": "Errors", "description": "When a session encounters an error" },
+        "onQuestion": {
+          "label": "Questions",
+          "description": "When Kortix needs your input to continue"
+        },
+        "onPermission": {
+          "label": "Permission requests",
+          "description": "When Kortix needs permission to use a tool"
+        }
+      },
+      "notificationBehavior": {
+        "onlyWhenHidden": {
+          "label": "Only when tab is hidden",
+          "description": "Only notify when you're on another tab"
+        },
+        "playSound": {
+          "label": "Notification sound",
+          "description": "Play a sound when a notification is sent"
+        }
+      },
+      "sounds": "Sounds",
+      "soundsDescription": "Sound pack played for session events.",
+      "soundPacks": {
+        "off": { "label": "Off", "description": "All sounds disabled" },
+        "opencode": { "label": "Default", "description": "Default sound pack" },
+        "kortix": { "label": "Seshion Pack", "description": "Whistlin'" }
+      },
+      "volume": "Volume",
+      "preview": "Preview",
+      "soundEvents": {
+        "completion": { "label": "Task Completion", "description": "When AI finishes a task" },
+        "error": { "label": "Error", "description": "When a session encounters an error" },
+        "notification": {
+          "label": "Notification",
+          "description": "Questions and permission requests"
+        },
+        "send": { "label": "Message Sent", "description": "When you send a message" }
+      },
+      "testNotificationTitle": "Test Notification",
+      "testNotificationBody": "Notifications are working correctly!"
+    },
     "preferences": {
       "title": "Language & shortcuts",
       "description": "Language and keyboard shortcuts.",

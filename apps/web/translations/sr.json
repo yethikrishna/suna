@@ -400,6 +400,60 @@
         "neuro": "Неуро",
         "blank": "Празно"
       }
+    },
+    "sessions": {
+      "notifications": "Обавештења",
+      "notificationsDescription": "Обавештења прегледача о догађајима у вашим сесијама.",
+      "unsupported": "Ваш прегледач не подржава обавештења.",
+      "enableNotifications": "Омогући обавештења",
+      "permissionGranted": "Дозвола прегледача је одобрена",
+      "permissionDenied": "Прегледач је блокирао обавештења — промените дозволу у подешавањима сајта",
+      "permissionDefault": "Прегледач ће затражити дозволу када омогућите обавештења",
+      "notificationTypes": "Врсте обавештења",
+      "behavior": "Понашање",
+      "sendTestNotification": "Пошаљи пробно обавештење",
+      "types": {
+        "onCompletion": {
+          "label": "Завршетак задатка",
+          "description": "Када сесија заврши задатак"
+        },
+        "onError": { "label": "Грешке", "description": "Када сесија наиђе на грешку" },
+        "onQuestion": {
+          "label": "Питања",
+          "description": "Када Kortix тражи ваш одговор да би наставио"
+        },
+        "onPermission": {
+          "label": "Захтеви за дозволу",
+          "description": "Када Kortix тражи дозволу за коришћење алатке"
+        }
+      },
+      "notificationBehavior": {
+        "onlyWhenHidden": {
+          "label": "Само када је картица скривена",
+          "description": "Обавести само када сте на другој картици"
+        },
+        "playSound": {
+          "label": "Звук обавештења",
+          "description": "Пусти звук када се пошаље обавештење"
+        }
+      },
+      "sounds": "Звукови",
+      "soundsDescription": "Пакет звукова за догађаје у сесији.",
+      "soundPacks": {
+        "off": { "label": "Искључено", "description": "Сви звукови су искључени" },
+        "opencode": { "label": "Подразумевано", "description": "Подразумевани пакет звукова" },
+        "kortix": { "label": "Seshion пакет", "description": "Звиждук" }
+      },
+      "volume": "Јачина звука",
+      "preview": "Послушај",
+      "soundEvents": {
+        "completion": { "label": "Завршетак задатка", "description": "Када AI заврши задатак" },
+        "error": { "label": "Грешка", "description": "Када сесија наиђе на грешку" },
+        "notification": { "label": "Обавештење", "description": "Питања и захтеви за дозволу" },
+        "send": { "label": "Порука је послата", "description": "Када пошаљете поруку" }
+      },
+      "testNotificationTitle": "Пробно обавештење",
+      "testNotificationBody": "Обавештења раде исправно!"
     }
   },
   "triggers": {

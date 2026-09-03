@@ -403,6 +403,66 @@
         "neuro": "Neuro",
         "blank": "Vide"
       }
+    },
+    "sessions": {
+      "notifications": "Notifications",
+      "notificationsDescription": "Notifications du navigateur pour les événements de vos sessions.",
+      "unsupported": "Votre navigateur ne prend pas en charge les notifications.",
+      "enableNotifications": "Activer les notifications",
+      "permissionGranted": "Autorisation du navigateur accordée",
+      "permissionDenied": "Bloquées par le navigateur — modifiez l'autorisation dans les paramètres du site",
+      "permissionDefault": "L'autorisation du navigateur sera demandée lors de l'activation",
+      "notificationTypes": "Types de notification",
+      "behavior": "Comportement",
+      "sendTestNotification": "Envoyer une notification de test",
+      "types": {
+        "onCompletion": {
+          "label": "Tâches terminées",
+          "description": "Lorsqu'une session termine sa tâche"
+        },
+        "onError": { "label": "Erreurs", "description": "Lorsqu'une session rencontre une erreur" },
+        "onQuestion": {
+          "label": "Questions",
+          "description": "Lorsque Kortix a besoin de votre réponse pour continuer"
+        },
+        "onPermission": {
+          "label": "Demandes d'autorisation",
+          "description": "Lorsque Kortix a besoin d'une autorisation pour utiliser un outil"
+        }
+      },
+      "notificationBehavior": {
+        "onlyWhenHidden": {
+          "label": "Uniquement lorsque l'onglet est masqué",
+          "description": "Notifier uniquement lorsque vous consultez un autre onglet"
+        },
+        "playSound": {
+          "label": "Son de notification",
+          "description": "Émettre un son lors de l'envoi d'une notification"
+        }
+      },
+      "sounds": "Sons",
+      "soundsDescription": "Pack de sons utilisé pour les événements de session.",
+      "soundPacks": {
+        "off": { "label": "Désactivés", "description": "Tous les sons sont désactivés" },
+        "opencode": { "label": "Par défaut", "description": "Pack de sons par défaut" },
+        "kortix": { "label": "Pack Seshion", "description": "Sifflement" }
+      },
+      "volume": "Volume",
+      "preview": "Écouter",
+      "soundEvents": {
+        "completion": {
+          "label": "Tâche terminée",
+          "description": "Lorsque l'IA termine une tâche"
+        },
+        "error": { "label": "Erreur", "description": "Lorsqu'une session rencontre une erreur" },
+        "notification": {
+          "label": "Notification",
+          "description": "Questions et demandes d'autorisation"
+        },
+        "send": { "label": "Message envoyé", "description": "Lorsque vous envoyez un message" }
+      },
+      "testNotificationTitle": "Notification de test",
+      "testNotificationBody": "Les notifications fonctionnent correctement !"
     }
   },
   "triggers": {

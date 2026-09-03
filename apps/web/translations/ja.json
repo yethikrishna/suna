@@ -403,6 +403,57 @@
         "neuro": "ニューロ",
         "blank": "なし"
       }
+    },
+    "sessions": {
+      "notifications": "通知",
+      "notificationsDescription": "セッションのイベントをブラウザで通知します。",
+      "unsupported": "このブラウザは通知に対応していません。",
+      "enableNotifications": "通知を有効にする",
+      "permissionGranted": "ブラウザの許可を取得済み",
+      "permissionDenied": "ブラウザでブロックされています — サイト設定で許可を変更してください",
+      "permissionDefault": "有効にするとブラウザの許可を求めます",
+      "notificationTypes": "通知の種類",
+      "behavior": "通知方法",
+      "sendTestNotification": "テスト通知を送信",
+      "types": {
+        "onCompletion": {
+          "label": "タスク完了",
+          "description": "セッションがタスクを完了したとき"
+        },
+        "onError": { "label": "エラー", "description": "セッションでエラーが発生したとき" },
+        "onQuestion": {
+          "label": "質問",
+          "description": "Kortix が続行のために入力を必要とするとき"
+        },
+        "onPermission": {
+          "label": "権限リクエスト",
+          "description": "Kortix がツールを使用する権限を必要とするとき"
+        }
+      },
+      "notificationBehavior": {
+        "onlyWhenHidden": {
+          "label": "タブが非表示のときのみ",
+          "description": "別のタブを表示しているときだけ通知します"
+        },
+        "playSound": { "label": "通知音", "description": "通知を送信するときに音を鳴らします" }
+      },
+      "sounds": "サウンド",
+      "soundsDescription": "セッションイベントで再生するサウンドパックです。",
+      "soundPacks": {
+        "off": { "label": "オフ", "description": "すべてのサウンドを無効にします" },
+        "opencode": { "label": "デフォルト", "description": "デフォルトのサウンドパック" },
+        "kortix": { "label": "Seshion パック", "description": "口笛" }
+      },
+      "volume": "音量",
+      "preview": "試聴",
+      "soundEvents": {
+        "completion": { "label": "タスク完了", "description": "AI がタスクを完了したとき" },
+        "error": { "label": "エラー", "description": "セッションでエラーが発生したとき" },
+        "notification": { "label": "通知", "description": "質問と権限リクエスト" },
+        "send": { "label": "メッセージ送信", "description": "メッセージを送信したとき" }
+      },
+      "testNotificationTitle": "テスト通知",
+      "testNotificationBody": "通知は正常に動作しています！"
     }
   },
   "triggers": {

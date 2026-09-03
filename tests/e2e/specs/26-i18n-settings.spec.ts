@@ -65,6 +65,22 @@ interface LocaleMessages {
       densities: Record<string, { label: string }>;
       wallpapers: Record<string, string>;
     };
+    sessions: {
+      notifications: string;
+      enableNotifications: string;
+      notificationTypes: string;
+      behavior: string;
+      sendTestNotification: string;
+      types: Record<string, { label: string; description: string }>;
+      notificationBehavior: Record<
+        string,
+        { label: string; description: string }
+      >;
+      sounds: string;
+      soundPacks: Record<string, { label: string; description: string }>;
+      volume: string;
+      soundEvents: Record<string, { label: string; description: string }>;
+    };
   };
 }
 
@@ -120,6 +136,12 @@ test.describe("26 — Settings localization", () => {
     page.on("pageerror", (error) => pageErrors.push(error.message));
 
     try {
+      const appOrigin = new URL(
+        process.env.E2E_BASE_URL || "http://localhost:3000",
+      ).origin;
+      await page.context().grantPermissions(["notifications"], {
+        origin: appOrigin,
+      });
       await installBrowserSessionDirect(
         page,
         session,
@@ -264,6 +286,72 @@ test.describe("26 — Settings localization", () => {
                     : wallpaperName,
                 exact: true,
               }),
+            ).toBeVisible();
+          }
+
+          await page
+            .getByRole("tab", {
+              name: copy.settings.rail.items.sessions.label,
+              exact: true,
+            })
+            .click();
+          await expect(
+            page.getByRole("heading", {
+              name: copy.settings.sessions.notifications,
+              exact: true,
+            }),
+          ).toBeVisible();
+          const notificationSwitch = page.getByRole("switch", {
+            name: copy.settings.sessions.enableNotifications,
+            exact: true,
+          });
+          if (!(await notificationSwitch.isChecked())) {
+            await notificationSwitch.click();
+          }
+          await expect(notificationSwitch).toBeChecked();
+          for (const notificationText of [
+            copy.settings.sessions.notificationTypes,
+            copy.settings.sessions.behavior,
+            copy.settings.sessions.sendTestNotification,
+            ...Object.values(copy.settings.sessions.types).flatMap((item) => [
+              item.label,
+              item.description,
+            ]),
+            ...Object.values(
+              copy.settings.sessions.notificationBehavior,
+            ).flatMap((item) => [item.label, item.description]),
+          ]) {
+            await expect(
+              page.getByText(notificationText, { exact: true }).first(),
+            ).toBeVisible();
+          }
+          await expect(
+            page.getByRole("heading", {
+              name: copy.settings.sessions.sounds,
+              exact: true,
+            }),
+          ).toBeVisible();
+          const defaultPack = copy.settings.sessions.soundPacks.opencode;
+          await page
+            .getByRole("radio", {
+              name: `${defaultPack.label} ${defaultPack.description}`,
+              exact: true,
+            })
+            .click();
+          await expect(
+            page.getByRole("slider", {
+              name: copy.settings.sessions.volume,
+              exact: true,
+            }),
+          ).toBeVisible();
+          for (const eventCopy of Object.values(
+            copy.settings.sessions.soundEvents,
+          )) {
+            await expect(
+              page.getByText(eventCopy.label, { exact: true }).first(),
+            ).toBeVisible();
+            await expect(
+              page.getByText(eventCopy.description, { exact: true }).first(),
             ).toBeVisible();
           }
 

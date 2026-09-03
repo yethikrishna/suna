@@ -400,6 +400,69 @@
         "neuro": "Neuro",
         "blank": "Vacío"
       }
+    },
+    "sessions": {
+      "notifications": "Notificaciones",
+      "notificationsDescription": "Notificaciones del navegador sobre eventos de sus sesiones.",
+      "unsupported": "Su navegador no admite notificaciones.",
+      "enableNotifications": "Activar notificaciones",
+      "permissionGranted": "Permiso del navegador concedido",
+      "permissionDenied": "Bloqueadas por el navegador — cambie el permiso en la configuración del sitio",
+      "permissionDefault": "Se solicitará permiso al navegador al activarlas",
+      "notificationTypes": "Tipos de notificación",
+      "behavior": "Comportamiento",
+      "sendTestNotification": "Enviar notificación de prueba",
+      "types": {
+        "onCompletion": {
+          "label": "Tareas completadas",
+          "description": "Cuando una sesión completa su tarea"
+        },
+        "onError": { "label": "Errores", "description": "Cuando una sesión encuentra un error" },
+        "onQuestion": {
+          "label": "Preguntas",
+          "description": "Cuando Kortix necesita su respuesta para continuar"
+        },
+        "onPermission": {
+          "label": "Solicitudes de permiso",
+          "description": "Cuando Kortix necesita permiso para usar una herramienta"
+        }
+      },
+      "notificationBehavior": {
+        "onlyWhenHidden": {
+          "label": "Solo cuando la pestaña está oculta",
+          "description": "Notificar solo cuando está en otra pestaña"
+        },
+        "playSound": {
+          "label": "Sonido de notificación",
+          "description": "Reproducir un sonido cuando se envía una notificación"
+        }
+      },
+      "sounds": "Sonidos",
+      "soundsDescription": "Paquete de sonidos para eventos de la sesión.",
+      "soundPacks": {
+        "off": { "label": "Desactivados", "description": "Todos los sonidos están desactivados" },
+        "opencode": {
+          "label": "Predeterminado",
+          "description": "Paquete de sonidos predeterminado"
+        },
+        "kortix": { "label": "Paquete Seshion", "description": "Silbido" }
+      },
+      "volume": "Volumen",
+      "preview": "Escuchar",
+      "soundEvents": {
+        "completion": {
+          "label": "Tarea completada",
+          "description": "Cuando la IA completa una tarea"
+        },
+        "error": { "label": "Error", "description": "Cuando una sesión encuentra un error" },
+        "notification": {
+          "label": "Notificación",
+          "description": "Preguntas y solicitudes de permiso"
+        },
+        "send": { "label": "Mensaje enviado", "description": "Cuando envía un mensaje" }
+      },
+      "testNotificationTitle": "Notificación de prueba",
+      "testNotificationBody": "¡Las notificaciones funcionan correctamente!"
     }
   },
   "triggers": {

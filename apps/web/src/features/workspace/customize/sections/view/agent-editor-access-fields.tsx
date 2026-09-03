@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 /**
  * The last two open sections of the agent editor: what the agent may reach
  * (Access) and where it runs (Workspace).
@@ -37,6 +38,7 @@ type SetKortix = <K extends keyof AgentConfigBlock>(key: K, value: AgentConfigBl
  * it — and a lock reads as "secured", which is not what this means.
  */
 function RequiredConnectorToggle({ active, onToggle }: { active: boolean; onToggle: () => void }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
     <Hint
       label={
@@ -57,7 +59,7 @@ function RequiredConnectorToggle({ active, onToggle }: { active: boolean; onTogg
             : 'text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50',
         )}
       >
-        Required
+        {tI18nComplete.raw('text4850b174b713')}
       </button>
     </Hint>
   );
@@ -76,22 +78,20 @@ export function AccessSection({
   connectorOptions: { id: string; label: string }[];
   secretOptions: { id: string; label: string }[];
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
-    <EditorSection
-      title="Access"
-      description="Denied by default. This agent reaches nothing until you grant it here."
-    >
-      <SettingBlock label="Skills" help="Instructions and scripts this agent can load.">
+    <EditorSection title="Access" description={tI18nComplete.raw('textf3498d99c1a1')}>
+      <SettingBlock label="Skills" help={tI18nComplete.raw('texte39f8d23c0a9')}>
         <GrantSetField
           value={draft.skills}
           onChange={(v: AgentGrantSetV2) => set('skills', v)}
           options={skillsOptions}
-          allLabel="Every skill in this project."
-          emptyLabel="No skills declared in this project yet."
+          allLabel={tI18nComplete.raw('textab13643c81b7')}
+          emptyLabel={tI18nComplete.raw('text66e36043ff7c')}
         />
       </SettingBlock>
 
-      <SettingBlock label="Connectors" help="Outside services this agent can call.">
+      <SettingBlock label="Connectors" help={tI18nComplete.raw('text4b5bf8bae40d')}>
         <GrantSetField
           value={draft.connectors}
           onChange={(v: AgentGrantSetV2) => {
@@ -102,8 +102,8 @@ export function AccessSection({
             }
           }}
           options={connectorOptions}
-          allLabel="Every connector in this project."
-          emptyLabel="No connectors in this project yet."
+          allLabel={tI18nComplete.raw('textfe22cb3e747a')}
+          emptyLabel={tI18nComplete.raw('text389fb5217392')}
           rowAccessory={(id, isSelected) =>
             isSelected ? (
               <RequiredConnectorToggle
@@ -121,23 +121,20 @@ export function AccessSection({
         />
         {draft.connectors === 'all' && draft.connectors_required?.length ? (
           <p className="text-muted-foreground text-xs">
-            Required before session start:{' '}
-            <span className="font-mono">{draft.connectors_required.join(', ')}</span>. Switch to
-            Pick to change it.
+            {tI18nComplete.raw('textf39fe0fefce2')}{' '}
+            <span className="font-mono">{draft.connectors_required.join(', ')}</span>
+            {tI18nComplete.raw('text954401fb96d1')}
           </p>
         ) : null}
       </SettingBlock>
 
-      <SettingBlock
-        label="Secrets"
-        help="Project secrets handed to this agent as environment variables."
-      >
+      <SettingBlock label="Secrets" help={tI18nComplete.raw('textec82b000fd57')}>
         <GrantSetField
           value={draft.secrets}
           onChange={(v: AgentGrantSetV2) => set('secrets', v)}
           options={secretOptions}
-          allLabel="Every secret in this project."
-          emptyLabel="No secrets in this project yet."
+          allLabel={tI18nComplete.raw('text75c13d1eb5e5')}
+          emptyLabel={tI18nComplete.raw('text82a37b8c2266')}
         />
       </SettingBlock>
 
@@ -145,8 +142,8 @@ export function AccessSection({
           the user is choosing is which project operations the agent may
           perform; the CLI is only how it performs them. */}
       <SettingBlock
-        label="Project actions"
-        help="What this agent may do to the project itself, through the Kortix CLI."
+        label={tI18nComplete.raw('text5d4ef7cc3bec')}
+        help={tI18nComplete.raw('text45dc1369223b')}
       >
         <KortixCliField
           value={draft.kortix_cli}
@@ -166,9 +163,10 @@ export function WorkspaceSection({
   set: SetKortix;
   sandboxOptions: { id: string; label: string }[];
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
-    <EditorSection title="Workspace" description="Where this agent runs, and what it can change.">
-      <SettingRow label="Environment" help="Sandbox template used by new sessions and automations.">
+    <EditorSection title="Workspace" description={tI18nComplete.raw('text76a5e5a39b4a')}>
+      <SettingRow label="Environment" help={tI18nComplete.raw('texta4e2cf626cd3')}>
         <Select
           value={draft.sandbox ?? INHERIT}
           onValueChange={(value) => set('sandbox', value === INHERIT ? undefined : value)}
@@ -177,7 +175,7 @@ export function WorkspaceSection({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={INHERIT}>Project default</SelectItem>
+            <SelectItem value={INHERIT}>{tI18nComplete.raw('texte8cb80e5c5cb')}</SelectItem>
             {sandboxOptions.map((option) => (
               <SelectItem key={option.id} value={option.id}>
                 {option.label}
@@ -188,7 +186,7 @@ export function WorkspaceSection({
       </SettingRow>
 
       <SettingRow
-        label="File access"
+        label={tI18nComplete.raw('text4f503dc583f3')}
         help={
           draft.workspace ? WORKSPACE_MODE_HELP[draft.workspace] : 'Follows the project default.'
         }
@@ -199,11 +197,15 @@ export function WorkspaceSection({
             set('workspace', value === INHERIT ? undefined : (value as typeof draft.workspace))
           }
         >
-          <SelectTrigger aria-label="File access" className="w-full" size="sm">
+          <SelectTrigger
+            aria-label={tI18nComplete.raw('text4f503dc583f3')}
+            className="w-full"
+            size="sm"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={INHERIT}>Project default</SelectItem>
+            <SelectItem value={INHERIT}>{tI18nComplete.raw('texte8cb80e5c5cb')}</SelectItem>
             {WORKSPACE_MODES.map((mode) => (
               <SelectItem key={mode} value={mode}>
                 {WORKSPACE_MODE_LABEL[mode]}

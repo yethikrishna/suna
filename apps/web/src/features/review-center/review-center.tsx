@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 /**
  * Review Center — the unified human-in-the-loop inbox. One place to see what
  * finished, what changed, what needs approval, and what's waiting on a decision,
@@ -176,6 +177,7 @@ function ItemRow({
   onDismiss: () => void;
   onOpenSession?: () => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const kind = KIND_META[item.kind];
   const segment = segmentForStatus(item.status);
   const pending = segment === 'needs_you';
@@ -224,7 +226,7 @@ function ItemRow({
           )}
           {fresh && (
             <Badge variant="new" size="sm" className="shrink-0">
-              New
+              {tI18nComplete.raw('text18fdd549b2ed')}
             </Badge>
           )}
         </span>
@@ -259,11 +261,11 @@ function ItemRow({
             <>
               <Button size="sm" variant="ghost" disabled={busy} onClick={onQuickDeny}>
                 {pendingDecision === 'deny' ? <Loading className="size-3.5 shrink-0" /> : null}
-                Deny
+                {tI18nComplete.raw('text05a2d7332eb9')}
               </Button>
               <Button size="sm" variant="secondary" disabled={busy} onClick={onQuickApprove}>
                 {pendingDecision === 'approve' ? <Loading className="size-3.5 shrink-0" /> : null}
-                Approve
+                {tI18nComplete.raw('text6007acbe30b2')}
               </Button>
             </>
           ) : (
@@ -287,21 +289,23 @@ function ItemRow({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuItem onClick={onOpen}>
-              Open
+              {tI18nComplete.raw('texted077f3d8125')}
               <DropdownMenuShortcut>↵</DropdownMenuShortcut>
             </DropdownMenuItem>
             {onOpenSession && (
-              <DropdownMenuItem onClick={onOpenSession}>Open session</DropdownMenuItem>
+              <DropdownMenuItem onClick={onOpenSession}>
+                {tI18nComplete.raw('textb205bb47f81a')}
+              </DropdownMenuItem>
             )}
             {pending && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={onAskChanges}>
-                  Ask for changes
+                  {tI18nComplete.raw('text705364916412')}
                   <DropdownMenuShortcut>e</DropdownMenuShortcut>
                 </DropdownMenuItem>
                 <DropdownMenuItem variant="destructive" onClick={onDismiss}>
-                  Dismiss
+                  {tI18nComplete.raw('text48845bff334a')}
                   <DropdownMenuShortcut>d</DropdownMenuShortcut>
                 </DropdownMenuItem>
               </>
@@ -330,11 +334,12 @@ function ListSkeleton({ rows = 5 }: { rows?: number }) {
 }
 
 function KeyboardHelp({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
     <Modal open={open} onOpenChange={(o) => !o && onClose()}>
       <ModalContent className="lg:max-w-sm">
         <ModalHeader>
-          <ModalTitle>Keyboard shortcuts</ModalTitle>
+          <ModalTitle>{tI18nComplete.raw('texte9bef0b0f3c2')}</ModalTitle>
         </ModalHeader>
         <ModalBody>
           <ul className="space-y-2">
@@ -395,6 +400,7 @@ export function ReviewCenter({
   /** sessionId → human name, for the per-session filter + group headers. */
   sessionLabels?: Record<string, string>;
 } = {}) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const connected = !!onAct;
   const [items, setItems] = useState<ReviewItem[]>(initialItems ?? (connected ? [] : MOCK_ITEMS));
   const [segment, setSegment] = useState<ReviewSegment>('needs_you');
@@ -561,7 +567,7 @@ export function ReviewCenter({
             }
           }}
         >
-          Undo
+          {tI18nComplete.raw('texta8283ade3185')}
         </Button>
       ),
     });
@@ -806,7 +812,7 @@ export function ReviewCenter({
       className="text-muted-foreground hover:text-foreground duration-fast hidden items-center gap-1.5 text-xs transition-colors sm:flex"
     >
       <Kbd>?</Kbd>
-      Shortcuts
+      {tI18nComplete.raw('text46e978d0c193')}
     </button>
   );
 
@@ -871,7 +877,7 @@ export function ReviewCenter({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-52">
-                  <DropdownMenuLabel>Type</DropdownMenuLabel>
+                  <DropdownMenuLabel>{tI18nComplete.raw('textbaaddf70fb5d')}</DropdownMenuLabel>
                   <DropdownMenuRadioGroup
                     value={kindFilter}
                     onValueChange={(v) => setKindFilter(v as ReviewKind | 'all')}
@@ -911,10 +917,10 @@ export function ReviewCenter({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="max-h-72 w-64 overflow-y-auto">
-                    <DropdownMenuLabel>Session</DropdownMenuLabel>
+                    <DropdownMenuLabel>{tI18nComplete.raw('text6959b4159575')}</DropdownMenuLabel>
                     <DropdownMenuRadioGroup value={sessionFilter} onValueChange={setSessionFilter}>
                       <DropdownMenuRadioItem value="all" side="left">
-                        All sessions
+                        {tI18nComplete.raw('text78648d4d6649')}
                         <Badge variant="secondary" size="xs" className="ml-auto tabular-nums">
                           {filterItems(items, segment, kindFilter, query, 'all').length}
                         </Badge>
@@ -941,7 +947,7 @@ export function ReviewCenter({
                       onCheckedChange={setGrouped}
                       className="pl-8"
                     >
-                      Group by session
+                      {tI18nComplete.raw('text137f98df3b9b')}
                     </DropdownMenuCheckboxItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -971,12 +977,12 @@ export function ReviewCenter({
           {isError && items.length === 0 ? (
             <ErrorState
               size="sm"
-              title="Couldn't load the review inbox"
-              description="Check your connection and try again."
+              title={tI18nComplete.raw('text23686ff6ba91')}
+              description={tI18nComplete.raw('text481859b689b0')}
               action={
                 <Button variant="outline" size="sm" onClick={onRefresh} disabled={isFetching}>
                   {isFetching ? <Loading className="size-3.5 shrink-0" /> : null}
-                  Retry
+                  {tI18nComplete.raw('text942087cc2d41')}
                 </Button>
               }
             />
@@ -1018,7 +1024,7 @@ export function ReviewCenter({
                         className="text-muted-foreground hover:text-foreground duration-fast ml-auto shrink-0 text-xs transition-colors"
                         onClick={() => onOpenSession(g.sessionId!)}
                       >
-                        Open session
+                        {tI18nComplete.raw('textb205bb47f81a')}
                       </button>
                     )}
                   </div>

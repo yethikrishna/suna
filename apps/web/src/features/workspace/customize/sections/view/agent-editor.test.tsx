@@ -38,7 +38,7 @@ describe('agent environment editor', () => {
     expect(editorSource).toContain('options.set(initial.sandbox, initial.sandbox)');
     expect(accessFieldsSource).toContain('label="Environment"');
     expect(accessFieldsSource).toContain("set('sandbox'");
-    expect(accessFieldsSource).toContain('Project default');
+    expect(accessFieldsSource).toContain("raw('texte8cb80e5c5cb')");
   });
 });
 
@@ -165,8 +165,8 @@ describe('mode pickers use the shared component library', () => {
   // The control these replaced hid "unset" behind clicking the already-active
   // segment. Every inherit-capable picker must now NAME that option.
   test('every inherit-capable picker names its inherit option', () => {
-    expect(accessFieldsSource).toContain('Project default');
-    expect(basicsFieldsSource).toContain('Project default');
+    expect(accessFieldsSource).toContain("raw('texte8cb80e5c5cb')");
+    expect(basicsFieldsSource).toContain("raw('texte8cb80e5c5cb')");
     expect(permissionEditorSource).toContain('inheritLabel');
     expect(permissionEditorSource).toContain('inheritLabel="Inherit"');
   });

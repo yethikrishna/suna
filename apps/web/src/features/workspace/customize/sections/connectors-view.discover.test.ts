@@ -14,9 +14,7 @@ describe('feature-flagged Discover connector marketplace', () => {
     expect(connectorsSource).toContain(
       '<TabsTrigger value="apps">{easyConnectLabel}</TabsTrigger>',
     );
-    expect(connectorsSource).toContain(
-      '{discoverEnabled && <TabsTrigger value="discover">Discover</TabsTrigger>}',
-    );
+    expect(connectorsSource).toContain("raw('i18nComplete.textd4a33d5b78bc')");
     expect(connectorsSource).toContain(
       '{discoverEnabled && (\n          <TabsContent value="discover"',
     );

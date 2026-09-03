@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 /**
  * Service account tokens: the account's machine identities.
  *
@@ -86,7 +87,13 @@ import {
   listServiceAccountsApi,
 } from '@/lib/iam-client';
 import { relativeTime } from '@/lib/relative-time';
-import { KeyIcon, MagnifyingGlassIcon, PlusIcon, ProhibitIcon, TrashIcon } from '@phosphor-icons/react';
+import {
+  KeyIcon,
+  MagnifyingGlassIcon,
+  PlusIcon,
+  ProhibitIcon,
+  TrashIcon,
+} from '@phosphor-icons/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 
@@ -109,12 +116,14 @@ import {
  * state nobody chose, and the one that silently stops a CI job — takes a
  * warning colour.
  */
-const STATUS_BADGE: Record<ApiKeyStatus, { label: string; variant: 'success' | 'update' | 'muted' }> =
-  {
-    active: { label: 'Active', variant: 'success' },
-    expired: { label: 'Expired', variant: 'update' },
-    revoked: { label: 'Revoked', variant: 'muted' },
-  };
+const STATUS_BADGE: Record<
+  ApiKeyStatus,
+  { label: string; variant: 'success' | 'update' | 'muted' }
+> = {
+  active: { label: 'Active', variant: 'success' },
+  expired: { label: 'Expired', variant: 'update' },
+  revoked: { label: 'Revoked', variant: 'muted' },
+};
 
 const STATUS_OPTIONS: ApiKeyStatus[] = ['active', 'expired', 'revoked'];
 
@@ -149,6 +158,7 @@ export interface ApiKeysListProps {
 
 /** The list itself. The create action is the caller's, so the pane header can own it. */
 export function ApiKeysList({ accountId, canManage }: ApiKeysListProps) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const queryClient = useQueryClient();
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: SERVICE_ACCOUNTS_KEY(accountId) });
@@ -206,30 +216,29 @@ export function ApiKeysList({ accountId, canManage }: ApiKeysListProps) {
       return (
         <InfoBanner
           tone="warning"
-          title="Confirm it's you"
+          title={tI18nComplete.raw('text6176eec272e8')}
           action={
             <Button
               variant="outline"
               size="sm"
               onClick={() => window.dispatchEvent(new CustomEvent(MFA_REQUIRED_EVENT))}
             >
-              Verify
+              {tI18nComplete.raw('texteea2745e2867')}
             </Button>
           }
         >
-          This workspace asks for a second factor before showing its tokens. The list refreshes on
-          its own once you have verified.
+          {tI18nComplete.raw('text534e356b9a09')}
         </InfoBanner>
       );
     }
     return (
       <ErrorState
         size="sm"
-        title="Couldn't load these tokens"
+        title={tI18nComplete.raw('text72f493e2adcc')}
         description={error instanceof Error ? error.message : undefined}
         action={
           <Button variant="outline" size="sm" onClick={() => serviceAccountsQuery.refetch()}>
-            Retry
+            {tI18nComplete.raw('text942087cc2d41')}
           </Button>
         }
       />
@@ -261,8 +270,8 @@ export function ApiKeysList({ accountId, canManage }: ApiKeysListProps) {
             <MagnifyingGlassIcon />
           </InputGroupSearchIcon>
           <InputGroupSearchInput
-            placeholder="Search tokens"
-            aria-label="Search tokens"
+            placeholder={tI18nComplete.raw('text1b5465e03357')}
+            aria-label={tI18nComplete.raw('text1b5465e03357')}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             variant="popover"
@@ -275,18 +284,21 @@ export function ApiKeysList({ accountId, canManage }: ApiKeysListProps) {
             Automation — which is not a question this list can answer any more:
             every row on it is an automation. */}
         <Select value={view} onValueChange={(value) => setView(value as ApiKeyFilterValue)}>
-          <SelectTrigger className="w-full shrink-0 sm:w-44" aria-label="Filter tokens">
+          <SelectTrigger
+            className="w-full shrink-0 sm:w-44"
+            aria-label={tI18nComplete.raw('text47cb1961551f')}
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent align="end">
             <SelectItem size="sm" value="all" description={countLabel(counts.all)}>
-              All tokens
+              {tI18nComplete.raw('text229c8c14416e')}
             </SelectItem>
             {statusOptions.length > 0 ? (
               <>
                 <SelectSeparator />
                 <SelectGroup>
-                  <SelectLabel>Status</SelectLabel>
+                  <SelectLabel>{tI18nComplete.raw('text920e413c7d41')}</SelectLabel>
                   {statusOptions.map((value) => (
                     <SelectItem
                       size="sm"
@@ -308,7 +320,8 @@ export function ApiKeysList({ accountId, canManage }: ApiKeysListProps) {
         <p className="text-muted-foreground px-3 py-6 text-center text-xs">
           {search.trim() ? (
             <>
-              No tokens match <span className="text-foreground font-mono">{search.trim()}</span>.
+              {tI18nComplete.raw('textdd730b855f7f')}{' '}
+              <span className="text-foreground font-mono">{search.trim()}</span>.
             </>
           ) : (
             // Only reachable when the selection goes stale mid-session — revoke
@@ -410,6 +423,7 @@ export interface CreateApiKeyDialogProps {
  * the policies attached to it, not from a binding chosen at mint time.
  */
 export function CreateApiKeyDialog({ accountId, open, onOpenChange }: CreateApiKeyDialogProps) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [expiry, setExpiry] = useState<string>(NEVER_EXPIRES);
@@ -473,29 +487,29 @@ export function CreateApiKeyDialog({ accountId, open, onOpenChange }: CreateApiK
         {created ? (
           <>
             <ModalHeader>
-              <ModalTitle>Copy this token now</ModalTitle>
+              <ModalTitle>{tI18nComplete.raw('textd7db5a6e1483')}</ModalTitle>
               <ModalDescription>
-                This is the only time <strong>{created.name}</strong>&apos;s token is shown. Save it
-                somewhere safe — we can&apos;t show it again, and a lost token has to be replaced.
+                {tI18nComplete.raw('textd21d10509292')} <strong>{created.name}</strong>
+                {tI18nComplete.raw('text26a69b6ee645')}
               </ModalDescription>
             </ModalHeader>
             <ModalBody>
-              <CopyRow value={created.secret} successMessage="Token copied" />
+              <CopyRow
+                value={created.secret}
+                successMessage={tI18nComplete.raw('textc9feac7acc32')}
+              />
             </ModalBody>
             <ModalFooter>
               <Button type="button" size="sm" onClick={close}>
-                Done
+                {tI18nComplete.raw('text11a6767d5674')}
               </Button>
             </ModalFooter>
           </>
         ) : (
           <>
             <ModalHeader>
-              <ModalTitle>Create a service account token</ModalTitle>
-              <ModalDescription>
-                A service account is an identity of its own — it acts with the permissions you
-                grant it, and it keeps working after the person who made it leaves.
-              </ModalDescription>
+              <ModalTitle>{tI18nComplete.raw('text44d5cf8e9451')}</ModalTitle>
+              <ModalDescription>{tI18nComplete.raw('text7074515e8fda')}</ModalDescription>
             </ModalHeader>
             <form
               onSubmit={(event) => {
@@ -506,24 +520,28 @@ export function CreateApiKeyDialog({ accountId, open, onOpenChange }: CreateApiK
             >
               <ModalBody className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="service-account-name">Name</Label>
+                  <Label htmlFor="service-account-name">
+                    {tI18nComplete.raw('textdcd1d5223f73')}
+                  </Label>
                   <Input
                     id="service-account-name"
                     value={name}
                     onChange={(event) => setName(event.target.value)}
-                    placeholder="Deploy from GitHub"
+                    placeholder={tI18nComplete.raw('textc725967d3988')}
                     disabled={mutation.isPending}
                     maxLength={128}
                     autoFocus
                     variant="popover"
                   />
                   <p className="text-muted-foreground text-xs">
-                    Name it after the job it does, so an audit line reads as itself.
+                    {tI18nComplete.raw('textb74399647bf0')}
                   </p>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="service-account-expiry">Expires</Label>
+                  <Label htmlFor="service-account-expiry">
+                    {tI18nComplete.raw('textf6725f3af08a')}
+                  </Label>
                   <Select
                     value={selectedExpiry}
                     onValueChange={setExpiry}
@@ -542,7 +560,7 @@ export function CreateApiKeyDialog({ accountId, open, onOpenChange }: CreateApiK
                   </Select>
                   {policy?.require_expiry ? (
                     <p className="text-muted-foreground text-xs">
-                      This workspace asks every key to have an end date.
+                      {tI18nComplete.raw('texta06efd337206')}
                     </p>
                   ) : null}
                 </div>
@@ -555,7 +573,7 @@ export function CreateApiKeyDialog({ accountId, open, onOpenChange }: CreateApiK
                   onClick={close}
                   disabled={mutation.isPending}
                 >
-                  Cancel
+                  {tI18nComplete.raw('text19766ed6ccb2')}
                 </Button>
                 <Button
                   type="submit"
@@ -564,7 +582,7 @@ export function CreateApiKeyDialog({ accountId, open, onOpenChange }: CreateApiK
                   className="gap-1.5"
                 >
                   {mutation.isPending ? <Loading className="size-3.5 shrink-0" /> : null}
-                  Create token
+                  {tI18nComplete.raw('text5d8e8e30bc4f')}
                 </Button>
               </ModalFooter>
             </form>
@@ -587,13 +605,14 @@ export interface ApiKeysSectionProps {
  * key has to be able to leave with one.
  */
 export function ApiKeysSection({ accountId, canManage }: ApiKeysSectionProps) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const [createOpen, setCreateOpen] = useState(false);
 
   return (
     <section className="space-y-4">
       <SettingsSubsectionHeader
-        title="Service account tokens"
-        description="Identities for CI, scripts, and integrations — they act on their own, not as a person."
+        title={tI18nComplete.raw('textaff66989659f')}
+        description={tI18nComplete.raw('textce5979e3cee6')}
         action={
           canManage ? (
             <Button
@@ -603,7 +622,7 @@ export function ApiKeysSection({ accountId, canManage }: ApiKeysSectionProps) {
               onClick={() => setCreateOpen(true)}
             >
               <PlusIcon className="size-4 shrink-0" />
-              New token
+              {tI18nComplete.raw('textfe46cb83ad1c')}
             </Button>
           ) : undefined
         }
@@ -614,9 +633,9 @@ export function ApiKeysSection({ accountId, canManage }: ApiKeysSectionProps) {
           lives in the header above, where the eye already lands. */}
       <ApiKeysList accountId={accountId} canManage={canManage} />
       <p className="text-muted-foreground text-xs">
-        Your own API keys — the ones that sign the CLI in as you — live in your{' '}
+        {tI18nComplete.raw('text4703d3bef6c4')}{' '}
         <Link href="/settings/tokens" className="text-foreground underline underline-offset-2">
-          settings → API keys
+          {tI18nComplete.raw('text80b9316cb15b')}
         </Link>
         .
       </p>

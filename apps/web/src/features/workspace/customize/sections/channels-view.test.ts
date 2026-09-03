@@ -19,9 +19,7 @@ const dir = import.meta.dir;
  * The `[^:\w]` guard on line comments keeps `https://` URLs intact.
  */
 function code(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:\w])\/\/.*$/gm, '$1');
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:\w])\/\/.*$/gm, '$1');
 }
 
 const read = (relativePath: string) => code(readFileSync(join(dir, relativePath), 'utf8'));
@@ -89,9 +87,7 @@ describe('Channels view — a disconnected Slack is a hero, not a table row', ()
     expect(channelsSource).not.toContain('<TableHead>Workspace</TableHead>');
     expect(channelsSource).not.toContain('<TableHead>Status</TableHead>');
     // The Slack row survives by name but is now an entity row, not a TableRow.
-    expect(channelsSource).toMatch(
-      /function SlackChannelRow[\s\S]*?return \(\s*<ChannelRow/,
-    );
+    expect(channelsSource).toMatch(/function SlackChannelRow[\s\S]*?return \(\s*<ChannelRow/);
     expect(channelsSource).not.toMatch(/function SlackChannelRow[\s\S]{0,600}<TableCell/);
   });
 
@@ -292,8 +288,8 @@ describe('Bring your own Slack — a guided wizard, not a JSON dump', () => {
   });
 
   test('credential help names the Slack screen, and internal table names are gone', () => {
-    expect(wizardSource).toContain('OAuth &amp; Permissions');
-    expect(wizardSource).toContain('Basic Information');
+    expect(wizardSource).toContain("raw('textd4caa96c198f')");
+    expect(wizardSource).toContain("raw('textd094b334d809')");
     expect(wizardSource).not.toContain('project_secrets');
     expect(channelsSource).not.toContain('project_secrets');
   });

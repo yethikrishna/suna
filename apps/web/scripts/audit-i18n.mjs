@@ -253,11 +253,7 @@ function isHumanText(value, kind) {
   if (!text || allowedLiteralValues.has(text)) return false;
   if (text.length < 2) return false;
   if (/^[\W\d_]+$/.test(text)) return false;
-  if (
-    kind !== 'jsx-text' &&
-    /^[a-z0-9.:/?#[\]{}()_-]+$/i.test(text) &&
-    !/\s/.test(text)
-  )
+  if (kind !== 'jsx-text' && /^[a-z0-9.:/?#[\]{}()_-]+$/i.test(text) && !/\s/.test(text))
     return false;
   if (/^https?:\/\//.test(text)) return false;
   if (/^[A-Z0-9_]+$/.test(text)) return false;
@@ -290,6 +286,61 @@ function scanFile(file) {
     });
   }
 
+  function isInsideTranslationCall(node) {
+    let cursor = node.parent;
+    while (cursor && !ts.isJsxExpression(cursor)) {
+      if (
+        ts.isCallExpression(cursor) &&
+        ts.isPropertyAccessExpression(cursor.expression) &&
+        ['raw', 'rich'].includes(cursor.expression.name.text)
+      ) {
+        return true;
+      }
+      cursor = cursor.parent;
+    }
+    return false;
+  }
+
+  function isDisplayExpressionLiteral(node) {
+    if (isInsideTranslationCall(node)) return false;
+    let jsxExpression = node.parent;
+    while (
+      jsxExpression &&
+      !ts.isJsxExpression(jsxExpression) &&
+      !ts.isJsxAttribute(jsxExpression) &&
+      !ts.isJsxElement(jsxExpression) &&
+      !ts.isJsxSelfClosingElement(jsxExpression)
+    ) {
+      jsxExpression = jsxExpression.parent;
+    }
+    if (!jsxExpression || !ts.isJsxExpression(jsxExpression)) return false;
+    const attribute = jsxExpression?.parent;
+    if (
+      attribute &&
+      ts.isJsxAttribute(attribute) &&
+      (ignoredAttributes.has(attribute.name.text) || attribute.name.text.endsWith('ClassName'))
+    ) {
+      return false;
+    }
+    const parent = node.parent;
+    if (
+      (ts.isPropertyAssignment(parent) && parent.name === node) ||
+      ts.isElementAccessExpression(parent) ||
+      ts.isImportDeclaration(parent) ||
+      ts.isExportDeclaration(parent)
+    ) {
+      return false;
+    }
+    if (
+      ts.isBinaryExpression(parent) &&
+      ['===', '!==', '==', '!='].includes(parent.operatorToken.getText(sourceFile))
+    ) {
+      return false;
+    }
+    const text = node.text.trim();
+    return /\s/.test(text) || /^[A-Z]/.test(text) || /[.!?]$/.test(text);
+  }
+
   function visit(node) {
     if (ts.isJsxText(node)) {
       const parentTag = ts.isJsxElement(node.parent)
@@ -312,9 +363,32 @@ function scanFile(file) {
     }
 
     if (
+      ts.isStringLiteralLike(node) &&
+      ts.isJsxExpression(node.parent) &&
+      isDisplayExpressionLiteral(node)
+    ) {
+      add('jsx-expression', node, node.text);
+    }
+
+    if (
+      ts.isStringLiteralLike(node) &&
+      !ts.isJsxExpression(node.parent) &&
+      node.parent &&
+      (() => {
+        let cursor = node.parent;
+        while (cursor && !ts.isJsxExpression(cursor)) cursor = cursor.parent;
+        return Boolean(cursor);
+      })() &&
+      isDisplayExpressionLiteral(node)
+    ) {
+      add('jsx-expression', node, node.text);
+    }
+
+    if (
       ts.isCallExpression(node) &&
       ts.isIdentifier(node.expression) &&
-      ['toast', 'alert', 'confirm', 'prompt'].includes(node.expression.text)
+      (['toast', 'alert', 'confirm', 'prompt'].includes(node.expression.text) ||
+        /Toast$/.test(node.expression.text))
     ) {
       const first = node.arguments[0];
       if (first && ts.isStringLiteralLike(first)) {

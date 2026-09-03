@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 /**
  * The add-a-custom-provider form, as rows on the API-keys list's own axis.
  *
@@ -82,6 +83,7 @@ export function CustomProviderForm({
   projectId: string;
   onDone: () => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const queryClient = useQueryClient();
   const [form, setForm] = useState<CustomFormState>({
     providerId: '',
@@ -180,11 +182,15 @@ export function CustomProviderForm({
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <div className="border-border/60 border-t pt-4">
-        <p className="text-foreground px-0.5 text-sm">Add a custom provider</p>
+        <p className="text-foreground px-0.5 text-sm">{tI18nComplete.raw('text3880a3aae4e6')}</p>
       </div>
 
       <div className="flex flex-col">
-        <FormRow htmlFor="custom-provider-id" label="Provider ID" hint="Lowercase, no spaces.">
+        <FormRow
+          htmlFor="custom-provider-id"
+          label={tI18nComplete.raw('text7511080b05b9')}
+          hint={tI18nComplete.raw('text740493750bb7')}
+        >
           <Input
             id="custom-provider-id"
             type="text"
@@ -198,17 +204,21 @@ export function CustomProviderForm({
           />
         </FormRow>
 
-        <FormRow htmlFor="custom-display-name" label="Display name">
+        <FormRow htmlFor="custom-display-name" label={tI18nComplete.raw('text2b7f6a84de91')}>
           <Input
             id="custom-display-name"
             type="text"
             value={form.name}
             onChange={(e) => setField('name', e.target.value)}
-            placeholder="My LLM"
+            placeholder={tI18nComplete.raw('text0d41acb2175b')}
           />
         </FormRow>
 
-        <FormRow htmlFor="custom-base-url" label="Base URL" hint="OpenAI-compatible endpoint.">
+        <FormRow
+          htmlFor="custom-base-url"
+          label={tI18nComplete.raw('text70589413a3c9')}
+          hint={tI18nComplete.raw('texte4273a188eb5')}
+        >
           <Input
             id="custom-base-url"
             type="text"
@@ -223,7 +233,8 @@ export function CustomProviderForm({
           htmlFor="custom-api-key"
           label={
             <>
-              API key <span className="text-muted-foreground/60">(optional)</span>
+              {tI18nComplete.raw('text16f0ee47f993')}{' '}
+              <span className="text-muted-foreground">{tI18nComplete.raw('text0059798b7f70')}</span>
             </>
           }
         >
@@ -240,7 +251,7 @@ export function CustomProviderForm({
               data-form-type="other"
               value={form.apiKey}
               onChange={(e) => setField('apiKey', e.target.value)}
-              placeholder="sk-… (saved as a project secret)"
+              placeholder={tI18nComplete.raw('textb009c6c5299f')}
               className="font-mono text-xs"
             />
             {form.apiKey ? (
@@ -251,7 +262,7 @@ export function CustomProviderForm({
                   title={revealKey ? 'Hide' : 'Show'}
                   aria-label={revealKey ? 'Hide the API key' : 'Show the API key'}
                   aria-pressed={revealKey}
-                  className="text-muted-foreground/60 hover:text-foreground"
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   {revealKey ? <EyeSlash className="size-3.5" /> : <Eye className="size-3.5" />}
                 </InputGroupButton>
@@ -260,12 +271,12 @@ export function CustomProviderForm({
           </InputGroup>
           {form.apiKey.trim() ? (
             <FieldDescription className="text-xs">
-              Project-wide — every member of this project can use this provider.
+              {tI18nComplete.raw('text6bf9ada8447c')}
             </FieldDescription>
           ) : null}
         </FormRow>
 
-        <FormRow htmlFor="custom-model-id" label="Model ID">
+        <FormRow htmlFor="custom-model-id" label={tI18nComplete.raw('text089ef2b6dbb3')}>
           <Input
             id="custom-model-id"
             type="text"
@@ -276,19 +287,23 @@ export function CustomProviderForm({
           />
         </FormRow>
 
-        <FormRow htmlFor="custom-model-name" label="Model name">
+        <FormRow htmlFor="custom-model-name" label={tI18nComplete.raw('texta3c3370cc732')}>
           <Input
             id="custom-model-name"
             type="text"
             value={form.modelName}
             onChange={(e) => setField('modelName', e.target.value)}
-            placeholder="Foo 7B"
+            placeholder={tI18nComplete.raw('textb70354a1faae')}
           />
         </FormRow>
       </div>
 
       {error ? (
-        <InfoBanner tone="destructive" icon={TriangleAlert} title="Check the fields">
+        <InfoBanner
+          tone="destructive"
+          icon={TriangleAlert}
+          title={tI18nComplete.raw('text464de08899db')}
+        >
           {error}
         </InfoBanner>
       ) : null}
@@ -298,7 +313,7 @@ export function CustomProviderForm({
           {save.isPending ? (
             <>
               <Loading className="size-3.5 shrink-0" />
-              Generating…
+              {tI18nComplete.raw('textd20a4476a0a8')}
             </>
           ) : (
             'Generate snippet'
@@ -318,6 +333,7 @@ function CustomProviderSnippetView({
   secretName: string | null;
   onDone: () => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
@@ -340,9 +356,9 @@ function CustomProviderSnippetView({
       >
         {secretName ? (
           <>
-            Your key is stored as{' '}
-            <code className="bg-muted rounded px-1 py-0.5 font-mono text-[11px]">{secretName}</code>{' '}
-            and will be injected into sessions as an env var.
+            {tI18nComplete.raw('text58ec60140867')}{' '}
+            <code className="bg-muted rounded px-1 py-0.5 font-mono text-xs">{secretName}</code>{' '}
+            {tI18nComplete.raw('textdf1db3412b9d')}
           </>
         ) : (
           'No API key was provided — the snippet below omits the apiKey field.'
@@ -350,14 +366,14 @@ function CustomProviderSnippetView({
       </InfoBanner>
 
       <InfoBanner tone="warning" icon={Info}>
-        This provider talks directly to its own endpoint, bypassing the Kortix gateway — no budgets,
-        logs, or routing apply to it.
+        {tI18nComplete.raw('text3915df4b6200')}
       </InfoBanner>
 
       <div className="bg-popover overflow-hidden rounded-md border">
         <div className="border-border/60 flex items-center justify-between gap-3 border-b px-4 py-2.5">
           <span className="text-muted-foreground text-xs">
-            Add to <code className="font-mono">.opencode/opencode.jsonc</code>
+            {tI18nComplete.raw('text82b9ffd3cec8')}{' '}
+            <code className="font-mono">.opencode/opencode.jsonc</code>
           </span>
           <button
             type="button"
@@ -391,16 +407,16 @@ function CustomProviderSnippetView({
       </div>
 
       <p className="text-muted-foreground px-0.5 text-xs text-pretty">
-        Paste this into your project repo's{' '}
-        <code className="bg-muted rounded px-1 py-0.5 font-mono text-[11px]">
+        {tI18nComplete.raw('textb81bc1d32189')}{' '}
+        <code className="bg-muted rounded px-1 py-0.5 font-mono text-xs">
           .opencode/opencode.jsonc
         </code>{' '}
-        and commit. Restart any running session for the change to land in the sandbox.
+        {tI18nComplete.raw('textd833da5b9497')}
       </p>
 
       <div className="flex justify-end">
         <Button size="sm" onClick={onDone}>
-          Done
+          {tI18nComplete.raw('text11a6767d5674')}
         </Button>
       </div>
     </div>

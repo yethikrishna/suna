@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 // Audit-webhook management on the Settings tab. Lets admins ship every
 // audit event to a customer-controlled HTTP endpoint (Splunk, Datadog,
 // internal SIEM). The secret is shown EXACTLY ONCE at creation so it can
@@ -35,6 +36,8 @@ import {
   ModalTitle,
 } from '@/components/ui/modal';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/features/layout/section/empty-state';
+import { ErrorState } from '@/features/layout/section/error-state';
 import {
   AccessList,
   AccessRow,
@@ -42,13 +45,11 @@ import {
   formatRelative,
   type KebabItem,
 } from '@/features/workspace/shared/access';
-import { EmptyState } from '@/features/layout/section/empty-state';
-import { ErrorState } from '@/features/layout/section/error-state';
 import {
-  type IamAuditWebhook,
-  type CreatedAuditWebhook,
   createAuditWebhook,
+  type CreatedAuditWebhook,
   deleteAuditWebhook,
+  type IamAuditWebhook,
   listAuditWebhooks,
   updateAuditWebhook,
 } from '@/lib/iam-client';
@@ -59,6 +60,7 @@ interface AuditWebhooksCardProps {
 }
 
 export function AuditWebhooksCard({ accountId, canManage }: AuditWebhooksCardProps) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<IamAuditWebhook | null>(null);
@@ -98,11 +100,10 @@ export function AuditWebhooksCard({ accountId, canManage }: AuditWebhooksCardPro
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
         <div className="space-y-0.5">
-          <p className="text-foreground text-sm font-medium">Audit webhooks</p>
-          <p className="text-muted-foreground text-xs">
-            Ship every audit event to your SIEM or generic HTTP endpoint. Payloads are signed with
-            HMAC-SHA256.
+          <p className="text-foreground text-sm font-medium">
+            {tI18nComplete.raw('textaca091e6408d')}
           </p>
+          <p className="text-muted-foreground text-xs">{tI18nComplete.raw('textdb77d22c4be7')}</p>
         </div>
         {canManage && (
           <Button
@@ -112,7 +113,7 @@ export function AuditWebhooksCard({ accountId, canManage }: AuditWebhooksCardPro
             className="shrink-0 gap-1.5"
           >
             <Plus className="size-4 shrink-0" />
-            New webhook
+            {tI18nComplete.raw('textd58b5d64893b')}
           </Button>
         )}
       </div>
@@ -130,11 +131,11 @@ export function AuditWebhooksCard({ accountId, canManage }: AuditWebhooksCardPro
       {!hooksQuery.isLoading && hooksQuery.isError && (
         <ErrorState
           size="sm"
-          title="Couldn't load audit webhooks"
+          title={tI18nComplete.raw('text0418b096409c')}
           description={hooksQuery.error instanceof Error ? hooksQuery.error.message : undefined}
           action={
             <Button variant="outline" size="sm" onClick={() => hooksQuery.refetch()}>
-              Retry
+              {tI18nComplete.raw('text942087cc2d41')}
             </Button>
           }
         />
@@ -144,8 +145,8 @@ export function AuditWebhooksCard({ accountId, canManage }: AuditWebhooksCardPro
         <EmptyState
           icon={WebhooksLogoIcon}
           size="sm"
-          title="No webhooks configured"
-          description="Stream every audit event to your SIEM or any HTTPS endpoint."
+          title={tI18nComplete.raw('texta1da233dd539')}
+          description={tI18nComplete.raw('textc6a5488d6ffc')}
           action={
             canManage ? (
               <Button
@@ -155,7 +156,7 @@ export function AuditWebhooksCard({ accountId, canManage }: AuditWebhooksCardPro
                 onClick={() => setCreateOpen(true)}
               >
                 <Plus className="size-3.5 shrink-0" />
-                New webhook
+                {tI18nComplete.raw('textd58b5d64893b')}
               </Button>
             ) : undefined
           }
@@ -239,13 +240,13 @@ export function AuditWebhooksCard({ accountId, canManage }: AuditWebhooksCardPro
         onOpenChange={(o) => {
           if (!o) setDeleteTarget(null);
         }}
-        title="Delete webhook"
+        title={tI18nComplete.raw('text60f85e57e4a7')}
         description={
           deleteTarget
             ? `Stop sending audit events to "${deleteTarget.name}"? Existing receivers must be reconfigured if you re-create it.`
             : ''
         }
-        confirmLabel="Delete webhook"
+        confirmLabel={tI18nComplete.raw('text60f85e57e4a7')}
         confirmVariant="destructive"
         isPending={deleteMutation.isPending}
         onConfirm={() => {
@@ -265,6 +266,7 @@ function CreateAuditWebhookDialog({
   onOpenChange: (v: boolean) => void;
   accountId: string;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
@@ -335,26 +337,30 @@ function CreateAuditWebhookDialog({
               {created.test &&
                 (created.test.ok ? (
                   <InfoBanner tone="success" icon={Check}>
-                    Test event delivered — your endpoint is reachable and events will stream here.
+                    {tI18nComplete.raw('text648e418a5d31')}
                   </InfoBanner>
                 ) : (
                   <InfoBanner tone="warning" icon={AlertTriangle}>
-                    Test delivery failed{created.test.error ? `: ${created.test.error}` : ''}.
-                    Events won&apos;t arrive until the URL responds — fix it, then delete and
-                    re-create.
+                    {tI18nComplete.raw('text0bb4b2553043')}
+                    {created.test.error ? `: ${created.test.error}` : ''}
+                    {tI18nComplete.raw('text4b85caae9864')}
                   </InfoBanner>
                 ))}
               <CopyRow
-                label="Signing secret"
+                label={tI18nComplete.raw('texte7ee22e117a1')}
                 value={created.secret}
-                successMessage="Secret copied"
+                successMessage={tI18nComplete.raw('text704aed35a6fe')}
               />
-              <CopyRow label="Destination URL" value={created.url} successMessage="URL copied" />
+              <CopyRow
+                label={tI18nComplete.raw('text007f7ef38606')}
+                value={created.url}
+                successMessage={tI18nComplete.raw('text0017bda47853')}
+              />
             </ModalBody>
             <ModalFooter>
               <Button size="sm" onClick={() => close(false)} className="gap-1.5">
                 <Check className="size-3.5 shrink-0" />
-                Done
+                {tI18nComplete.raw('text11a6767d5674')}
               </Button>
             </ModalFooter>
           </>
@@ -362,12 +368,12 @@ function CreateAuditWebhookDialog({
           <form onSubmit={submit}>
             <ModalBody className="space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="hook-name">Name</Label>
+                <Label htmlFor="hook-name">{tI18nComplete.raw('textdcd1d5223f73')}</Label>
                 <Input
                   id="hook-name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Splunk production"
+                  placeholder={tI18nComplete.raw('text13c1e155f999')}
                   maxLength={128}
                   autoFocus
                   required
@@ -376,7 +382,7 @@ function CreateAuditWebhookDialog({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="hook-url">Destination URL</Label>
+                <Label htmlFor="hook-url">{tI18nComplete.raw('text007f7ef38606')}</Label>
                 <Input
                   id="hook-url"
                   value={url}
@@ -390,8 +396,10 @@ function CreateAuditWebhookDialog({
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="hook-prefix">
-                  Action prefix{' '}
-                  <span className="text-muted-foreground text-xs font-normal">(optional)</span>
+                  {tI18nComplete.raw('text50d256f3de2b')}{' '}
+                  <span className="text-muted-foreground text-xs font-normal">
+                    {tI18nComplete.raw('text0059798b7f70')}
+                  </span>
                 </Label>
                 <Input
                   id="hook-prefix"
@@ -434,8 +442,7 @@ function CreateAuditWebhookDialog({
                   ))}
                 </div>
                 <p className="text-muted-foreground text-xs">
-                  Only deliver events whose action starts with this prefix. Leave blank to deliver
-                  everything.
+                  {tI18nComplete.raw('text87be07b553e8')}
                 </p>
               </div>
             </ModalBody>
@@ -447,7 +454,7 @@ function CreateAuditWebhookDialog({
                 onClick={() => close(false)}
                 disabled={mutation.isPending}
               >
-                Cancel
+                {tI18nComplete.raw('text19766ed6ccb2')}
               </Button>
               <Button
                 type="submit"
@@ -456,7 +463,7 @@ function CreateAuditWebhookDialog({
                 className="gap-1.5"
               >
                 {mutation.isPending && <Loading className="size-3.5 shrink-0" />}
-                Create webhook
+                {tI18nComplete.raw('text4a2b33ad2c1f')}
               </Button>
             </ModalFooter>
           </form>

@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 /**
  * `AccessProjectsTab` — the account-level "Projects" tab inside Account
  * Settings' Access section. The single place to see and manage every
@@ -263,13 +264,13 @@ export function agentsMetaPart(granted: number, projectAgentCount: number | unde
 }
 
 function ExpiryMeta({ expiresAt }: { expiresAt: string | null | undefined }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const expiry = formatExpiry(expiresAt);
-  if (!expiry.bounded) return <span className="tabular-nums">Expires never</span>;
+  if (!expiry.bounded)
+    return <span className="tabular-nums">{tI18nComplete.raw('text1342ec89ae42')}</span>;
   return (
-    <span
-      className={cn('tabular-nums', expiry.expired ? 'text-kortix-red' : 'text-kortix-yellow')}
-    >
-      Expires {expiry.label}
+    <span className={cn('tabular-nums', expiry.expired ? 'text-kortix-red' : 'text-kortix-yellow')}>
+      {tI18nComplete.raw('textf6725f3af08a')} {expiry.label}
     </span>
   );
 }
@@ -325,6 +326,7 @@ function ProjectPicker({
   accountId: string;
   onSelectProject: (id: string) => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const [search, setSearch] = useState('');
   const [visibleCount, setVisibleCount] = useState(PROJECT_LIST_PAGE_SIZE);
 
@@ -349,10 +351,11 @@ function ProjectPicker({
   return (
     <div className="space-y-4">
       <div className="space-y-0.5">
-        <p className="text-foreground text-sm font-medium">Projects{settled ? ` · ${total}` : ''}</p>
-        <p className="text-muted-foreground text-xs">
-          Every project&apos;s access, in one place. Pick one to see who&apos;s in and manage it.
+        <p className="text-foreground text-sm font-medium">
+          {tI18nComplete.raw('text04e2a9728af7')}
+          {settled ? ` · ${total}` : ''}
         </p>
+        <p className="text-muted-foreground text-xs">{tI18nComplete.raw('text9949095feb15')}</p>
       </div>
 
       <InputGroupSearch>
@@ -360,7 +363,7 @@ function ProjectPicker({
           <MagnifyingGlassIcon />
         </InputGroupSearchIcon>
         <InputGroupSearchInput
-          placeholder="Search projects"
+          placeholder={tI18nComplete.raw('text9e079c7df9f1')}
           value={search}
           onChange={(event) => {
             setSearch(event.target.value);
@@ -374,11 +377,11 @@ function ProjectPicker({
       {projectsQuery.isError ? (
         <ErrorState
           size="sm"
-          title="Failed to load projects"
+          title={tI18nComplete.raw('text99528001baf3')}
           description={(projectsQuery.error as Error)?.message}
           action={
             <Button variant="outline" size="sm" onClick={() => projectsQuery.refetch()}>
-              Retry
+              {tI18nComplete.raw('text942087cc2d41')}
             </Button>
           }
         />
@@ -413,7 +416,7 @@ function ProjectPicker({
                 size="sm"
                 onClick={() => setVisibleCount((count) => count + PROJECT_LIST_PAGE_SIZE)}
               >
-                Show more
+                {tI18nComplete.raw('textf5c9bd131486')}
               </Button>
             </div>
           ) : null}
@@ -427,6 +430,7 @@ function ProjectPicker({
  *  best-effort, never blocks the row: a slow or failed probe just shows
  *  "—"/no dot instead of an error. See header comment. */
 function ProjectListRow({ project, onSelect }: { project: KortixProject; onSelect: () => void }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   // `GET /projects/:id/access-requests` asserts `project.members.manage`, so ask
   // for exactly that. It used to re-derive the answer from the row's role label
   // to save a request per row — which made every custom role holding
@@ -463,10 +467,10 @@ function ProjectListRow({ project, onSelect }: { project: KortixProject; onSelec
       title={project.name}
       badges={
         hasPendingRequests ? (
-          <Hint label="Has pending access requests" side="top">
+          <Hint label={tI18nComplete.raw('text5363a9cf88d5')} side="top">
             <span
               className="bg-kortix-red inline-block size-1.5 shrink-0 rounded-full"
-              aria-label="Pending access requests"
+              aria-label={tI18nComplete.raw('text91de1d3518d8')}
             />
           </Hint>
         ) : null
@@ -510,6 +514,7 @@ function ProjectAccessPanel({
   canManageRoles: boolean;
   onBack: () => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const queryClient = useQueryClient();
 
   // The single leaf every write control below gates on.
@@ -610,7 +615,8 @@ function ProjectAccessPanel({
 
   // ── Pending invites ───────────────────────────────────────────────────
   const [pendingInviteBusyIds, setPendingInviteBusyIds] = useState<Set<string>>(() => new Set());
-  const markInvitePending = (id: string) => setPendingInviteBusyIds((prev) => new Set(prev).add(id));
+  const markInvitePending = (id: string) =>
+    setPendingInviteBusyIds((prev) => new Set(prev).add(id));
   const clearInvitePending = (id: string) =>
     setPendingInviteBusyIds((prev) => {
       const next = new Set(prev);
@@ -636,7 +642,7 @@ function ProjectAccessPanel({
           duration: 8_000,
           button: (
             <Button size="sm" onClick={() => copy(result.invite_url)}>
-              Copy link
+              {tI18nComplete.raw('textdbf362d4f210')}
             </Button>
           ),
         });
@@ -725,7 +731,7 @@ function ProjectAccessPanel({
       actions={
         <Button asChild type="button" variant="ghost" size="sm" className="gap-1.5">
           <Link href={`/projects/${projectId}`}>
-            Open project
+            {tI18nComplete.raw('text5e5eba7f41ab')}
             <ArrowSquareOutIcon className="size-3.5" />
           </Link>
         </Button>
@@ -750,9 +756,17 @@ function ProjectAccessPanel({
                   title={request.requester_email}
                   metaParts={[
                     <span key="requested" className="tabular-nums">
-                      Requested {formatDate(request.created_at)}
+                      {tI18nComplete.raw('text2d9e28289fac')} {formatDate(request.created_at)}
                     </span>,
-                    ...(request.message ? [<span key="message">&quot;{request.message}&quot;</span>] : []),
+                    ...(request.message
+                      ? [
+                          <span key="message">
+                            {tI18nComplete.raw('text497558230027')}
+                            {request.message}
+                            {tI18nComplete.raw('text497558230027')}
+                          </span>,
+                        ]
+                      : []),
                   ]}
                   pending={busy}
                   actions={
@@ -766,7 +780,7 @@ function ProjectAccessPanel({
                           className="gap-1.5"
                         >
                           <CheckIcon className="size-3.5" />
-                          Approve
+                          {tI18nComplete.raw('text6007acbe30b2')}
                         </Button>
                         <Button
                           type="button"
@@ -776,7 +790,7 @@ function ProjectAccessPanel({
                           className="gap-1.5"
                         >
                           <XIcon className="size-3.5" />
-                          Decline
+                          {tI18nComplete.raw('texta2d285b35287')}
                         </Button>
                       </>
                     )
@@ -813,16 +827,17 @@ function ProjectAccessPanel({
                   }
                   metaParts={[
                     <span key="invited" className="tabular-nums">
-                      Invited {formatDate(invite.created_at)}
+                      {tI18nComplete.raw('text63b17becd812')} {formatDate(invite.created_at)}
                     </span>,
                     invite.invite_expired ? (
                       <span key="expiry" className="text-kortix-orange">
-                        Link expired
+                        {tI18nComplete.raw('texte61180e0dd8a')}
                       </span>
                     ) : (
                       <span key="expiry" className="inline-flex items-center gap-1 tabular-nums">
                         <ClockIcon className="size-3" />
-                        Expires {formatDate(invite.invite_expires_at)}
+                        {tI18nComplete.raw('textf6725f3af08a')}{' '}
+                        {formatDate(invite.invite_expires_at)}
                       </span>
                     ),
                   ]}
@@ -838,7 +853,7 @@ function ProjectAccessPanel({
                           className="gap-1.5"
                         >
                           <ArrowClockwiseIcon className="size-3.5" />
-                          Resend
+                          {tI18nComplete.raw('text1f94843777ae')}
                         </Button>
                         <Button
                           type="button"
@@ -848,7 +863,7 @@ function ProjectAccessPanel({
                           className="gap-1.5"
                         >
                           <XIcon className="size-3.5" />
-                          Revoke
+                          {tI18nComplete.raw('text87e6d00bbf53')}
                         </Button>
                       </>
                     )
@@ -870,11 +885,11 @@ function ProjectAccessPanel({
       ) : accessQuery.isError ? (
         <ErrorState
           size="sm"
-          title="Failed to load access"
+          title={tI18nComplete.raw('textff42d4eadd12')}
           description={(accessQuery.error as Error)?.message}
           action={
             <Button variant="outline" size="sm" onClick={() => accessQuery.refetch()}>
-              Retry
+              {tI18nComplete.raw('text942087cc2d41')}
             </Button>
           }
         />
@@ -882,13 +897,18 @@ function ProjectAccessPanel({
         <EmptyState
           icon={UsersIcon}
           size="sm"
-          title="Nobody has access yet"
-          description="Grant a member or group access to get started."
+          title={tI18nComplete.raw('text6a50fe407b62')}
+          description={tI18nComplete.raw('text14d959607774')}
           action={
             canManageMembers ? (
-              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setGrantOpen(true)}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setGrantOpen(true)}
+              >
                 <PlusIcon className="size-3.5" />
-                Grant access
+                {tI18nComplete.raw('text8693768c7e08')}
               </Button>
             ) : undefined
           }
@@ -899,9 +919,14 @@ function ProjectAccessPanel({
             title: 'Access',
             count: settledRows ? rowCount : undefined,
             actions: canManageMembers ? (
-              <Button type="button" size="sm" onClick={() => setGrantOpen(true)} className="gap-1.5">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setGrantOpen(true)}
+                className="gap-1.5"
+              >
                 <PlusIcon className="size-3.5" />
-                Grant access
+                {tI18nComplete.raw('text8693768c7e08')}
               </Button>
             ) : undefined,
           }}
@@ -1007,7 +1032,7 @@ function ProjectAccessPanel({
         onOpenChange={(open) => {
           if (!open) setRevokeInviteTarget(null);
         }}
-        title="Revoke invitation?"
+        title={tI18nComplete.raw('text25f372c4eb6c')}
         description={
           revokeInviteTarget
             ? `The invitation to ${revokeInviteTarget.email} will be cancelled.`
@@ -1155,6 +1180,7 @@ function GroupAccessRowView({
   onEdit: (target: EditTarget) => void;
   onRequestRemove: () => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const label = group.group_name ?? group.group_id;
   const policy = directProjectPolicy(group.custom_role_policies);
   const role: RoleValue = policy
@@ -1206,7 +1232,7 @@ function GroupAccessRowView({
       title={label}
       badges={
         <Badge variant="outline" size="sm">
-          Group
+          {tI18nComplete.raw('text34ca0e766088')}
         </Badge>
       }
       metaParts={[

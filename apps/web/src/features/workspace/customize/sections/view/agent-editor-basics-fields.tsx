@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 /**
  * The first two sections of the agent editor: what the agent IS (Basics) and
  * how it thinks (Model).
@@ -32,10 +33,15 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { ModelSelector } from '@/features/session/model-selector';
 import { flattenModels } from '@/features/session/session-chat-input';
+import { storedModelRefToKey } from '@/lib/llm-gateway';
 import { cn } from '@/lib/utils';
 import type { AgentConfigBlock, RuntimeAgentConfig } from '@kortix/sdk';
-import { modelKeyToWire, useFeatureFlag, useKortixRouteProjectId, useRuntimeProviders } from '@kortix/sdk/react';
-import { storedModelRefToKey } from '@/lib/llm-gateway';
+import {
+  modelKeyToWire,
+  useFeatureFlag,
+  useKortixRouteProjectId,
+  useRuntimeProviders,
+} from '@kortix/sdk/react';
 import {
   AGENT_MODE_HELP,
   AGENT_MODE_LABEL,
@@ -65,9 +71,10 @@ export function BasicsSection({
   oc: RuntimeAgentConfig;
   setOc: SetRuntime;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
-    <EditorSection title="Basics" description="What this agent is, and whether it can run.">
-      <SettingRow label="Enabled" help="Turn off to stop this agent starting any new session.">
+    <EditorSection title="Basics" description={tI18nComplete.raw('text4e420a5186f0')}>
+      <SettingRow label="Enabled" help={tI18nComplete.raw('textbe90a56d29da')}>
         <div className="flex sm:justify-end">
           <Switch
             aria-label="Enabled"
@@ -88,7 +95,7 @@ export function BasicsSection({
         <Textarea
           aria-label="Description"
           value={oc.description ?? ''}
-          placeholder="What this agent is for"
+          placeholder={tI18nComplete.raw('text446f4eabf99f')}
           minHeight={44}
           className="text-sm"
           onChange={(e) => setOc('description', e.target.value)}
@@ -109,7 +116,7 @@ export function BasicsSection({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={INHERIT}>Project default</SelectItem>
+            <SelectItem value={INHERIT}>{tI18nComplete.raw('texte8cb80e5c5cb')}</SelectItem>
             {AGENT_MODES.map((mode) => (
               <SelectItem key={mode} value={mode}>
                 {AGENT_MODE_LABEL[mode]}
@@ -123,12 +130,12 @@ export function BasicsSection({
           to make something disappear is a double negative, and it sat two rows
           under "Enabled" — two toggles whose ON states meant opposite things. */}
       <SettingRow
-        label="Show in pickers"
-        help="Off keeps it out of the session picker. Other agents can still call it."
+        label={tI18nComplete.raw('textc7bcb471c03d')}
+        help={tI18nComplete.raw('textdd4971af3f91')}
       >
         <div className="flex sm:justify-end">
           <Switch
-            aria-label="Show in pickers"
+            aria-label={tI18nComplete.raw('textc7bcb471c03d')}
             checked={!oc.hidden}
             onCheckedChange={(v) => setOc('hidden', v ? undefined : true)}
           />
@@ -136,12 +143,14 @@ export function BasicsSection({
       </SettingRow>
 
       <SettingRow
-        label="Badge color"
+        label={tI18nComplete.raw('text351931213de8')}
         help={
           oc.color ? (
             <>
               <span className="font-mono">{oc.color}</span> ·{' '}
-              <InlineAction onClick={() => setOc('color', undefined)}>Clear</InlineAction>
+              <InlineAction onClick={() => setOc('color', undefined)}>
+                {tI18nComplete.raw('text83b12c2216ef')}
+              </InlineAction>
             </>
           ) : (
             "Tints this agent's badge in session lists."
@@ -168,6 +177,7 @@ function ColorSwatches({
   value: string | undefined;
   onChange: (v: string | undefined) => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const isHex = /^#[0-9a-fA-F]{6}$/.test(value ?? '');
   // Eight size-7 targets at gap-0.5 is 238px — two under the row's 240px
   // control slot. `flex-wrap` is the safety net for a zoom or font change that
@@ -202,7 +212,7 @@ function ColorSwatches({
           </Hint>
         );
       })}
-      <Hint label="Custom color" side="bottom">
+      <Hint label={tI18nComplete.raw('texta5f69a181be0')} side="bottom">
         <span className="flex size-8 shrink-0 items-center justify-center rounded-sm">
           {/* Native color inputs only paint a solid hex. When nothing custom is
               selected, cover the well with a rainbow wheel so the control reads
@@ -221,14 +231,14 @@ function ColorSwatches({
                 className="pointer-events-none absolute inset-0"
                 style={{
                   background:
-                    'conic-gradient(from 0deg, #ff0040, #ff9a00, #ffe600, #00e676, #00d4ff, #2979ff, #d500f9, #ff0040)',
+                    'conic-gradient(from 0deg, red, orange, yellow, lime, cyan, blue, magenta, red)',
                 }}
               />
             )}
             <input
               type="color"
-              aria-label="Custom color"
-              value={isHex ? value : '#7c5cff'}
+              aria-label={tI18nComplete.raw('texta5f69a181be0')}
+              value={isHex ? value : ''}
               onChange={(e) => onChange(e.target.value)}
               className={cn(
                 'absolute inset-0 size-full cursor-pointer appearance-none bg-transparent p-0',
@@ -244,6 +254,7 @@ function ColorSwatches({
 }
 
 export function ModelSection({ oc, setOc }: { oc: RuntimeAgentConfig; setOc: SetRuntime }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const { data: providers } = useRuntimeProviders();
   const models = flattenModels(providers);
   // Mode-aware read-back: a native (gateway-off) agent model is
@@ -256,13 +267,13 @@ export function ModelSection({ oc, setOc }: { oc: RuntimeAgentConfig; setOc: Set
     : null;
 
   return (
-    <EditorSection title="Model" description="How this agent thinks.">
+    <EditorSection title="Model" description={tI18nComplete.raw('text32398dbb68e2')}>
       <SettingRow
         label="Model"
         help={
           oc.model ? (
             <InlineAction onClick={() => setOc('model', undefined)}>
-              Reset to project default
+              {tI18nComplete.raw('text9db60344e984')}
             </InlineAction>
           ) : (
             'Follows the project default.'
@@ -279,11 +290,11 @@ export function ModelSection({ oc, setOc }: { oc: RuntimeAgentConfig; setOc: Set
         </div>
       </SettingRow>
 
-      <SettingRow label="Variant" help="Provider variant to request, such as thinking.">
+      <SettingRow label="Variant" help={tI18nComplete.raw('text768d7200b02c')}>
         <Input
           aria-label="Variant"
           value={oc.variant ?? ''}
-          placeholder="Provider default"
+          placeholder={tI18nComplete.raw('text352a25678fb9')}
           variant="popover"
           className="h-9 w-full text-sm"
           onChange={(e) => setOc('variant', e.target.value)}
@@ -292,7 +303,7 @@ export function ModelSection({ oc, setOc }: { oc: RuntimeAgentConfig; setOc: Set
 
       <SliderRow
         label="Temperature"
-        help="0 gives the same answer every time. 2 is the most random."
+        help={tI18nComplete.raw('textd380d30f3d60')}
         value={oc.temperature}
         fallback={0}
         min={0}
@@ -303,7 +314,7 @@ export function ModelSection({ oc, setOc }: { oc: RuntimeAgentConfig; setOc: Set
 
       <SliderRow
         label="Top-p"
-        help="Nucleus sampling. Leave it alone unless you are tuning the model."
+        help={tI18nComplete.raw('text4f370db531ba')}
         value={oc.top_p}
         fallback={1}
         min={0}
@@ -312,13 +323,16 @@ export function ModelSection({ oc, setOc }: { oc: RuntimeAgentConfig; setOc: Set
         onChange={(v) => setOc('top_p', v)}
       />
 
-      <SettingRow label="Step limit" help="Most tool calls this agent may make in one run.">
+      <SettingRow
+        label={tI18nComplete.raw('textfdc639c47624')}
+        help={tI18nComplete.raw('textbf7ff92baea3')}
+      >
         <Input
-          aria-label="Step limit"
+          aria-label={tI18nComplete.raw('textfdc639c47624')}
           type="number"
           min={1}
           value={oc.steps ?? ''}
-          placeholder="No limit"
+          placeholder={tI18nComplete.raw('textf7fcff0d8fea')}
           variant="popover"
           className="h-9 w-full text-sm tabular-nums"
           onChange={(e) =>
@@ -329,7 +343,10 @@ export function ModelSection({ oc, setOc }: { oc: RuntimeAgentConfig; setOc: Set
 
       {/* A wall of text most agents never set — collapsed, like the tool
           permissions at the foot of the editor. */}
-      <SettingBlock label="System prompt" help="Replaces the default instructions for this agent.">
+      <SettingBlock
+        label={tI18nComplete.raw('text561257c019e5')}
+        help={tI18nComplete.raw('textad63817393a7')}
+      >
         <Disclosure variant="outline" className="overflow-hidden rounded-md">
           <DisclosureTrigger variant="outline">
             <Button
@@ -346,9 +363,9 @@ export function ModelSection({ oc, setOc }: { oc: RuntimeAgentConfig; setOc: Set
           </DisclosureTrigger>
           <DisclosureContent variant="outline" contentClassName="border-border border-t">
             <Textarea
-              aria-label="System prompt"
+              aria-label={tI18nComplete.raw('text561257c019e5')}
               value={oc.prompt ?? ''}
-              placeholder="You are…"
+              placeholder={tI18nComplete.raw('text94a18ea1d428')}
               minHeight={160}
               className="rounded-none border-0 font-mono text-xs focus-visible:border-0 focus-visible:ring-0"
               onChange={(e) => setOc('prompt', e.target.value)}
@@ -406,6 +423,7 @@ function SliderRow({
   step: number;
   onChange: (v: number | undefined) => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
     <SettingRow
       label={label}
@@ -414,7 +432,10 @@ function SliderRow({
           help
         ) : (
           <>
-            {help} · <InlineAction onClick={() => onChange(undefined)}>Reset</InlineAction>
+            {help} ·{' '}
+            <InlineAction onClick={() => onChange(undefined)}>
+              {tI18nComplete.raw('textdaee7606b339')}
+            </InlineAction>
           </>
         )
       }

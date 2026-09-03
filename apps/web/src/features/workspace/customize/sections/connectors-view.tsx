@@ -256,7 +256,8 @@ function ConnectorsMasterDetail({ projectId }: { projectId: string }) {
   const oauth2Error = search?.get('oauth2_error');
   useEffect(() => {
     if (oauth2Result !== 'connected' && oauth2Result !== 'error') return;
-    if (oauth2Result === 'connected') successToast('OAuth 2.0 connection completed');
+    if (oauth2Result === 'connected')
+      successToast(tI18nHardcoded.raw('i18nComplete.text75586c42e862'));
     else errorToast(oauth2Error || 'OAuth 2.0 connection failed');
     for (const affectedQueryKey of connectionQueryKeys) {
       void queryClient.invalidateQueries({ queryKey: affectedQueryKey });
@@ -266,7 +267,16 @@ function ConnectorsMasterDetail({ projectId }: { projectId: string }) {
     params.delete('oauth2_error');
     const suffix = params.toString();
     router.replace(suffix ? `${pathname}?${suffix}` : pathname, { scroll: false });
-  }, [connectionQueryKeys, oauth2Error, oauth2Result, pathname, queryClient, router, search]);
+  }, [
+    connectionQueryKeys,
+    oauth2Error,
+    oauth2Result,
+    pathname,
+    queryClient,
+    router,
+    search,
+    tI18nHardcoded,
+  ]);
   const select = (sel: Selection) => {
     const key = sel.kind === 'connector' ? sel.slug : sel.kind;
     const params = new URLSearchParams(search?.toString() ?? '');
@@ -325,7 +335,7 @@ function ConnectorsMasterDetail({ projectId }: { projectId: string }) {
             </Button>
           }
         >
-          {(query.error as Error)?.message ?? 'Unknown error'}
+          {(query.error as Error)?.message ?? tI18nHardcoded.raw('i18nComplete.text27c2ccd962c2')}
         </InfoBanner>
       </div>
     );
@@ -719,7 +729,9 @@ function ConnectionRow({
           )}
         </div>
         <InlineMeta>
-          {isProjectAuthorization ? 'Shared with the project' : 'Private — only you'}
+          {isProjectAuthorization
+            ? tI18nComplete.raw('text1c22fac2a9fd')
+            : tI18nComplete.raw('text1e1353702c42')}
           {active ? null : connection.status === 'revoked' ? 'Disconnected' : 'Error'}
           {/* Every connection carries its own id — this is what a backend passes
               in connector_bindings to run as THIS account. Truncated to keep the
@@ -757,7 +769,7 @@ function ConnectionRow({
           {mayMutate && !connection.is_default && active && (
             <DropdownMenuItem onClick={onSetDefault}>
               {tI18nComplete.raw('texta92f66fd3d83')}
-              {isProjectAuthorization ? ' for the project' : ''}
+              {isProjectAuthorization ? tI18nComplete.raw('text801a345cd406') : ''}
             </DropdownMenuItem>
           )}
           {mayMutate && (
@@ -831,7 +843,7 @@ export function ConnectionsList({
   const setDefault = useMutation({
     mutationFn: (connectionId: string) => setDefaultConnection(projectId, connectionId),
     onSuccess: () => {
-      successToast('Default connection updated');
+      successToast(tI18nComplete.raw('text1c59fde888ed'));
       refresh();
     },
     onError: (e: Error) => errorToast(e.message || 'Failed to set the default'),
@@ -895,8 +907,8 @@ export function ConnectionsList({
           title={`No ${displayName} connections yet`}
           description={
             connectionOwnerType === 'project'
-              ? 'Connect a project-managed account for allowed sessions.'
-              : 'Connect your own account for your private sessions.'
+              ? tI18nComplete.raw('texte6e0b4594c95')
+              : tI18nComplete.raw('text6533f1aa30ab')
           }
         />
       ) : (
@@ -938,8 +950,8 @@ export function ConnectionsList({
             </ModalTitle>
             <ModalDescription>
               {addScope === 'project'
-                ? 'Everyone on this project can use it. Name it so people can tell your accounts apart.'
-                : 'Only you can use it, in your own private sessions. Name it to tell your accounts apart.'}
+                ? tI18nComplete.raw('textcfc47949d9f8')
+                : tI18nComplete.raw('textf43ce58ed44c')}
             </ModalDescription>
           </ModalHeader>
           <form
@@ -957,7 +969,9 @@ export function ConnectionsList({
                   id="connection-label"
                   value={labelDraft}
                   onChange={(e) => setLabelDraft(e.target.value)}
-                  placeholder={addScope === 'project' ? 'Support inbox' : 'Work'}
+                  placeholder={
+                    addScope === 'project' ? tI18nComplete.raw('text945ce03ec79f') : 'Work'
+                  }
                   maxLength={255}
                   autoFocus
                   disabled={adding || disabled}
@@ -992,8 +1006,8 @@ export function ConnectionsList({
         title={`Disconnect "${confirmDisconnect?.label ?? ''}"?`}
         description={
           confirmDisconnect?.owner_type === 'project'
-            ? 'Everyone on this project loses access to this account. Sessions bound to it will stop working.'
-            : 'Your own connection is removed. Sessions bound to it will stop working.'
+            ? tI18nComplete.raw('texte2cbafcec553')
+            : tI18nComplete.raw('text64db32d83da9')
         }
         confirmLabel="Disconnect"
         confirmVariant="destructive"
@@ -1081,7 +1095,7 @@ export function ConnectionRoster({
               <span className="min-w-0 truncate text-sm">
                 {emailByUser.get(connection.owner_id ?? '') ??
                   connection.owner_id ??
-                  'Unknown member'}
+                  tI18nComplete.raw('text29824c5acaf8')}
               </span>
               <RosterStatusBadge status={connection.status} />
             </li>
@@ -1425,14 +1439,16 @@ export function ConnectorDetail({
                     {isManagedProvider && reconnect.isPending && (
                       <Loading className="size-4 shrink-0" />
                     )}
-                    {isManagedProvider ? 'Connect for the project' : 'Set shared credential'}
+                    {isManagedProvider
+                      ? tI18nHardcoded.raw('i18nComplete.text4f8632819544')
+                      : tI18nHardcoded.raw('i18nComplete.text65a59547b132')}
                   </Button>
                 ) : undefined
               }
             >
               {isManagedProvider
                 ? `One project-managed ${displayName} account is available to allowed sessions and triggers.`
-                : `One shared credential that everyone on this project uses — the agent and your triggers run on it.`}
+                : tI18nHardcoded.raw('i18nComplete.textd460f97920a4')}
             </InfoBanner>
           )}
         {connector.authSecret &&
@@ -2058,11 +2074,15 @@ export function EmailConnectForm({
       <InfoBanner
         tone={managedAvailable ? 'info' : 'warning'}
         icon={Mail}
-        title={managedAvailable ? 'Create managed Email inbox' : 'Managed Email is not configured'}
+        title={
+          managedAvailable
+            ? tI18nComplete.raw('texte654b63c8098')
+            : tI18nComplete.raw('textafe9444782eb')
+        }
       >
         {managedAvailable
-          ? 'Kortix will create and manage the AgentMail inbox for this connection.'
-          : 'This deployment needs a project-specific AgentMail key before it can create an inbox.'}
+          ? tI18nComplete.raw('textec9ace8d8ff6')
+          : tI18nComplete.raw('text608977655d2d')}
       </InfoBanner>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field>
@@ -2378,10 +2398,10 @@ export function SlackConnectForm({
     try {
       await navigator.clipboard.writeText(manifest.data);
       setCopiedManifest(true);
-      successToast('Slack manifest copied');
+      successToast(tI18nComplete.raw('texta51790c814e5'));
       setTimeout(() => setCopiedManifest(false), 1500);
     } catch {
-      errorToast('Copy failed - select and copy manually');
+      errorToast(tI18nComplete.raw('textb73ce9104ddb'));
     }
   };
 
@@ -2492,7 +2512,7 @@ export function SlackConnectForm({
                 <Skeleton className={cn('h-52 w-full', !customOnly && 'rounded-md')} />
               ) : manifest.isError ? (
                 <InfoBanner tone="destructive">
-                  {(manifest.error as Error)?.message || 'Failed to load Slack manifest'}
+                  {(manifest.error as Error)?.message || tI18nComplete.raw('text65a8ec4a4a48')}
                 </InfoBanner>
               ) : manifest.data ? (
                 <div className={cn('max-h-[26rem] overflow-auto', !customOnly && 'rounded-md')}>
@@ -2502,9 +2522,9 @@ export function SlackConnectForm({
 
               <ol className="space-y-2">
                 {[
-                  'Click Open Slack, choose "From a manifest", paste the JSON, confirm.',
-                  'On the next screen, click Install to Workspace and approve.',
-                  'Copy the Bot User OAuth Token (xoxb-...) and Signing Secret.',
+                  tI18nComplete.raw('texta89d28175307'),
+                  tI18nComplete.raw('text690ee10ca19e'),
+                  tI18nComplete.raw('text2cf7a6e21f7e'),
                 ].map((step, index) => (
                   <li key={step} className="text-muted-foreground flex gap-2 text-xs">
                     <span className="border-border/60 bg-muted/40 text-foreground flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs font-medium">
@@ -2658,7 +2678,7 @@ export function ConnectionSection({
         slug: connector.slug,
       }),
     onSuccess: () => {
-      successToast('Connection saved');
+      successToast(tI18nHardcoded.raw('i18nComplete.text1e965e25daad'));
       queryClient.invalidateQueries({
         queryKey: qk.project.connectorConfig(projectId, connector.slug),
       });
@@ -2688,7 +2708,8 @@ export function ConnectionSection({
               </Button>
             }
           >
-            {(configQuery.error as Error)?.message ?? 'Unknown error'}
+            {(configQuery.error as Error)?.message ??
+              tI18nHardcoded.raw('i18nComplete.text27c2ccd962c2')}
           </InfoBanner>
         ) : configQuery.isLoading || !draft ? (
           <div className="space-y-3">
@@ -2710,8 +2731,8 @@ export function ConnectionSection({
                     </p>
                     <p className="text-muted-foreground text-xs">
                       {connector.secretSet
-                        ? 'Kortix holds this credential and attaches it to every call.'
-                        : 'Not connected yet — the agent and your triggers cannot call this connector.'}
+                        ? tI18nHardcoded.raw('i18nComplete.text0b7bd1b43899')
+                        : tI18nHardcoded.raw('i18nComplete.text44160e26b787')}
                     </p>
                   </div>
                   {/* One credential action per connector, and it lives in the
@@ -2719,7 +2740,9 @@ export function ConnectionSection({
                       connector-modal.tsx). A second button here read as a
                       different action and gave the same modal a third label. */}
                   <Badge variant={connector.secretSet ? 'secondary' : 'outline'}>
-                    {connector.secretSet ? 'Connected' : 'Not connected'}
+                    {connector.secretSet
+                      ? 'Connected'
+                      : tI18nHardcoded.raw('i18nComplete.text0303e1824670')}
                   </Badge>
                 </div>
               )}
@@ -2941,7 +2964,7 @@ export function PermissionsSection({
       return setConnectorPolicies(projectId, connector.slug, policies);
     },
     onSuccess: () => {
-      successToast('Permissions saved');
+      successToast(tI18nHardcoded.raw('i18nComplete.textd5221364a548'));
       queryClient.invalidateQueries({
         queryKey: ['connector-policies', projectId, connector.slug],
       });
@@ -3048,7 +3071,7 @@ export function PermissionsSection({
         <InfoBanner
           tone="warning"
           icon={Lock}
-          title={`${projectDecided.size} ${projectDecided.size === 1 ? 'action is' : 'actions are'} set by a project-wide rule`}
+          title={`${projectDecided.size} ${projectDecided.size === 1 ? tI18nHardcoded.raw('i18nComplete.text547602d87c05') : tI18nHardcoded.raw('i18nComplete.text5273e4e9e2bc')} set by a project-wide rule`}
         >
           {tI18nHardcoded.raw('i18nComplete.text0eaf8d2c6d6c')}
         </InfoBanner>
@@ -3655,7 +3678,7 @@ function AddEmailConnectionCard({
         onAdded();
         return;
       }
-      successToast('Added Email inbox');
+      successToast(tI18nComplete.raw('text96d7604c9dc8'));
       onAdded(slug);
     },
     onError: (err: Error) => errorToast(err.message || 'Failed to add Email inbox'),
@@ -3743,7 +3766,7 @@ function AddSlackConnectionCard({
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const [open, setOpen] = useState(false);
   const handleConnected = () => {
-    successToast('Slack connected');
+    successToast(tI18nComplete.raw('text4fce550efde4'));
     setOpen(false);
     onAdded('kortix_slack');
   };
@@ -3874,7 +3897,9 @@ function AppCatalogue({
             title={tI18nHardcoded.raw(
               'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleNof8067eda',
             )}
-            description={q ? `Nothing matches "${q}".` : 'Try a search.'}
+            description={
+              q ? `Nothing matches "${q}".` : tI18nHardcoded.raw('i18nComplete.textecbd276ebec2')
+            }
           />
         ) : (
           <>
@@ -3934,7 +3959,7 @@ function AppCatalogue({
                       )}
                     </>
                   ) : (
-                    'Load more'
+                    tI18nHardcoded.raw('i18nComplete.textac8991ef0101')
                   )}
                 </Button>
               </div>
@@ -4244,7 +4269,7 @@ function ConnectorConfigFields({
         <Field>
           <FieldLabel htmlFor="connector-spec">
             {p === 'postman'
-              ? 'Collection, repository, or workspace'
+              ? tI18nHardcoded.raw('i18nComplete.textcd8dd219cc48')
               : tI18nHardcoded.raw(
                   'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrLabelSpec4235864d',
                 )}
@@ -4438,7 +4463,7 @@ function ConnectorConfigFields({
             </Select>
             <FieldDescription>
               {oauth2Selected ? (
-                'Kortix obtains, refreshes, and injects a bearer token for this connector.'
+                tI18nHardcoded.raw('i18nComplete.text80770d26537b')
               ) : draft.auth === undefined && detectedAuth ? (
                 <>
                   {tI18nHardcoded.raw('i18nComplete.text756a8ba97dce')}{' '}
@@ -4455,7 +4480,7 @@ function ConnectorConfigFields({
                   {tI18nHardcoded.raw('i18nComplete.text5c48a6568d59')}
                 </>
               ) : (
-                'Auto-detect reads authentication metadata from the source. Choose None to opt out.'
+                tI18nHardcoded.raw('i18nComplete.text566a18d73a39')
               )}
             </FieldDescription>
           </Field>
@@ -4827,7 +4852,7 @@ export function SetCredentialModal({
         if (stopped || status.status === 'pending') return;
         stopped = true;
         if (status.status === 'active') {
-          successToast('OAuth 2.0 device connection completed');
+          successToast(tI18nHardcoded.raw('i18nComplete.text82cc866db8c3'));
           onSaved();
           onOpenChange(false);
         } else {
@@ -4842,7 +4867,7 @@ export function SetCredentialModal({
     const expiryTimer = window.setTimeout(
       () => {
         stopped = true;
-        errorToast('The device authorization code expired');
+        errorToast(tI18nHardcoded.raw('i18nComplete.text168fa55c02d3'));
       },
       Math.max(0, new Date(device.expires_at).getTime() - Date.now()),
     );
@@ -4851,7 +4876,7 @@ export function SetCredentialModal({
       window.clearInterval(timer);
       window.clearTimeout(expiryTimer);
     };
-  }, [device, deviceConnectionId, onOpenChange, onSaved, projectId]);
+  }, [device, deviceConnectionId, onOpenChange, onSaved, projectId, tI18nHardcoded]);
   const resolveConnectionId = async (): Promise<string> => {
     if (connectionId) return connectionId;
     if (authorizationStrategy === 'user') {
@@ -5063,7 +5088,9 @@ export function SetCredentialModal({
               <TabsContent value="static">
                 <Field>
                   <FieldLabel htmlFor="connector-static-credential">
-                    {objectCredential ? 'Credential JSON' : 'Value'}
+                    {objectCredential
+                      ? tI18nHardcoded.raw('i18nComplete.textb8ce566177f1')
+                      : 'Value'}
                   </FieldLabel>
                   {objectCredential ? (
                     <Textarea
@@ -5272,9 +5299,9 @@ export function SetCredentialModal({
             >
               {save.isPending && <Loading className="size-4 shrink-0" />}
               {credentialType === 'oauth2' && application.grant === 'authorization_code'
-                ? 'Continue to provider'
+                ? tI18nHardcoded.raw('i18nComplete.text0c814b60fca5')
                 : credentialType === 'oauth2' && application.grant === 'device_authorization'
-                  ? 'Get device code'
+                  ? tI18nHardcoded.raw('i18nComplete.text55e970c35216')
                   : 'Save'}
             </Button>
           </ModalFooter>

@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 // AccessDialog — THE modal for every "give / edit access" interaction.
 //
 // Five modes (grant, edit, attach, bulk-role, bulk-group) over three scopes
@@ -52,13 +53,13 @@ import {
   attachGroupToProject,
   createAssignment,
   detachGroupFromProject,
-  listAssignments,
-  revokeAssignment,
   inviteAccountMember,
   inviteProjectMember,
   isInviteSent,
+  listAssignments,
   listProjectResourceGrants,
   removeAccountMember,
+  revokeAssignment,
   revokeProjectAccess,
   updateAccountMemberRole,
   updateProjectAccess,
@@ -284,9 +285,7 @@ export function accessDialogCopy(
     return {
       title: 'Add to group',
       description:
-        n === 1
-          ? 'Pick the group this person joins.'
-          : `Pick the group these ${n} people join.`,
+        n === 1 ? 'Pick the group this person joins.' : `Pick the group these ${n} people join.`,
       submitLabel: 'Add to group',
     };
   }
@@ -345,7 +344,9 @@ function initialDraftState(
   const role: RoleValue =
     mode.kind === 'edit'
       ? mode.current.role
-      : builtinRole(roleScope === 'account' ? ('member' as AccountRole) : ('member' as ProjectRole));
+      : builtinRole(
+          roleScope === 'account' ? ('member' as AccountRole) : ('member' as ProjectRole),
+        );
   return {
     principals: EMPTY_PRINCIPAL_SELECTION,
     role,
@@ -374,6 +375,7 @@ export function AccessDialog({
   inheritedFrom,
   onDone,
 }: AccessDialogProps) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const queryClient = useQueryClient();
   const roleScope = roleScopeFor(scope);
   const projectId = scope.kind === 'project' ? scope.projectId : undefined;
@@ -391,10 +393,17 @@ export function AccessDialog({
     if (open) setDraft(initialDraftState(mode, roleScope));
   }
 
-  const { principals, role, agents, expires, attachProjectId, projectGrants, projectAccessOpen, removeOpen } =
-    draft;
-  const setPrincipals = (next: PrincipalSelection) =>
-    setDraft((d) => ({ ...d, principals: next }));
+  const {
+    principals,
+    role,
+    agents,
+    expires,
+    attachProjectId,
+    projectGrants,
+    projectAccessOpen,
+    removeOpen,
+  } = draft;
+  const setPrincipals = (next: PrincipalSelection) => setDraft((d) => ({ ...d, principals: next }));
   const setRole = (next: RoleValue) => setDraft((d) => ({ ...d, role: next }));
   const setAgents = (next: AgentSelection | ((prev: AgentSelection) => AgentSelection)) =>
     setDraft((d) => ({ ...d, agents: typeof next === 'function' ? next(d.agents) : next }));
@@ -420,8 +429,7 @@ export function AccessDialog({
   const builtin = baselineBuiltinRole(roleScope ?? 'project', role);
 
   // ── Agents (project scope only) ───────────────────────────────────────
-  const showAgents =
-    scope.kind === 'project' && (mode.kind === 'grant' || mode.kind === 'edit');
+  const showAgents = scope.kind === 'project' && (mode.kind === 'grant' || mode.kind === 'edit');
   const resourceGrantsQuery = useQuery({
     queryKey: qk.project.resourceGrants(projectId ?? ''),
     queryFn: () => listProjectResourceGrants(projectId as string),
@@ -511,9 +519,7 @@ export function AccessDialog({
     return createAssignment(accountId, {
       principal: { type: principalKind(principalType), id: principalId },
       roleId,
-      scope: projectScopeId
-        ? { type: 'project', id: projectScopeId }
-        : { type: 'account' },
+      scope: projectScopeId ? { type: 'project', id: projectScopeId } : { type: 'account' },
       ...(expiresIso ? { expiresAt: expiresIso } : {}),
     });
   }
@@ -842,7 +848,7 @@ export function AccessDialog({
           duration: 10_000,
           button: (
             <Button size="sm" onClick={() => void navigator.clipboard.writeText(url)}>
-              Copy a link
+              {tI18nComplete.raw('text6aaa89b8157c')}
             </Button>
           ),
         });
@@ -850,11 +856,8 @@ export function AccessDialog({
         errorToast(`Granted ${ok} of ${total} — some failed.`);
       } else if (failedIndexes.length > 0) {
         const first = settled.find((r) => r.status === 'rejected') as
-          | PromiseRejectedResult
-          | undefined;
-        errorToast(
-          first?.reason instanceof Error ? first.reason.message : 'Failed to save access',
-        );
+          PromiseRejectedResult | undefined;
+        errorToast(first?.reason instanceof Error ? first.reason.message : 'Failed to save access');
       } else if (mode.kind === 'grant') {
         successToast(total === 1 ? 'Access granted' : `Access granted to ${total}`);
       } else if (mode.kind === 'attach') {
@@ -978,7 +981,7 @@ export function AccessDialog({
                 this replaces the Role section rather than joining it. */}
             {mode.kind === 'bulk-group' ? (
               <Field className="gap-1.5">
-                <FieldLabel>Group</FieldLabel>
+                <FieldLabel>{tI18nComplete.raw('text34ca0e766088')}</FieldLabel>
                 <PrincipalPicker
                   scope={{ kind: 'account', accountId }}
                   selection="single"
@@ -986,7 +989,7 @@ export function AccessDialog({
                   value={principals}
                   onChange={setPrincipals}
                   disabled={pending}
-                  emptyLabel="No groups in this account yet."
+                  emptyLabel={tI18nComplete.raw('text3c24d2c0295b')}
                 />
               </Field>
             ) : null}
@@ -994,7 +997,9 @@ export function AccessDialog({
             {/* 2. Project (attach only) */}
             {mode.kind === 'attach' ? (
               <Field className="gap-1.5">
-                <FieldLabel htmlFor="access-attach-project">Project</FieldLabel>
+                <FieldLabel htmlFor="access-attach-project">
+                  {tI18nComplete.raw('text985959785319')}
+                </FieldLabel>
                 <ProjectSelect
                   id="access-attach-project"
                   accountId={accountId}
@@ -1015,7 +1020,9 @@ export function AccessDialog({
             {/* 3. Role — group membership has no role, so bulk-group skips it. */}
             {roleScope && mode.kind !== 'bulk-group' ? (
               <Field className="gap-1.5">
-                <FieldLabel htmlFor="access-role">Role</FieldLabel>
+                <FieldLabel htmlFor="access-role">
+                  {tI18nComplete.raw('text14736a2eb9f4')}
+                </FieldLabel>
                 <RoleSelect
                   id="access-role"
                   scope={roleScope}
@@ -1033,9 +1040,7 @@ export function AccessDialog({
                   }
                 />
                 {scope.kind === 'project' && principals.groupIds.length > 0 ? (
-                  <FieldDescription>
-                    Every member of a selected group gets this role on this project too.
-                  </FieldDescription>
+                  <FieldDescription>{tI18nComplete.raw('text237f1a28cf06')}</FieldDescription>
                 ) : null}
               </Field>
             ) : null}
@@ -1043,7 +1048,7 @@ export function AccessDialog({
             {/* 4. Agents (project scope) */}
             {showAgents ? (
               <Field className="gap-1.5">
-                <FieldLabel>Agents</FieldLabel>
+                <FieldLabel>{tI18nComplete.raw('text279b44d2ab4b')}</FieldLabel>
                 <Tabs
                   value={agents.mode}
                   onValueChange={(next) =>
@@ -1051,15 +1056,21 @@ export function AccessDialog({
                   }
                 >
                   <TabsListCompact>
-                    <TabsTriggerCompact value="all">All agents</TabsTriggerCompact>
-                    <TabsTriggerCompact value="subset">Only these…</TabsTriggerCompact>
+                    <TabsTriggerCompact value="all">
+                      {tI18nComplete.raw('text54c32d3e2cfa')}
+                    </TabsTriggerCompact>
+                    <TabsTriggerCompact value="subset">
+                      {tI18nComplete.raw('textb080141d6840')}
+                    </TabsTriggerCompact>
                   </TabsListCompact>
                 </Tabs>
                 {agents.mode === 'subset' ? (
                   resourceGrantsQuery.isLoading ? (
                     <Skeleton className="h-24 w-full rounded-md" />
                   ) : projectAgents.length === 0 ? (
-                    <p className="text-muted-foreground text-xs">This project has no agents yet.</p>
+                    <p className="text-muted-foreground text-xs">
+                      {tI18nComplete.raw('text7bf9d07dcb99')}
+                    </p>
                   ) : (
                     <div className="border-border max-h-40 overflow-y-auto rounded-md border p-1">
                       {projectAgents.map((agent) => (
@@ -1089,9 +1100,7 @@ export function AccessDialog({
 
             {/* 5. Project access (account grant only) */}
             {showAccountAdminBanner ? (
-              <InfoBanner tone="neutral">
-                Admins already have access to every project in this account — nothing to grant here.
-              </InfoBanner>
+              <InfoBanner tone="neutral">{tI18nComplete.raw('text65abb6edc2c0')}</InfoBanner>
             ) : showProjectAccessSection ? (
               <ProjectAccessRows
                 accountId={accountId}
@@ -1114,8 +1123,10 @@ export function AccessDialog({
             {expirySupported ? (
               <Field className="gap-1.5">
                 <FieldLabel htmlFor="access-expires">
-                  Expires
-                  <span className="text-muted-foreground ml-2 text-xs font-normal">optional</span>
+                  {tI18nComplete.raw('textf6725f3af08a')}
+                  <span className="text-muted-foreground ml-2 text-xs font-normal">
+                    {tI18nComplete.raw('textec91fdd9256c')}
+                  </span>
                 </FieldLabel>
                 <Input
                   id="access-expires"
@@ -1125,7 +1136,7 @@ export function AccessDialog({
                   disabled={pending}
                   className="max-w-xs"
                 />
-                <FieldDescription>The grant is removed automatically at this time.</FieldDescription>
+                <FieldDescription>{tI18nComplete.raw('text18038f7fc7e0')}</FieldDescription>
               </Field>
             ) : null}
           </ModalBody>
@@ -1141,7 +1152,7 @@ export function AccessDialog({
                   disabled={pending}
                   onClick={() => setRemoveOpen(true)}
                 >
-                  Remove access
+                  {tI18nComplete.raw('textbb349bfe6750')}
                 </Button>
               ) : null}
               <Button
@@ -1151,7 +1162,7 @@ export function AccessDialog({
                 disabled={pending}
                 onClick={() => onOpenChange(false)}
               >
-                Cancel
+                {tI18nComplete.raw('text19766ed6ccb2')}
               </Button>
             </div>
             <Button
@@ -1199,6 +1210,7 @@ export function AccessDialog({
 // ─── Body pieces ───────────────────────────────────────────────────────────
 
 function FixedPrincipals({ principals }: { principals: AccessDialogPrincipal[] }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
     <ul className="space-y-2">
       {principals.map((principal) => (
@@ -1220,7 +1232,7 @@ function FixedPrincipals({ principals }: { principals: AccessDialogPrincipal[] }
               person carries no badge and a group is the thing that stands out. */}
           {principal.type === 'group' ? (
             <Badge variant="outline" size="sm">
-              Group
+              {tI18nComplete.raw('text34ca0e766088')}
             </Badge>
           ) : null}
         </li>
@@ -1241,7 +1253,7 @@ function ScopeLine({
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <Icon className="text-muted-foreground/70 size-3.5 shrink-0" />
-      <span className="text-muted-foreground text-[11px] font-medium">{label}</span>
+      <span className="text-muted-foreground text-xs font-medium">{label}</span>
       {items.map((name) => (
         <Badge key={name} variant="outline" size="xs" className="font-mono">
           {name}
@@ -1262,6 +1274,7 @@ export function BlastRadiusPreview({
 }: {
   declares: { secrets: string[] | 'all'; connectors: string[] | 'all' };
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const secrets = declares.secrets === 'all' ? [] : declares.secrets;
   const connectors = declares.connectors === 'all' ? [] : declares.connectors;
   const nothingExtra = secrets.length === 0 && connectors.length === 0;
@@ -1269,22 +1282,26 @@ export function BlastRadiusPreview({
     <div className="border-border/60 bg-muted/30 space-y-2 rounded-md border p-3">
       <div className="flex items-center gap-1.5">
         <ArrowElbowDownRightIcon className="text-muted-foreground/70 size-3.5 shrink-0" />
-        <span className="text-foreground/80 text-xs font-medium">Assigning this also grants</span>
+        <span className="text-foreground text-xs font-medium">
+          {tI18nComplete.raw('text4fb37eec9d1d')}
+        </span>
       </div>
       {nothingExtra ? (
-        <p className="text-muted-foreground text-[11px] leading-relaxed">
-          Nothing extra — this agent declares no specific secrets or connectors to inherit.
+        <p className="text-muted-foreground text-xs leading-relaxed">
+          {tI18nComplete.raw('text7cbab07cd223')}
         </p>
       ) : (
         <>
           <div className="space-y-1.5">
-            {secrets.length > 0 ? <ScopeLine icon={KeyIcon} label="Secrets" items={secrets} /> : null}
+            {secrets.length > 0 ? (
+              <ScopeLine icon={KeyIcon} label="Secrets" items={secrets} />
+            ) : null}
             {connectors.length > 0 ? (
               <ScopeLine icon={PlugIcon} label="Connectors" items={connectors} />
             ) : null}
           </div>
-          <p className="text-muted-foreground/60 text-[11px] leading-relaxed">
-            They also get the agent&apos;s secrets and connectors to USE, not edit.
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            {tI18nComplete.raw('text4b25aab8909e')}
           </p>
         </>
       )}
@@ -1311,6 +1328,7 @@ function ProjectAccessRows({
   rbacEnabled?: boolean;
   canManageRoles?: boolean;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   if (!expanded && rows.length === 0) {
     return (
       <button
@@ -1320,7 +1338,7 @@ function ProjectAccessRows({
         className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
       >
         <PlusIcon className="size-3.5" />
-        Add project access
+        {tI18nComplete.raw('texte1a1274ad624')}
       </button>
     );
   }
@@ -1328,8 +1346,10 @@ function ProjectAccessRows({
   return (
     <Field className="gap-1.5">
       <div className="flex items-center justify-between">
-        <FieldLabel>Project access</FieldLabel>
-        <span className="text-muted-foreground text-xs">Optional</span>
+        <FieldLabel>{tI18nComplete.raw('text379e0962ac4e')}</FieldLabel>
+        <span className="text-muted-foreground text-xs">
+          {tI18nComplete.raw('text59be71333c96')}
+        </span>
       </div>
       <div className="border-border divide-border divide-y overflow-hidden rounded-md border">
         {rows.map((row, index) => (
@@ -1366,7 +1386,7 @@ function ProjectAccessRows({
               type="button"
               onClick={() => onChange(rows.filter((_, i) => i !== index))}
               disabled={disabled}
-              aria-label="Remove project"
+              aria-label={tI18nComplete.raw('text704e738861ba')}
               className="text-muted-foreground hover:text-foreground shrink-0 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             >
               <XIcon className="size-3.5" />
@@ -1384,7 +1404,7 @@ function ProjectAccessRows({
         )}
       >
         <PlusIcon className="size-3.5" />
-        Add another project
+        {tI18nComplete.raw('text1de222b90941')}
       </button>
     </Field>
   );

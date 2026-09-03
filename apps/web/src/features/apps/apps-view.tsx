@@ -66,6 +66,7 @@ import {
   XIcon,
   type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
@@ -490,8 +491,10 @@ function subscribeAppGridColumns(onChange: () => void) {
 function readAppGridColumns(): AppGridColumns {
   if (blockedStorageColumns) return blockedStorageColumns;
   try {
-    return parseAppGridColumns(window.localStorage.getItem(APP_GRID_COLUMNS_STORAGE_KEY)) ??
-      APP_GRID_DEFAULT_COLUMNS;
+    return (
+      parseAppGridColumns(window.localStorage.getItem(APP_GRID_COLUMNS_STORAGE_KEY)) ??
+      APP_GRID_DEFAULT_COLUMNS
+    );
   } catch {
     return APP_GRID_DEFAULT_COLUMNS;
   }
@@ -601,6 +604,7 @@ export function AppPreview({
   interactive: boolean;
   className?: string;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const slow = useSlowPreview(!loaded && !failed);
@@ -622,7 +626,7 @@ export function AppPreview({
         )}
         data-testid="app-preview-empty"
       >
-        Deploy to see a live preview.
+        {tI18nComplete.raw('text3efdcf91931a')}
       </div>
     );
   }
@@ -641,7 +645,7 @@ export function AppPreview({
         ) : (
           <span className="flex items-center gap-2">
             <Loading className="size-4 shrink-0" />
-            Preparing preview
+            {tI18nComplete.raw('text2158038765cc')}
           </span>
         )}
       </div>
@@ -717,8 +721,9 @@ function AppGridColumnsControl({
   value: AppGridColumns;
   onChange: (next: AppGridColumns) => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
-    <ButtonGroup aria-label="Tiles per row">
+    <ButtonGroup aria-label={tI18nComplete.raw('texte39d334ebb3c')}>
       {APP_GRID_COLUMN_ORDER.map((key) => {
         const option = APP_GRID_COLUMN_OPTIONS[key];
         const Glyph = option.icon;
@@ -758,6 +763,7 @@ function AppsHeader({
    */
   showColumns: boolean;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const sidebar = useOptionalSidebar();
 
   return (
@@ -767,7 +773,9 @@ function AppsHeader({
     >
       <SidebarToggle />
       <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-3">
-        <h1 className="text-foreground shrink-0 text-sm font-medium">Apps</h1>
+        <h1 className="text-foreground shrink-0 text-sm font-medium">
+          {tI18nComplete.raw('text89dd748442c1')}
+        </h1>
       </div>
       {showColumns ? (
         <div className="flex shrink-0 items-center pr-1">
@@ -781,7 +789,7 @@ function AppsHeader({
         prefetch={false}
         className="text-muted-foreground hover:text-foreground flex w-fit flex-none items-center gap-1 px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors"
       >
-        Docs
+        {tI18nComplete.raw('text7af023c43013')}
         <ArrowUpRightIcon className="size-3 opacity-60" aria-hidden />
       </Link>
     </div>
@@ -789,6 +797,7 @@ function AppsHeader({
 }
 
 export function AppsView({ projectId }: { projectId: string }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   // One gating primitive, fail-closed. Apps NEVER enables itself from here:
   // activation lives only in Customize → Feature flags, so this page has no
   // mutation and no self-enable button.
@@ -833,7 +842,9 @@ export function AppsView({ projectId }: { projectId: string }) {
       <AppsHeader
         columns={gridColumns}
         onColumnsChange={setGridColumns}
-        showColumns={appsGate.isLoading || (appsGate.enabled && (apps.isLoading || !!apps.data?.length))}
+        showColumns={
+          appsGate.isLoading || (appsGate.enabled && (apps.isLoading || !!apps.data?.length))
+        }
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -853,7 +864,7 @@ export function AppsView({ projectId }: { projectId: string }) {
             take their natural height and stay at the top, unaffected. */}
         <div
           className={cn(
-            'mx-auto flex min-h-full w-full max-w-7xl flex-col px-4 md:px-8 py-6 pb-20',
+            'mx-auto flex min-h-full w-full max-w-7xl flex-col px-4 py-6 pb-20 md:px-8',
             APP_GRID_CONTAINER,
           )}
         >
@@ -862,18 +873,18 @@ export function AppsView({ projectId }: { projectId: string }) {
           ) : !appsGate.enabled ? (
             <FeatureGateScreen
               featureName="Apps"
-              description="Apps deploy static sites, JavaScript bundles, Dockerfiles, and OCI images to stable URLs. Each App wakes on its next request and suspends after its idle timeout."
+              description={tI18nComplete.raw('text3387c31a18b3')}
             />
           ) : apps.isLoading ? (
             <AppGridSkeleton columns={gridColumns} />
           ) : apps.isError ? (
             <ErrorState
               size="sm"
-              title="Failed to load Apps"
+              title={tI18nComplete.raw('text17168ad2af4a')}
               description={(apps.error as Error).message}
               action={
                 <Button size="sm" variant="outline" onClick={() => apps.refetch()}>
-                  Retry
+                  {tI18nComplete.raw('text942087cc2d41')}
                 </Button>
               }
             />
@@ -952,11 +963,12 @@ function AppGridSkeleton({ columns }: { columns: AppGridColumns }) {
  * this screen to a card.
  */
 function AppsEmptyState() {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
     <EmptyState
       icon={GlobeIcon}
-      title="No Apps yet"
-      description="Deploy a static site, JavaScript bundle, Dockerfile, or OCI image from your project directory. It shows up here the moment it goes live."
+      title={tI18nComplete.raw('text7aaec6fe02f0')}
+      description={tI18nComplete.raw('text4b2e1a2b9cbc')}
       action={<DeployCommand code={FIRST_DEPLOY_COMMAND} />}
     />
   );
@@ -990,7 +1002,7 @@ function AppCard({ projectId, app, onOpen }: { projectId: string; app: App; onOp
             caption under a picture, and the picture is the object. */}
         <div
           className={cn(
-            'relative overflow-hidden rounded-lg border transition-transform duration-150 ease-out group-hover:-translate-y-1',
+            'duration-normal relative overflow-hidden rounded-lg border transition-transform ease-out group-hover:-translate-y-1',
           )}
         >
           <AppPreview
@@ -1048,6 +1060,7 @@ function AppDetailModal({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const apps = useProjectApps(projectId);
   const deployments = useAppDeployments(projectId, app.app_id);
   const canAccess = app.viewer_can_access !== false;
@@ -1163,7 +1176,7 @@ function AppDetailModal({
                       href={liveUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      aria-label="Open in a new tab"
+                      aria-label={tI18nComplete.raw('text306ef19c8ac3')}
                     >
                       <ArrowSquareOutIcon className="size-4 shrink-0" />
                     </a>
@@ -1176,7 +1189,11 @@ function AppDetailModal({
                     looking for something else. */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button size="icon" variant="outline" aria-label="More actions">
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      aria-label={tI18nComplete.raw('textf8d46c2570e7')}
+                    >
                       <DotsThreeIcon className="size-4 shrink-0" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -1184,7 +1201,7 @@ function AppDetailModal({
                     {canWrite ? (
                       <DropdownMenuItem onClick={() => setAccessOpen(true)}>
                         <LockKeyIcon className="size-3.5 shrink-0" />
-                        Who can open this
+                        {tI18nComplete.raw('text407951d1c2e0')}
                         {/* The current value, on the row that changes it. */}
                         <span className="text-muted-foreground ml-auto pl-3 text-xs">
                           {ACCESS_COPY[app.access_mode].label}
@@ -1200,7 +1217,7 @@ function AppDetailModal({
                         <DropdownMenuSeparator />
                         <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
                           <TrashIcon className="size-3.5 shrink-0" />
-                          Delete App
+                          {tI18nComplete.raw('textd1b0a6e3985a')}
                         </DropdownMenuItem>
                       </>
                     ) : null}
@@ -1269,7 +1286,9 @@ function AppDetailModal({
                   ))}
                 </div>
               ) : (
-                <p className="text-muted-foreground text-xs">No deployments yet.</p>
+                <p className="text-muted-foreground text-xs">
+                  {tI18nComplete.raw('textf1fc77ca3b24')}
+                </p>
               )}
             </div>
           ) : null}
@@ -1279,7 +1298,7 @@ function AppDetailModal({
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        title="Delete App"
+        title={tI18nComplete.raw('textd1b0a6e3985a')}
         description={`Delete ${app.name} and every runtime? This action cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="destructive"
@@ -1323,13 +1342,15 @@ function AppAccessModal({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
     <Modal open={open} onOpenChange={(value) => !access.update.isPending && onOpenChange(value)}>
       <ModalContent className="lg:max-w-md">
         <ModalHeader>
-          <ModalTitle>App access</ModalTitle>
+          <ModalTitle>{tI18nComplete.raw('text869903a43092')}</ModalTitle>
           <ModalDescription>
-            Choose who can open {app.name}. Apps are private by default.
+            {tI18nComplete.raw('text2395784386a5')} {app.name}
+            {tI18nComplete.raw('text56000ae371ac')}
           </ModalDescription>
         </ModalHeader>
         {access.policy.isLoading ? (
@@ -1341,18 +1362,18 @@ function AppAccessModal({
             <ModalBody>
               <ErrorState
                 size="sm"
-                title="Failed to load App access"
+                title={tI18nComplete.raw('textac7f89823c42')}
                 description={(access.policy.error as Error).message}
                 action={
                   <Button size="sm" variant="outline" onClick={() => access.policy.refetch()}>
-                    Retry
+                    {tI18nComplete.raw('text942087cc2d41')}
                   </Button>
                 }
               />
             </ModalBody>
             <ModalFooter>
               <Button variant="outline-ghost" size="sm" onClick={() => onOpenChange(false)}>
-                Close
+                {tI18nComplete.raw('text7d9eb7acb13e')}
               </Button>
             </ModalFooter>
           </>
@@ -1381,6 +1402,7 @@ function AppAccessForm({
   update: ReturnType<typeof useAppAccess>['update'];
   onSaved: () => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const [mode, setMode] = useState<AppAccessMode>(policy.mode);
   const [memberIds, setMemberIds] = useState<string[]>(policy.member_ids);
   const [groupIds, setGroupIds] = useState<string[]>(policy.group_ids);
@@ -1457,7 +1479,7 @@ function AppAccessForm({
           </div>
         ) : null}
         <div className="space-y-2">
-          <Label id="app-viewer-identity-label">Viewer identity</Label>
+          <Label id="app-viewer-identity-label">{tI18nComplete.raw('text5562d6d4c826')}</Label>
           {hasSignedInViewer ? (
             <RadioGroup
               aria-labelledby="app-viewer-identity-label"
@@ -1485,7 +1507,7 @@ function AppAccessForm({
       </ModalBody>
       <ModalFooter className="sm:justify-between">
         <Button variant="outline-ghost" size="sm" onClick={onSaved} disabled={update.isPending}>
-          Cancel
+          {tI18nComplete.raw('text19766ed6ccb2')}
         </Button>
         <Button
           size="sm"
@@ -1493,7 +1515,7 @@ function AppAccessForm({
           disabled={update.isPending || incomplete || passwordMissing}
         >
           {update.isPending ? <Loading className="size-4 shrink-0" /> : null}
-          Save
+          {tI18nComplete.raw('text1509f561f241')}
         </Button>
       </ModalFooter>
     </>
@@ -1513,6 +1535,7 @@ function DeploymentRow({
   rollbackPending: boolean;
   onRollback: () => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
     <div className="hover:bg-muted/40 flex items-center gap-3 rounded-md px-2 py-1.5">
       <span className="text-foreground w-8 shrink-0 font-mono text-xs tabular-nums">
@@ -1544,7 +1567,7 @@ function DeploymentRow({
           ) : (
             <ClockCounterClockwiseIcon className="size-3.5 shrink-0" />
           )}
-          Restore
+          {tI18nComplete.raw('texta76e13b98392')}
         </Button>
       ) : null}
     </div>

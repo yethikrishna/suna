@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 /**
  * `GroupAccessPanel` — one group's detail surface, rendered INSIDE the account
  * hub pane (`/accounts/{id}?tab=groups&group=<id>`), exactly like
@@ -105,11 +106,7 @@ import {
   type GroupProjectGrant,
 } from '@/lib/iam-client';
 import { usePermission } from '@/lib/use-permission';
-import {
-  detachGroupFromProject,
-  listAccountMembers,
-  listProjectResourceGrants,
-} from '@kortix/sdk';
+import { detachGroupFromProject, listAccountMembers, listProjectResourceGrants } from '@kortix/sdk';
 import { contract, invalidatePermissionProbes, qk } from '@kortix/sdk/react';
 
 const IDP_BADGE_TITLE =
@@ -142,6 +139,7 @@ export function GroupAccessPanel({
   canReadPolicies,
   onBack,
 }: GroupAccessPanelProps) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const queryClient = useQueryClient();
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -196,7 +194,7 @@ export function GroupAccessPanel({
       badges={
         idpManaged ? (
           <Badge variant="outline" size="sm" className="shrink-0" title={IDP_BADGE_TITLE}>
-            Synced from IdP
+            {tI18nComplete.raw('text2d83971aa73e')}
           </Badge>
         ) : null
       }
@@ -219,7 +217,7 @@ export function GroupAccessPanel({
               {canEditGroup ? (
                 <DropdownMenuItem onSelect={() => setRenameOpen(true)} className="gap-2">
                   <PencilSimpleIcon className="size-3.5" />
-                  Rename group
+                  {tI18nComplete.raw('text98d254a311d0')}
                 </DropdownMenuItem>
               ) : null}
               {canDeleteGroup ? (
@@ -231,7 +229,7 @@ export function GroupAccessPanel({
                     className="gap-2"
                   >
                     <TrashIcon className="size-3.5" />
-                    Delete group
+                    {tI18nComplete.raw('text3f7374ac08ea')}
                   </DropdownMenuItem>
                 </>
               ) : null}
@@ -243,11 +241,11 @@ export function GroupAccessPanel({
       {groupQuery.isError ? (
         <ErrorState
           size="sm"
-          title="Failed to load group"
+          title={tI18nComplete.raw('textba81a9896972')}
           description={(groupQuery.error as Error).message}
           action={
             <Button variant="outline" size="sm" onClick={() => groupQuery.refetch()}>
-              Retry
+              {tI18nComplete.raw('text942087cc2d41')}
             </Button>
           }
         />
@@ -293,13 +291,13 @@ export function GroupAccessPanel({
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        title="Delete group"
+        title={tI18nComplete.raw('text3f7374ac08ea')}
         description={
           idpManaged
             ? `Delete "${group?.name ?? 'this group'}"? This cannot be undone — and if your identity provider still pushes this group, the next sync recreates it (without its project roles).`
             : `Delete "${group?.name ?? 'this group'}"? This cannot be undone. Members keep their account access.`
         }
-        confirmLabel="Delete group"
+        confirmLabel={tI18nComplete.raw('text3f7374ac08ea')}
         confirmVariant="destructive"
         isPending={deleteMutation.isPending}
         onConfirm={() => deleteMutation.mutate()}
@@ -331,6 +329,7 @@ function RenameGroupModal({
    *  name; the API 409s a local rename). Description stays locally editable. */
   idpManaged: boolean;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const queryClient = useQueryClient();
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
@@ -366,10 +365,8 @@ function RenameGroupModal({
     >
       <ModalContent className="sm:max-w-md">
         <ModalHeader>
-          <ModalTitle>Rename group</ModalTitle>
-          <ModalDescription>
-            The name and description are how people find this group. Neither changes what it grants.
-          </ModalDescription>
+          <ModalTitle>{tI18nComplete.raw('text98d254a311d0')}</ModalTitle>
+          <ModalDescription>{tI18nComplete.raw('text68d369fd24f2')}</ModalDescription>
         </ModalHeader>
         <form
           onSubmit={(event) => {
@@ -380,7 +377,7 @@ function RenameGroupModal({
         >
           <ModalBody className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="group-name">Name</Label>
+              <Label htmlFor="group-name">{tI18nComplete.raw('textdcd1d5223f73')}</Label>
               <Input
                 id="group-name"
                 value={name}
@@ -391,15 +388,16 @@ function RenameGroupModal({
               />
               {idpManaged ? (
                 <p className="text-muted-foreground text-xs">
-                  The name is managed by your identity provider — rename the group there. Sign-in
-                  group claims match by name, so a local rename would orphan its access.
+                  {tI18nComplete.raw('text51621a0469f5')}
                 </p>
               ) : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="group-description">
-                Description{' '}
-                <span className="text-muted-foreground text-xs font-normal">(optional)</span>
+                {tI18nComplete.raw('text526e0087cc3f')}{' '}
+                <span className="text-muted-foreground text-xs font-normal">
+                  {tI18nComplete.raw('text0059798b7f70')}
+                </span>
               </Label>
               <Input
                 id="group-description"
@@ -418,7 +416,7 @@ function RenameGroupModal({
               onClick={() => onOpenChange(false)}
               disabled={updateMutation.isPending}
             >
-              Cancel
+              {tI18nComplete.raw('text19766ed6ccb2')}
             </Button>
             <Button
               type="submit"
@@ -427,7 +425,7 @@ function RenameGroupModal({
               className="gap-1.5"
             >
               {updateMutation.isPending ? <Loading className="size-4 shrink-0" /> : null}
-              Save
+              {tI18nComplete.raw('text1509f561f241')}
             </Button>
           </ModalFooter>
         </form>
@@ -453,6 +451,7 @@ function GroupMembersCard({
    *  edits (they'd be clobbered by the next push), so hide the affordances. */
   idpManaged: boolean;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   // Local membership edits only make sense for locally-owned groups.
   const canMutate = canManage && !idpManaged;
   const queryClient = useQueryClient();
@@ -522,7 +521,7 @@ function GroupMembersCard({
   const addMembersButton = canMutate ? (
     <Button type="button" size="sm" className="gap-1.5" onClick={() => setAddOpen(true)}>
       <PlusIcon className="size-3.5" />
-      Add members
+      {tI18nComplete.raw('textd600b9239ea2')}
     </Button>
   ) : undefined;
 
@@ -530,15 +529,13 @@ function GroupMembersCard({
     <>
       {/* The IdP owns this membership — say so, and say where to change it. */}
       {idpManaged ? (
-        <InfoBanner tone="info">
-          Membership is synced from your identity provider — add or remove people there.
-        </InfoBanner>
+        <InfoBanner tone="info">{tI18nComplete.raw('text58dc708c6651')}</InfoBanner>
       ) : null}
 
       {settled && members.length > 0 && overrideCount > 0 ? (
         <InfoBanner tone="warning">
-          {overrideCount} {overrideCount === 1 ? 'member is' : 'members are'} an account owner or
-          admin — they keep Manager access on every project regardless of this group&apos;s role.
+          {overrideCount} {overrideCount === 1 ? 'member is' : 'members are'}{' '}
+          {tI18nComplete.raw('text954f5f9042e8')}
         </InfoBanner>
       ) : null}
 
@@ -552,7 +549,7 @@ function GroupMembersCard({
         <EmptyState
           icon={UsersIcon}
           size="sm"
-          title="No members in this group"
+          title={tI18nComplete.raw('text63f14c6ce846')}
           description={
             idpManaged
               ? 'Members appear here as your identity provider pushes them.'
@@ -563,9 +560,7 @@ function GroupMembersCard({
           action={addMembersButton}
         />
       ) : (
-        <AccessList
-          header={{ title: 'Members', count: members.length, actions: addMembersButton }}
-        >
+        <AccessList header={{ title: 'Members', count: members.length, actions: addMembersButton }}>
           {sortGroupMembersByOverride(members, accountMetaByUserId).map((m) => {
             const label = emailByUserId.get(m.user_id) ?? m.user_id;
             const meta = accountMetaByUserId.get(m.user_id);
@@ -581,13 +576,13 @@ function GroupMembersCard({
                     <Badge
                       size="sm"
                       className="bg-kortix-orange/15 text-kortix-orange border-transparent capitalize"
-                      title="Account owners and admins always have Manager on every project"
+                      title={tI18nComplete.raw('texte7b5b15c4227')}
                     >
                       {badgeLabel}
                     </Badge>
                   ) : meta?.accountRole === 'member' ? (
                     <Badge variant="outline" size="sm" className="capitalize">
-                      Member
+                      {tI18nComplete.raw('text7c968fb71f50')}
                     </Badge>
                   ) : null
                 }
@@ -625,7 +620,7 @@ function GroupMembersCard({
         onOpenChange={(open) => {
           if (!open) setRemoveTarget(null);
         }}
-        confirmLabel="Remove from group"
+        confirmLabel={tI18nComplete.raw('text035edd9bd720')}
         confirmVariant="destructive"
         isPending={removeMutation.isPending}
         onConfirm={() => {
@@ -665,6 +660,7 @@ function GroupProjectAccessCard({
   canReadRoles: boolean;
   canReadPolicies: boolean;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const queryClient = useQueryClient();
   const grantsKey = ['group-project-grants', accountId, groupId];
   const [attachOpen, setAttachOpen] = useState(false);
@@ -780,7 +776,7 @@ function GroupProjectAccessCard({
   const attachButton = canManage ? (
     <Button type="button" size="sm" className="gap-1.5" onClick={() => setAttachOpen(true)}>
       <PlusIcon className="size-3.5" />
-      Attach to project
+      {tI18nComplete.raw('textc3f348ffaf7a')}
     </Button>
   ) : undefined;
 
@@ -791,11 +787,11 @@ function GroupProjectAccessCard({
       ) : grantsQuery.isError ? (
         <ErrorState
           size="sm"
-          title="Failed to load projects"
+          title={tI18nComplete.raw('text99528001baf3')}
           description={(grantsQuery.error as Error)?.message}
           action={
             <Button variant="outline" size="sm" onClick={() => grantsQuery.refetch()}>
-              Retry
+              {tI18nComplete.raw('text942087cc2d41')}
             </Button>
           }
         />
@@ -803,7 +799,7 @@ function GroupProjectAccessCard({
         <EmptyState
           icon={FolderOpenIcon}
           size="sm"
-          title="Not attached to any projects"
+          title={tI18nComplete.raw('textd9cf36890c05')}
           description={`Attach "${groupName}" to a project and every member inherits the role you pick.`}
           action={attachButton}
         />
@@ -905,13 +901,15 @@ function GroupProjectAccessCard({
         onOpenChange={(open) => {
           if (!open) setDetachTarget(null);
         }}
-        title="Detach from project"
+        title={tI18nComplete.raw('texte111b0049f57')}
         description={
           detachTarget ? (
             <span>
-              <strong>{groupName}</strong> will no longer be attached to{' '}
-              <strong>{detachTarget.project_name}</strong>. Every group member will lose their
-              inherited <strong className="capitalize">{detachTarget.role}</strong> access.
+              <strong>{groupName}</strong> {tI18nComplete.raw('texta86f1fe9444b')}{' '}
+              <strong>{detachTarget.project_name}</strong>
+              {tI18nComplete.raw('text944d0d9280a1')}
+              <strong className="capitalize">{detachTarget.role}</strong>{' '}
+              {tI18nComplete.raw('text0cc7557652be')}
             </span>
           ) : null
         }

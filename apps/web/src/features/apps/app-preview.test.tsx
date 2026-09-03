@@ -1,5 +1,9 @@
 import { describe, expect, jest, test } from 'bun:test';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { NextIntlClientProvider } from 'next-intl';
+import type { ReactNode } from 'react';
+import { renderToStaticMarkup as renderRaw } from 'react-dom/server';
+
+import enMessages from '../../../translations/en.json';
 
 import { stripTags } from '@/test-utils/strip-tags';
 import type { App } from '@kortix/sdk';
@@ -8,14 +12,14 @@ import {
   APP_GRID_COLUMN_OPTIONS,
   APP_GRID_COLUMN_ORDER,
   APP_GRID_COLUMNS_STORAGE_KEY,
-  APP_GRID_DEFAULT_COLUMNS,
-  parseAppGridColumns,
   APP_GRID_CONTAINER,
+  APP_GRID_DEFAULT_COLUMNS,
+  appHost,
   AppPreview,
   AppPreviewOverlay,
   DEPLOYMENT_COPY,
-  appHost,
   deployNotice,
+  parseAppGridColumns,
   PREVIEW_SPINNER_DELAY_MS,
   PREVIEW_TILE_ASPECT,
   PREVIEW_VIEWPORT_HEIGHT,
@@ -23,6 +27,13 @@ import {
   previewScale,
   scheduleSlowPreview,
 } from './apps-view';
+
+const renderAppMarkup = (node: ReactNode) =>
+  renderRaw(
+    <NextIntlClientProvider locale="en" messages={enMessages}>
+      {node}
+    </NextIntlClientProvider>,
+  );
 
 /**
  * The defect these tests pin: opening a warm App flashed a spinner.
@@ -64,7 +75,7 @@ describe('AppPreview — first paint', () => {
   test('mounts with no spinner at all: the overlay is not in the initial markup', () => {
     // `renderToStaticMarkup` runs render and skips effects, which is exactly
     // the moment under test — t=0, before the delay timer could ever fire.
-    const html = renderToStaticMarkup(
+    const html = renderAppMarkup(
       <AppPreview app={APP} url={URL} accessError={false} interactive />,
     );
 
@@ -74,10 +85,10 @@ describe('AppPreview — first paint', () => {
   });
 
   test('the modal frame fetches eagerly, the card thumbnail stays lazy', () => {
-    const modal = renderToStaticMarkup(
+    const modal = renderAppMarkup(
       <AppPreview app={APP} url={URL} accessError={false} interactive />,
     );
-    const card = renderToStaticMarkup(
+    const card = renderAppMarkup(
       <AppPreview app={APP} url={URL} accessError={false} interactive={false} />,
     );
 
@@ -86,7 +97,7 @@ describe('AppPreview — first paint', () => {
   });
 
   test('the frame area stays on its calm surface — no overlay to hide it', () => {
-    const html = renderToStaticMarkup(
+    const html = renderAppMarkup(
       <AppPreview app={APP} url={URL} accessError={false} interactive />,
     );
 
@@ -96,26 +107,26 @@ describe('AppPreview — first paint', () => {
 
 describe('AppPreviewOverlay', () => {
   test('renders nothing before the delay elapses', () => {
-    expect(
-      renderToStaticMarkup(<AppPreviewOverlay loaded={false} failed={false} slow={false} />),
-    ).toBe('');
+    expect(renderAppMarkup(<AppPreviewOverlay loaded={false} failed={false} slow={false} />)).toBe(
+      '',
+    );
   });
 
   test('renders the loading state once the load outruns the delay', () => {
-    const html = renderToStaticMarkup(<AppPreviewOverlay loaded={false} failed={false} slow />);
+    const html = renderAppMarkup(<AppPreviewOverlay loaded={false} failed={false} slow />);
 
     expect(stripTags(html)).toContain('Loading preview');
     expect(html).toContain('animate-spinner');
   });
 
   test('disappears on load, even after the delay already elapsed', () => {
-    expect(renderToStaticMarkup(<AppPreviewOverlay loaded failed={false} slow />)).toBe('');
+    expect(renderAppMarkup(<AppPreviewOverlay loaded failed={false} slow />)).toBe('');
   });
 
   test('reports failure immediately, without waiting for the delay', () => {
     // `onError` means the frame is done and will not paint. Nothing is gained
     // by holding that back behind the anti-flash timer.
-    const html = renderToStaticMarkup(<AppPreviewOverlay loaded={false} failed slow={false} />);
+    const html = renderAppMarkup(<AppPreviewOverlay loaded={false} failed slow={false} />);
 
     expect(stripTags(html)).toContain('Preview unavailable. Open the App to retry.');
     expect(html).not.toContain('animate-spinner');
@@ -240,7 +251,7 @@ describe('previewScale', () => {
 
 describe('AppPreview — the card renders a desktop viewport', () => {
   test('the card frame is sized to the desktop viewport, not to the tile', () => {
-    const html = renderToStaticMarkup(
+    const html = renderAppMarkup(
       <AppPreview app={APP} url={URL} accessError={false} interactive={false} />,
     );
 
@@ -252,7 +263,7 @@ describe('AppPreview — the card renders a desktop viewport', () => {
   test('it stays hidden until measured, rather than flashing an unscaled corner', () => {
     // `renderToStaticMarkup` skips effects, which is exactly the pre-measure
     // state: no layout has happened, so there is no honest scale to apply yet.
-    const html = renderToStaticMarkup(
+    const html = renderAppMarkup(
       <AppPreview app={APP} url={URL} accessError={false} interactive={false} />,
     );
 
@@ -261,7 +272,7 @@ describe('AppPreview — the card renders a desktop viewport', () => {
   });
 
   test('the modal frame is untouched — it fills the dialog at its real size', () => {
-    const html = renderToStaticMarkup(
+    const html = renderAppMarkup(
       <AppPreview app={APP} url={URL} accessError={false} interactive />,
     );
 
@@ -315,7 +326,7 @@ describe('deployment copy — pipeline vocabulary never reaches the reader', () 
     }
   });
 
-  test('the pipeline\'s own words for its steps never reach a label', () => {
+  test("the pipeline's own words for its steps never reach a label", () => {
     // These three are the build system describing itself. "Building" and
     // "Waiting" stay — they are ordinary English that happens to match a stage
     // name, which is the opposite problem.
@@ -328,14 +339,20 @@ describe('deployment copy — pipeline vocabulary never reaches the reader', () 
     expect(DEPLOYMENT_COPY.ready.tone).toBe('success');
     expect(DEPLOYMENT_COPY.failed.tone).toBe('destructive');
     expect(DEPLOYMENT_COPY.cancelled.tone).toBe('muted');
-    for (const status of ['queued', 'validating', 'building', 'provisioning', 'checking'] as const) {
+    for (const status of [
+      'queued',
+      'validating',
+      'building',
+      'provisioning',
+      'checking',
+    ] as const) {
       expect(DEPLOYMENT_COPY[status].tone).toBe('warning');
     }
   });
 });
 
 describe('deployNotice — the header speaks only when there is news', () => {
-  const at = (status: (typeof DEPLOYMENT_COPY) extends never ? never : string) =>
+  const at = (status: typeof DEPLOYMENT_COPY extends never ? never : string) =>
     ({ status }) as unknown as Parameters<typeof deployNotice>[0];
 
   test('silent for the state almost every App is in almost always', () => {
@@ -351,7 +368,13 @@ describe('deployNotice — the header speaks only when there is news', () => {
     // The header is read at a glance while using the App; `validating` versus
     // `provisioning` is not a distinction the reader can act on there. The
     // version list keeps the stage-by-stage detail.
-    for (const status of ['queued', 'validating', 'building', 'provisioning', 'checking'] as const) {
+    for (const status of [
+      'queued',
+      'validating',
+      'building',
+      'provisioning',
+      'checking',
+    ] as const) {
       expect(deployNotice(at(status))).toEqual({ label: 'Updating', tone: 'warning' });
     }
   });
@@ -390,7 +413,9 @@ describe('APP_GRID_COLUMN_OPTIONS — the grid measures the box it is in', () =>
   const columnsAt = (width: number, cap: number) =>
     Math.min(cap, width >= 1024 ? 4 : width >= 768 ? 3 : width >= 512 ? 2 : 1);
 
-  const ladders = APP_GRID_COLUMN_ORDER.map((cap) => [cap, APP_GRID_COLUMN_OPTIONS[cap].grid] as const);
+  const ladders = APP_GRID_COLUMN_ORDER.map(
+    (cap) => [cap, APP_GRID_COLUMN_OPTIONS[cap].grid] as const,
+  );
 
   test('the default is three across, and needs no interaction to get there', () => {
     // The control trades tile size for count. Nobody has to touch it: three

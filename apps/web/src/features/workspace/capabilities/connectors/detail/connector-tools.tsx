@@ -17,6 +17,7 @@ import {
   WrenchIcon,
 } from '@phosphor-icons/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -148,6 +149,7 @@ export function ConnectorTools({
   disabled,
   onChanged,
 }: ConnectorToolsProps) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const queryClient = useQueryClient();
   const slug = connector.slug;
   const queryKey = useMemo(() => ['connector-policies', projectId, slug], [projectId, slug]);
@@ -307,8 +309,8 @@ export function ConnectorTools({
   if (!canWrite) {
     return (
       <p className="text-muted-foreground text-sm text-pretty">
-        What agents may do with {displayName} is set by a project manager. You do not have
-        permission to change it.
+        {tI18nComplete.raw('textdb7d057a2f68')} {displayName}{' '}
+        {tI18nComplete.raw('text24984f203fd7')}
       </p>
     );
   }
@@ -319,7 +321,9 @@ export function ConnectorTools({
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0 space-y-0.5">
-          <h3 className="text-foreground text-lg font-semibold text-balance">Tools</h3>
+          <h3 className="text-foreground text-lg font-semibold text-balance">
+            {tI18nComplete.raw('textea93d6a262ec')}
+          </h3>
           <p className="text-muted-foreground text-sm text-pretty">
             {describeDefault(connector.sensitive === true, policiesQuery.data?.default_mode)}
           </p>
@@ -330,7 +334,7 @@ export function ConnectorTools({
               <MagnifyingGlassIcon />
             </InputGroupSearchIcon>
             <InputGroupSearchInput
-              placeholder="Search tools"
+              placeholder={tI18nComplete.raw('textfbd165231fa1')}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               variant="popover"
@@ -346,8 +350,7 @@ export function ConnectorTools({
           icon={LockIcon}
           title={`${projectLockedCount} ${projectLockedCount === 1 ? 'tool is' : 'tools are'} decided by a project rule`}
         >
-          Project rules apply to every connector and are evaluated first, so those tools cannot be
-          changed here. Edit them under Global rules on the Connectors page.
+          {tI18nComplete.raw('textf7d6d7f585c5')}
         </InfoBanner>
       ) : null}
 
@@ -360,7 +363,7 @@ export function ConnectorTools({
       ) : policiesQuery.isError ? (
         <ErrorState
           size="sm"
-          title="Couldn’t load permissions"
+          title={tI18nComplete.raw('textff6065190563')}
           description={
             policiesQuery.error instanceof Error
               ? policiesQuery.error.message
@@ -368,7 +371,7 @@ export function ConnectorTools({
           }
           action={
             <Button variant="outline" size="sm" onClick={() => void policiesQuery.refetch()}>
-              Retry
+              {tI18nComplete.raw('text942087cc2d41')}
             </Button>
           }
         />
@@ -379,7 +382,7 @@ export function ConnectorTools({
         <EmptyState
           icon={WrenchIcon}
           size="sm"
-          title="No tools yet"
+          title={tI18nComplete.raw('text99dd86336467')}
           description={`${displayName} hasn’t reported any tools. Once it syncs, each one gets its own Default · Block · Ask · Allow control here.`}
         />
       ) : groups.length === 0 ? (
@@ -405,7 +408,7 @@ export function ConnectorTools({
                     variant="secondary"
                     disabled={frozen || busy || bulkPathsFor(group).length === 0}
                   >
-                    Set all
+                    {tI18nComplete.raw('textd9d0b4384a58')}
                     <CaretDownIcon className="size-3.5 shrink-0" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -472,14 +475,14 @@ export function ConnectorTools({
       >
         <DisclosureTrigger variant="outline">
           <Button variant="popover">
-            Advanced
+            {tI18nComplete.raw('text9f088dbebd6c')}
             {advancedRules.length > 0 ? (
               <Badge variant="secondary" size="sm">
                 {advancedRules.length}
               </Badge>
             ) : null}
             <span className="text-muted-foreground ml-auto text-xs font-normal">
-              Ask before every use · pattern rules
+              {tI18nComplete.raw('text59da2efb2423')}
             </span>
           </Button>
         </DisclosureTrigger>
@@ -487,10 +490,11 @@ export function ConnectorTools({
           <div className="space-y-5 px-4 py-5">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
-                <p className="text-foreground text-sm font-medium">Ask before every use</p>
+                <p className="text-foreground text-sm font-medium">
+                  {tI18nComplete.raw('text594bdd4c19b2')}
+                </p>
                 <p className="text-muted-foreground mt-0.5 text-xs text-pretty">
-                  Every tool asks for approval, including reads. For mail, files or secrets, where
-                  reading is itself risky. A rule above can still open one tool.
+                  {tI18nComplete.raw('textf900377c2048')}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -499,27 +503,29 @@ export function ConnectorTools({
                   checked={connector.sensitive === true}
                   onCheckedChange={(next) => sensitiveMutation.mutate(next)}
                   disabled={frozen || sensitiveMutation.isPending}
-                  aria-label="Ask before every use"
+                  aria-label={tI18nComplete.raw('text594bdd4c19b2')}
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label>Pattern rules</Label>
+              <Label>{tI18nComplete.raw('text380c0b05bcfc')}</Label>
               <p className="text-muted-foreground text-xs text-pretty">
-                Cover many tools at once with a glob (<code className="font-mono">delete_*</code>)
-                or a regex (<code className="font-mono">/^send/i</code>). A per-tool decision above
-                always wins over a pattern.
+                {tI18nComplete.raw('textde00adeaf21b')}
+                <code className="font-mono">delete_*</code>
+                {tI18nComplete.raw('text3a13855164e7')}
+                <code className="font-mono">/^send/i</code>
+                {tI18nComplete.raw('texte45481e75a5e')}
               </p>
               {draft.map((row) => (
                 <div key={row.id} className="flex items-center gap-2">
                   <Input
                     value={row.match}
-                    placeholder="delete_*"
+                    placeholder={tI18nComplete.raw('text74ad536dca05')}
                     variant="popover"
                     size="xs"
                     className="flex-1 font-mono"
-                    aria-label="Rule pattern"
+                    aria-label={tI18nComplete.raw('text5c9c672f4cd3')}
                     disabled={frozen}
                     onChange={(event) =>
                       setDraft((rows) =>
@@ -588,7 +594,7 @@ export function ConnectorTools({
                   }
                 >
                   <PlusIcon className="size-3.5 shrink-0" />
-                  Add rule
+                  {tI18nComplete.raw('texta27cff51a2e0')}
                 </Button>
                 {advancedDirty ? (
                   <div className="ml-auto flex items-center gap-2">
@@ -599,7 +605,7 @@ export function ConnectorTools({
                       disabled={busy}
                       onClick={() => setDraft(seedPatternDraft(advancedRules, nextPatternRowId))}
                     >
-                      Discard
+                      {tI18nComplete.raw('texteb1a70e39274')}
                     </Button>
                     <Button
                       size="sm"
@@ -608,7 +614,7 @@ export function ConnectorTools({
                       onClick={savePatternRules}
                     >
                       {writePolicies.isPending ? <Loading className="size-3.5 shrink-0" /> : null}
-                      Save rules
+                      {tI18nComplete.raw('texte5dbdffb8816')}
                     </Button>
                   </div>
                 ) : null}

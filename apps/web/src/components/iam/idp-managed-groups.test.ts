@@ -35,14 +35,12 @@ describe('IdP-managed groups — detail panel', () => {
     expect(flatPageSource).toContain('canMutate ? ( <Button');
     expect(flatPageSource).toContain("label: 'Remove from group'");
     expect(flatPageSource).toContain('kebab={ canMutate ?');
-    expect(flatPageSource).toContain(
-      'Membership is synced from your identity provider — add or remove people there.',
-    );
+    expect(flatPageSource).toContain("raw('text58dc708c6651')");
   });
 
   test('the name field locks with a why + where hint; description stays editable', () => {
     expect(flatPageSource).toContain('updateMutation.isPending || idpManaged');
-    expect(flatPageSource).toContain('rename the group there');
+    expect(flatPageSource).toContain("raw('text51621a0469f5')");
     // Only the NAME input carries the idpManaged lock — one occurrence.
     const locks = pageSource.match(/isPending \|\| idpManaged/g) ?? [];
     expect(locks.length).toBe(1);
@@ -52,7 +50,9 @@ describe('IdP-managed groups — detail panel', () => {
     expect(flatPageSource).toContain('the next sync recreates it');
     // Both delete confirms — list row and Settings danger zone — are
     // destructive-styled. The Settings one used to fall back to the default.
-    expect(flatPageSource).toContain('confirmLabel="Delete group" confirmVariant="destructive"');
+    expect(flatPageSource).toContain(
+      'confirmLabel={tI18nComplete.raw(\'text3f7374ac08ea\')} confirmVariant="destructive"',
+    );
     expect(tabSource.replace(/\s+/g, ' ')).toContain(
       'confirmLabel="Delete group" confirmVariant="destructive"',
     );
@@ -103,7 +103,7 @@ describe('groups surface consumes the shared access primitives', () => {
 
   test('"Attach to project" is permission-gated like every other mutating control', () => {
     expect(flatPageSource).toContain('canManage ? ( <Button');
-    expect(flatPageSource).toContain('Attach to project');
+    expect(flatPageSource).toContain("raw('textc3f348ffaf7a')");
   });
 
   test('the group page still keeps CreateGroupDialog local to the tab — it defines a group', () => {

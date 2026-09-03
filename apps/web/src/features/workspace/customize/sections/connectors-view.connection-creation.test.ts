@@ -67,7 +67,7 @@ describe('connection creation controls', () => {
     expect(source).toContain(
       "effectiveAuthorizationStrategy === 'project' ? setOauth2Selected : undefined",
     );
-    expect(source).toContain('Each user then stores their own private credential');
+    expect(source).toContain("raw('i18nComplete.text547a92020d87')");
   });
 
   test('does not load manager-only connector configuration for read-only users', () => {

@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 // The capability picker for a custom role (§7 of the access unification spec).
 //
 // A role's permission set is a list of ~44 dotted leaf actions. Showing 44
@@ -38,8 +39,8 @@ import {
   InputGroupSearchInput,
 } from '@/components/ui/input-group';
 import { Label } from '@/components/ui/label';
-import { cn } from '@/lib/utils';
 import type { Permission } from '@/lib/iam-client';
+import { cn } from '@/lib/utils';
 
 // ─── The area table (§7 mapping) ────────────────────────────────────────────
 
@@ -97,10 +98,7 @@ export function areaLabel(key: string): string {
 
 /** A readable name for one permission. The catalog's `description` when it has
  *  one, a humanized action string otherwise. */
-export function permissionLabel(permission: {
-  action: string;
-  description?: string;
-}): string {
+export function permissionLabel(permission: { action: string; description?: string }): string {
   return permission.description?.trim() || humanizeLeaf(permission.action);
 }
 
@@ -157,7 +155,7 @@ export function buildAreaTable(
   // An area whose only leaves are `admin` gets no row — its leaves live in
   // Advanced, and an empty row would read as "nothing here".
   return order
-    .filter((key) => (byArea.get(key)!.view.length + byArea.get(key)!.edit.length) > 0)
+    .filter((key) => byArea.get(key)!.view.length + byArea.get(key)!.edit.length > 0)
     .map((key) => ({ key, ...areaCopy(key), ...byArea.get(key)! }));
 }
 
@@ -169,12 +167,17 @@ export function buildImplications(
 ): ReadonlyMap<string, readonly string[]> {
   const map = new Map<string, string[]>();
   for (const entry of permissions ?? []) {
-    map.set(entry.action, entry.implies.filter((leaf) => leaf !== entry.action));
+    map.set(
+      entry.action,
+      entry.implies.filter((leaf) => leaf !== entry.action),
+    );
   }
   return map;
 }
 
-function reverse(map: ReadonlyMap<string, readonly string[]>): ReadonlyMap<string, readonly string[]> {
+function reverse(
+  map: ReadonlyMap<string, readonly string[]>,
+): ReadonlyMap<string, readonly string[]> {
   const out = new Map<string, string[]>();
   for (const [from, targets] of map) {
     for (const to of targets) {
@@ -343,8 +346,7 @@ export function foldSelection(
   let selectedCount = 0;
   for (const leaf of reachable) if (selected.has(leaf)) selectedCount += 1;
 
-  const needsAdvanced =
-    areas.some((a) => a.partial) || unmapped.some((leaf) => leaf.selected);
+  const needsAdvanced = areas.some((a) => a.partial) || unmapped.some((leaf) => leaf.selected);
 
   return { areas, unmapped, selectedCount, totalCount: reachable.size, needsAdvanced };
 }
@@ -540,6 +542,7 @@ export function RoleCapabilityMatrix({
   onChange,
   disabled = false,
 }: RoleCapabilityMatrixProps) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const [search, setSearch] = useState('');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const autoOpened = useRef(false);
@@ -577,7 +580,10 @@ export function RoleCapabilityMatrix({
       ...fold.unmapped
         .filter((leaf) => !catalog.some((a) => a.action === leaf.action))
         .map((leaf) => ({ action: leaf.action, label: leaf.label })),
-    ].filter((entry) => !query || entry.action.includes(query) || entry.label.toLowerCase().includes(query));
+    ].filter(
+      (entry) =>
+        !query || entry.action.includes(query) || entry.label.toLowerCase().includes(query),
+    );
     return groupLeaves(entries);
   }, [catalog, fold.unmapped, query]);
 
@@ -592,11 +598,9 @@ export function RoleCapabilityMatrix({
   if (catalog.length === 0 && (permissions?.length ?? 0) > 0) {
     return (
       <div className="space-y-2">
-        <Label>Capabilities</Label>
+        <Label>{tI18nComplete.raw('text9460f16ac9b5')}</Label>
         <div className="bg-popover rounded-md border px-4 py-3">
-          <p className="text-muted-foreground text-xs">
-            No capabilities are available for this scope.
-          </p>
+          <p className="text-muted-foreground text-xs">{tI18nComplete.raw('text3608d632c70d')}</p>
         </div>
       </div>
     );
@@ -605,9 +609,10 @@ export function RoleCapabilityMatrix({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-3">
-        <Label htmlFor="role-capability-search">Capabilities</Label>
+        <Label htmlFor="role-capability-search">{tI18nComplete.raw('text9460f16ac9b5')}</Label>
         <span className="text-muted-foreground text-xs tabular-nums">
-          {fold.selectedCount} of {fold.totalCount} capabilities
+          {fold.selectedCount} {tI18nComplete.raw('text28391d3bc64e')} {fold.totalCount}{' '}
+          {tI18nComplete.raw('text3fc0e5c4c484')}
         </span>
       </div>
 
@@ -622,7 +627,7 @@ export function RoleCapabilityMatrix({
             id="role-capability-search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search areas…"
+            placeholder={tI18nComplete.raw('texta3fc7afcc66e')}
             variant="popover"
           />
           {search ? <InputGroupSearchClear onClick={() => setSearch('')} /> : null}
@@ -635,7 +640,7 @@ export function RoleCapabilityMatrix({
           disabled={disabled}
           onClick={() => onChange(applyBulk(scope, selected, 'view-all', permissions))}
         >
-          View everything
+          {tI18nComplete.raw('text905a97d81301')}
         </Button>
         <Button
           type="button"
@@ -645,7 +650,7 @@ export function RoleCapabilityMatrix({
           disabled={disabled}
           onClick={() => onChange(applyBulk(scope, selected, 'edit-all', permissions))}
         >
-          Edit everything
+          {tI18nComplete.raw('textd1dc8f6ab64a')}
         </Button>
         <Button
           type="button"
@@ -655,20 +660,20 @@ export function RoleCapabilityMatrix({
           disabled={disabled}
           onClick={() => onChange(applyBulk(scope, selected, 'clear', permissions))}
         >
-          Clear
+          {tI18nComplete.raw('text83b12c2216ef')}
         </Button>
       </div>
 
       <div className="bg-popover divide-border divide-y rounded-md border">
         <div className="text-muted-foreground flex items-center gap-3 px-4 py-2 text-xs">
-          <span className="min-w-0 flex-1">Area</span>
-          <span className="w-10 shrink-0 text-center">View</span>
-          <span className="w-10 shrink-0 text-center">Edit</span>
+          <span className="min-w-0 flex-1">{tI18nComplete.raw('text024dc204d7ba')}</span>
+          <span className="w-10 shrink-0 text-center">{tI18nComplete.raw('textdcc839a4015c')}</span>
+          <span className="w-10 shrink-0 text-center">{tI18nComplete.raw('text464c4ffd019e')}</span>
         </div>
 
         {rows.length === 0 ? (
           <p className="text-muted-foreground px-3 py-6 text-center text-xs">
-            No areas match your search.
+            {tI18nComplete.raw('textcd8ddd0a6ec6')}
           </p>
         ) : (
           rows.map((row) => (
@@ -683,7 +688,7 @@ export function RoleCapabilityMatrix({
                 ) : null}
                 {row.partial ? (
                   <p className="text-muted-foreground text-xs">
-                    Custom subset — the exact capabilities are in Advanced.
+                    {tI18nComplete.raw('text19a79f3e7ac6')}
                   </p>
                 ) : null}
               </div>
@@ -713,7 +718,7 @@ export function RoleCapabilityMatrix({
             variant="popover"
             className="flex w-full items-center justify-between rounded-none"
           >
-            <span className="text-sm font-medium">Advanced</span>
+            <span className="text-sm font-medium">{tI18nComplete.raw('text9f088dbebd6c')}</span>
             <span className="text-muted-foreground text-xs">
               {advancedOpen ? 'Hide' : 'Every capability, one by one'}
             </span>
@@ -723,7 +728,7 @@ export function RoleCapabilityMatrix({
           <div className="max-h-72 space-y-4 overflow-y-auto px-4 py-3">
             {advancedGroups.length === 0 ? (
               <p className="text-muted-foreground px-3 py-6 text-center text-xs">
-                No capabilities match your search.
+                {tI18nComplete.raw('textdd422a57c3ed')}
               </p>
             ) : (
               advancedGroups.map((group) => (

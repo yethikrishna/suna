@@ -123,7 +123,7 @@ function GrantCatalog({
         if (items.length === 0 && orphans.length === 0) return <>{empty}</>;
         const checked = (id: string) => mode === 'all' || (mode === 'pick' && selected.has(id));
         return (
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2">
             {items.map((item) => (
               <CatalogCard
                 key={item.id}

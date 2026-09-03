@@ -26,6 +26,7 @@ const nativeLocaleNames: Record<Locale, string> = {
 };
 
 interface LocaleMessages {
+  common: { close: string };
   settings: {
     rail: {
       settings: string;
@@ -85,6 +86,24 @@ interface LocaleMessages {
       github: string;
       install: string;
       connect: string;
+    };
+    tokens: {
+      newKey: string;
+      emptyTitle: string;
+      emptyCanCreate: string;
+      serviceAccountTokens: string;
+      createTitle: string;
+      createDescription: string;
+      name: string;
+      namePlaceholder: string;
+      nameHint: string;
+      scope: string;
+      wholeWorkspace: string;
+      scopeHint: string;
+      expires: string;
+      expiryNever: string;
+      cancel: string;
+      createKey: string;
     };
   };
 }
@@ -380,6 +399,89 @@ test.describe("26 — Settings localization", () => {
               exact: true,
             }),
           ).toBeVisible();
+
+          await page
+            .getByRole("tab", {
+              name: copy.settings.rail.items.tokens.label,
+              exact: true,
+            })
+            .click();
+          for (const tokenText of [
+            copy.settings.tokens.emptyTitle,
+            copy.settings.tokens.emptyCanCreate,
+          ]) {
+            await expect(
+              page.getByText(tokenText, { exact: true }).first(),
+            ).toBeVisible();
+          }
+          await expect(
+            page.getByText(
+              copy.settings.tokens.serviceAccountTokens.replace(
+                /<\/?link>/g,
+                "",
+              ),
+              { exact: true },
+            ),
+          ).toBeVisible();
+          await page
+            .getByRole("button", {
+              name: copy.settings.tokens.newKey,
+              exact: true,
+            })
+            .click();
+          await expect(
+            page.getByRole("heading", {
+              name: copy.settings.tokens.createTitle,
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole("button", {
+              name: copy.common.close,
+              exact: true,
+            }),
+          ).toBeVisible();
+          for (const tokenFormText of [
+            copy.settings.tokens.createDescription,
+            copy.settings.tokens.name,
+            copy.settings.tokens.nameHint,
+            copy.settings.tokens.scope,
+            copy.settings.tokens.scopeHint,
+            copy.settings.tokens.expires,
+            copy.settings.tokens.expiryNever,
+          ]) {
+            await expect(
+              page.getByText(tokenFormText, { exact: true }).first(),
+            ).toBeVisible();
+          }
+          await expect(
+            page.getByPlaceholder(copy.settings.tokens.namePlaceholder, {
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(
+            page
+              .getByRole("combobox")
+              .filter({ hasText: copy.settings.tokens.wholeWorkspace }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole("button", {
+              name: copy.settings.tokens.cancel,
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole("button", {
+              name: copy.settings.tokens.createKey,
+              exact: true,
+            }),
+          ).toBeDisabled();
+          await page
+            .getByRole("button", {
+              name: copy.settings.tokens.cancel,
+              exact: true,
+            })
+            .click();
 
           await page
             .getByRole("tab", {

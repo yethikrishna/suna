@@ -193,7 +193,7 @@ export function ScheduleCreateModal({
     setStartActive(true);
     setSessionAccess({ mode: 'private', memberIds: [], groupIds: [] });
     setError(null);
-  }, [open]);
+  }, [open, initialAgent]);
 
   /** First-step problems, in the order a person would hit them. */
   function checkWhat(): string | null {

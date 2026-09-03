@@ -161,6 +161,13 @@ export interface AccessDialogProps {
   excludeUserIds?: string[];
   /** Groups the removed principal still inherits access from — feeds the confirm copy. */
   inheritedFrom?: string[];
+  /**
+   * Grant mode only: open with the agent picker already narrowed to these
+   * agents. An agent's own page grants access to THAT agent, so it seeds
+   * its name here rather than asking the person to find it in the list.
+   * Ignored in every other mode, which seeds from `current`.
+   */
+  initialAgentIds?: string[];
   onDone?: (result: AccessDialogResult) => void;
 }
 
@@ -341,6 +348,7 @@ interface AccessDraftState {
 function initialDraftState(
   mode: AccessDialogMode,
   roleScope: 'account' | 'project' | null,
+  initialAgentIds?: string[],
 ): AccessDraftState {
   const role: RoleValue =
     mode.kind === 'edit'
@@ -349,7 +357,12 @@ function initialDraftState(
   return {
     principals: EMPTY_PRINCIPAL_SELECTION,
     role,
-    agents: mode.kind === 'edit' ? agentSelectionFromCurrent(mode.current.agentIds) : ALL_AGENTS,
+    agents:
+      mode.kind === 'edit'
+        ? agentSelectionFromCurrent(mode.current.agentIds)
+        : mode.kind === 'grant' && initialAgentIds && initialAgentIds.length > 0
+          ? { mode: 'subset', ids: [...initialAgentIds] }
+          : ALL_AGENTS,
     expires: mode.kind === 'edit' ? isoToDateInputValue(mode.current.expiresAt) : '',
     attachProjectId: '',
     projectGrants: [],
@@ -372,6 +385,7 @@ export function AccessDialog({
   excludeProjectIds,
   excludeUserIds,
   inheritedFrom,
+  initialAgentIds,
   onDone,
 }: AccessDialogProps) {
   const queryClient = useQueryClient();
@@ -384,11 +398,13 @@ export function AccessDialog({
   // render, and no stale draft from a previous principal can survive a
   // reopen. Closing never re-seeds, so the exit animation plays over the
   // content the person was looking at.
-  const [draft, setDraft] = useState<AccessDraftState>(() => initialDraftState(mode, roleScope));
+  const [draft, setDraft] = useState<AccessDraftState>(() =>
+    initialDraftState(mode, roleScope, initialAgentIds),
+  );
   const [wasOpen, setWasOpen] = useState(open);
   if (open !== wasOpen) {
     setWasOpen(open);
-    if (open) setDraft(initialDraftState(mode, roleScope));
+    if (open) setDraft(initialDraftState(mode, roleScope, initialAgentIds));
   }
 
   const { principals, role, agents, expires, attachProjectId, projectGrants, projectAccessOpen, removeOpen } =

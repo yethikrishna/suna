@@ -1,61 +1,47 @@
 'use client';
 
 /**
- * /projects/[id]/agent/[name] — one agent, as a page. The core screen of
- * Customize.
+ * /projects/[id]/agent/[name] — one agent, as a full-page editor. The core
+ * screen of Customize.
  *
  * Customize is agent-centric (Marko, 2026-09-01): the agent is the only
  * object a project manager grants a person or a group, so every other
- * decision — which model, which skills, which connectors and secrets, when it
- * runs, who may use it — hangs off it. This page puts all of them on one
- * routed screen, laid out as a DOCUMENT with a CONFIGURATION PANE:
+ * decision — who may use it, which model, which skills, which connectors and
+ * secrets, when it runs — hangs off it. This page is built like the Settings
+ * page (Marko, 2026-09-03: "make it a regular full page Agent Editor"): a
+ * header, a left rail of topics, and one full-width pane per topic.
  *
- *   ┌ Agents › name          [Start session] [⋯] ┃ Configuration            ┐
- *   │ ◼ Name  chips                               ┃ Model Triggers Access … │
- *   │                                             ┠─────────────────────────┤
- *   │ Description                                 ┃ Model                   │
- *   │ Instructions            [Edit | Preview]    ┃ Triggers                │
- *   │  (the system prompt — the whole column,     ┃ Access                  │
- *   │   because it IS the agent)                  ┃ Who can use it          │
- *   │                                             ┃ Workspace · Tools · …   │
- *   ├─────────────────────────────────────────────┸─────────────────────────┤
+ *   ┌ Agents › name                  ● Name  chips   [Start session] [⋯] ┐
+ *   ├──────────────┬──────────────────────────────────────────────────────┤
+ *   │ Overview     │                                                      │
+ *   │ People       │   the selected topic's pane, one column,            │
+ *   │ Access       │   `max-w-2xl` like the Settings page                 │
+ *   │ Triggers     │                                                      │
+ *   │ Model        │                                                      │
+ *   │ Workspace    │                                                      │
+ *   │ Tools        │                                                      │
+ *   │ Basics       │                                                      │
+ *   ├──────────────┴──────────────────────────────────────────────────────┤
  *   │ Unsaved changes · commits to the repo             [Discard] [Save ⌘S] │
- *   └───────────────────────────────────────────────────────────────────────┘
+ *   └─────────────────────────────────────────────────────────────────────┘
  *
- * ## How it scrolls
- *
- * On `lg` the two columns are two SCROLLERS. The document scrolls on the
- * left; the pane scrolls on the right, under its own header, so the grants
- * stay reachable however long the instructions run — the same shape as the
- * reference (a document with a fixed "Overview" pane). Below `lg` there is
- * one scroller and the pane follows the document.
- *
- * Scrolling the document past its header condenses it: a compact bar with the
- * avatar, the name and the same two actions slides in at the top of the
- * document scroller, so "which agent" and "start it" never leave the screen.
- *
- * The pane is TABBED — People, Access, Triggers, Model, Workspace, Tools, Basics —
- * rather than one long scroll: each tab is a short, self-contained screen,
- * and People, the reason the page exists, is the one it opens on. The draft
- * is shared across tabs, so switching never drops an edit. `?section=<tab>`
- * deep-links a tab and follows the selection, so the Access hub can send
- * someone straight to an agent's grants.
- *
- * The save bar is OUTSIDE both scrollers, across the foot of the page. It
- * exists only while the draft is dirty.
+ * The rail is the Settings rail's dialect (`project-settings-page.tsx`,
+ * `settings-panel.tsx`): same width, same row classes, a real `<Link>` per
+ * topic so a topic has a URL (`?section=<key>`) a person can be sent to. The
+ * draft is shared across topics, so switching never drops an edit, and the
+ * save bar spans the page foot. Below `lg` the rail is a horizontal row.
  *
  * Two bodies behind one header:
  *
  *  - **Editable** — a v2 (kortix.yaml) project and a caller with
  *    `project.agent.write`. Every field is live; Save round-trips the whole
  *    `agents.<name>` block through the agent-config route, which commits it to
- *    the project repo. State lives in `useAgentDraft`; the pane is
- *    `AgentConfigSections` with the page's own Triggers and People sections
+ *    the project repo. State lives in `useAgentDraft`; the panes are
+ *    `AgentConfigSections` with the page's own Overview, People and Triggers
  *    slotted in.
- *  - **Read-only** — a v1 project, or a caller without write. The document is
- *    the agent's source file; the pane keeps the two v1 cards (`AgentModel`,
- *    `AgentScope`) plus Triggers and People, and a v1 project gets the
- *    upgrade hint. We degrade, never blank.
+ *  - **Read-only** — a v1 project, or a caller without write. Overview shows
+ *    the agent's source file; People, Access (the legacy scope mirror),
+ *    Triggers and Model (the gateway pin) remain. We degrade, never blank.
  *
  * The page is keyed on the agent name by its route, so switching agents
  * remounts every draft rather than carrying one agent's edits onto another.
@@ -76,7 +62,6 @@ import {
 import Hint from '@/components/ui/hint';
 import { InfoBanner } from '@/components/ui/info-banner';
 import { Kbd } from '@/components/ui/kbd';
-import { Label } from '@/components/ui/label';
 import Loading from '@/components/ui/loading';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -115,30 +100,34 @@ import { contract, qk, useProjectAccountId } from '@kortix/sdk/react';
 import { capitalizeWords } from '@kortix/shared';
 import {
   CaretRightIcon,
+  CpuIcon,
+  CubeIcon,
   DotsThreeIcon,
+  FileTextIcon,
+  type Icon,
+  LockKeyIcon,
   PlayIcon,
   RobotIcon,
+  SlidersHorizontalIcon,
   StarIcon,
+  TimerIcon,
+  UsersIcon,
+  WrenchIcon,
 } from '@phosphor-icons/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, m } from 'motion/react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
-import {
-  type ReactNode,
-  type RefObject,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { type ReactNode, type RefObject, useCallback, useEffect, useState } from 'react';
 
+import { FadedScrollArea } from '@/components/ui/faded-scroll-area';
+import { SETTINGS_SIDEBAR_WIDTH_PX } from '@/features/accounts/hub/account-settings-shell';
 import { capabilityTabHref } from '@/features/workspace/capabilities/shared/capability-tab-routes';
 import {
   isMarkdownPath,
   languageForPath,
 } from '@/features/workspace/capabilities/shared/entity/entity-files';
+import { useIsMobile } from '@/hooks/utils';
 
 import { EditorSectionStyleProvider } from '@/features/workspace/customize/sections/view/agent-editor-primitives';
 
@@ -149,10 +138,18 @@ import { AgentTriggersSection } from './agent-triggers-section';
 
 type Agent = ProjectConfigSummary['agents'][number];
 
-/** The pane's width. Wide enough that a label/control row keeps its label
- *  to two lines and a grant checklist shows its hints; the document keeps
- *  at least ~600px beside it on a 1440 screen with the sidebar open. */
-const PANE_WIDTH = 'lg:w-[30rem] xl:w-[34rem]';
+/** The rail's icons — the one place that draws them (`AGENT_CONFIG_SECTIONS`
+ *  is pure data, imported by the editor module). */
+const SECTION_ICON: Record<AgentConfigSectionKey, Icon> = {
+  overview: FileTextIcon,
+  people: UsersIcon,
+  access: LockKeyIcon,
+  triggers: TimerIcon,
+  model: CpuIcon,
+  workspace: CubeIcon,
+  tools: WrenchIcon,
+  basics: SlidersHorizontalIcon,
+};
 
 export function AgentPage({ projectId, agentName }: { projectId: string; agentName: string }) {
   // `accountId` skips useProjectCan's own getProject and lets the IAM probe
@@ -233,57 +230,102 @@ export function AgentPage({ projectId, agentName }: { projectId: string; agentNa
 // ─── Frame ─────────────────────────────────────────────────────────────────
 
 /**
- * The two-scroller frame. `document` is the left column's content, `pane`
- * the right column's; `paneHeader` sits above the pane's own scroller and
- * `footer` spans the foot of the whole page (the save bar).
- *
- * Below `lg` the frame's body is the one scroller and the pane follows the
- * document as a normal block. On `lg` the body stops scrolling
- * (`lg:overflow-hidden`) and each column scrolls itself.
+ * Header on top, then the rail beside the pane, then the footer. The pane is
+ * the one scroller; the rail is the Settings rail
+ * (`project-settings-page.tsx`), row for row.
  */
 function AgentPageFrame({
-  document: doc,
+  header,
+  section,
+  sections,
+  sectionHref,
   pane,
-  paneHeader,
   footer,
-  documentRef,
-  paneRef,
 }: {
-  document: ReactNode;
+  header: ReactNode;
+  section: AgentConfigSectionKey;
+  sections: readonly AgentConfigSectionKey[];
+  sectionHref: (key: AgentConfigSectionKey) => string;
   pane: ReactNode;
-  paneHeader?: ReactNode;
   footer?: ReactNode;
-  documentRef?: RefObject<HTMLDivElement | null>;
-  paneRef?: RefObject<HTMLDivElement | null>;
 }) {
+  const isMobile = useIsMobile();
+  const items = AGENT_CONFIG_SECTIONS.filter((s) => sections.includes(s.key));
+  const trigger = (item: (typeof AGENT_CONFIG_SECTIONS)[number], horizontal: boolean) => {
+    const SectionIcon = SECTION_ICON[item.key];
+    return (
+      <TabsTrigger
+        key={item.key}
+        value={item.key}
+        asChild
+        size={horizontal ? undefined : 'md'}
+        className={
+          horizontal
+            ? 'w-auto shrink-0 gap-2.5 px-3 py-0.75 whitespace-nowrap'
+            : cn(
+                // The Settings rail's row dialect (`project-settings-page.tsx`).
+                'gap-2 px-2.5 py-1 font-normal transition-none has-[>svg]:px-2.5',
+                'text-foreground data-[state=inactive]:text-foreground hover:bg-hover hover:text-foreground',
+                'data-[state=active]:bg-active data-[state=active]:font-medium',
+                '[&_svg]:text-muted-foreground data-[state=active]:[&_svg]:text-foreground',
+              )
+        }
+      >
+        <Link href={sectionHref(item.key)} prefetch>
+          <SectionIcon className="size-4 shrink-0" />
+          <span className={cn(!horizontal && 'truncate')}>{item.label}</span>
+        </Link>
+      </TabsTrigger>
+    );
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto lg:flex lg:overflow-hidden">
-        <div ref={documentRef} className="relative min-w-0 flex-1 lg:min-h-0 lg:overflow-y-auto">
-          {doc}
-        </div>
-        <aside
-          className={cn(
-            'border-border/60 flex w-full shrink-0 flex-col border-t',
-            'lg:min-h-0 lg:border-t-0 lg:border-l',
-            PANE_WIDTH,
-          )}
-        >
-          {paneHeader}
-          <div ref={paneRef} className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-            <div className="px-5 py-5 pb-24 lg:pb-16">{pane}</div>
-          </div>
-        </aside>
+      <div className="border-border/60 shrink-0 border-b px-6 pt-5 pb-4 lg:px-8">{header}</div>
+      <div
+        className={cn(
+          'min-h-0 flex-1',
+          isMobile ? 'flex flex-col overflow-hidden' : 'grid overflow-hidden',
+        )}
+        style={isMobile ? undefined : { gridTemplateColumns: `${SETTINGS_SIDEBAR_WIDTH_PX}px 1fr` }}
+      >
+        {isMobile ? (
+          <nav
+            aria-label="Agent sections"
+            className="border-border/60 flex h-auto shrink-0 items-center border-b"
+          >
+            <FadedScrollArea
+              orientation="horizontal"
+              fadeColor="from-background"
+              className="min-w-0 flex-1 py-2"
+            >
+              <Tabs value={section} className="w-fit">
+                <TabsList orientation="horizontal" className="w-fit gap-1 px-2">
+                  {items.map((item) => trigger(item, true))}
+                </TabsList>
+              </Tabs>
+            </FadedScrollArea>
+          </nav>
+        ) : (
+          <aside className="flex min-h-0 flex-col border-r bg-inherit">
+            <nav
+              aria-label="Agent sections"
+              className="flex min-h-0 flex-1 [scrollbar-width:none] flex-col gap-4 overflow-y-auto px-2 pt-3 pb-2 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            >
+              <Tabs value={section} orientation="vertical">
+                <TabsList orientation="vertical" className="w-full">
+                  {items.map((item) => trigger(item, false))}
+                </TabsList>
+              </Tabs>
+            </nav>
+          </aside>
+        )}
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+          <div className="mx-auto w-full max-w-2xl px-6 py-8 pb-24 lg:py-10">{pane}</div>
+        </main>
       </div>
       {footer}
     </div>
-  );
-}
-
-/** The document column's own padding and measure. */
-function DocumentColumn({ children }: { children: ReactNode }) {
-  return (
-    <div className="mx-auto w-full max-w-3xl px-6 pt-6 pb-24 lg:px-10 lg:pt-8">{children}</div>
   );
 }
 
@@ -297,33 +339,46 @@ function CenteredState({ children }: { children: ReactNode }) {
 
 function AgentPageSkeleton() {
   return (
-    <AgentPageFrame
-      document={
-        <DocumentColumn>
-          <div className="space-y-4">
-            <Skeleton className="h-4 w-32 rounded-sm" />
-            <Skeleton className="h-8 w-56 rounded-sm" />
-          </div>
-          <div className="mt-8 space-y-6">
-            <Skeleton className="h-11 w-full rounded-md" />
-            <Skeleton className="h-96 w-full rounded-md" />
-          </div>
-        </DocumentColumn>
-      }
-      paneHeader={
-        <div className="border-border/60 border-b px-5 py-3">
-          <Skeleton className="h-4 w-28 rounded-sm" />
+    <div className="flex h-full min-h-0 flex-1 flex-col">
+      <div className="border-border/60 shrink-0 space-y-4 border-b px-6 pt-5 pb-4 lg:px-8">
+        <Skeleton className="h-4 w-32 rounded-sm" />
+        <Skeleton className="h-8 w-56 rounded-sm" />
+      </div>
+      <div
+        className="grid min-h-0 flex-1"
+        style={{ gridTemplateColumns: `${SETTINGS_SIDEBAR_WIDTH_PX}px 1fr` }}
+      >
+        <div className="space-y-1.5 border-r px-2 pt-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length placeholder
+            <Skeleton key={i} className="h-8 w-full rounded-sm" />
+          ))}
         </div>
-      }
-      pane={
-        <div className="space-y-6">
-          <Skeleton className="h-28 w-full rounded-md" />
-          <Skeleton className="h-40 w-full rounded-md" />
-          <Skeleton className="h-28 w-full rounded-md" />
+        <div className="mx-auto w-full max-w-2xl space-y-6 px-6 py-8">
+          <Skeleton className="h-11 w-full rounded-md" />
+          <Skeleton className="h-72 w-full rounded-md" />
         </div>
-      }
-    />
+      </div>
+    </div>
   );
+}
+
+// ─── Section routing ───────────────────────────────────────────────────────
+
+/**
+ * Which topic the page shows. Seeded from `?section=` so the Access hub and
+ * the Triggers tab can deep-link one; the rail's links write the same param,
+ * so the URL always names the topic on screen.
+ */
+function useAgentSection(available: readonly AgentConfigSectionKey[]): AgentConfigSectionKey {
+  const searchParams = useSearchParams();
+  const fromUrl = searchParams.get('section');
+  if (isAgentConfigSectionKey(fromUrl) && available.includes(fromUrl)) return fromUrl;
+  return available.find((k) => k === DEFAULT_AGENT_CONFIG_SECTION) ?? available[0];
+}
+
+function sectionHrefFor(pathname: string) {
+  return (key: AgentConfigSectionKey) => `${pathname}?section=${key}`;
 }
 
 // ─── Header ────────────────────────────────────────────────────────────────
@@ -665,7 +720,7 @@ function PaneHeader({
         <TabsList
           type="underline"
           underlineSize="md"
-          className="h-auto w-full justify-start gap-3.5 overflow-x-auto border-b-0 px-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="h-auto w-full [scrollbar-width:none] justify-start gap-3.5 overflow-x-auto border-b-0 px-5 [&::-webkit-scrollbar]:hidden"
           aria-label="Configuration sections"
         >
           {tabs.map((s) => (
@@ -683,7 +738,13 @@ function PaneHeader({
 
 const EDITABLE_SECTIONS: readonly AgentConfigSectionKey[] = AGENT_CONFIG_SECTIONS.map((s) => s.key);
 /** What a v1 project, or a reader without write, can still see. */
-const READ_ONLY_SECTIONS: readonly AgentConfigSectionKey[] = ['people', 'access', 'triggers', 'model'];
+const READ_ONLY_SECTIONS: readonly AgentConfigSectionKey[] = [
+  'overview',
+  'people',
+  'access',
+  'triggers',
+  'model',
+];
 
 function EditableAgentPage({
   projectId,
@@ -704,14 +765,8 @@ function EditableAgentPage({
     id: skill.name,
     label: skill.name,
   }));
-
-  const documentRef = useRef<HTMLDivElement>(null);
-  const paneRef = useRef<HTMLDivElement>(null);
-  // A stable list, so the scroll hook subscribes once rather than on every
-  // render (`useMemo`, not a ref read during render).
-  const scrollRefs = useMemo(() => [documentRef], []);
-  const condensed = useScrolledPast(scrollRefs, 96);
-  const [section, selectSection] = usePaneSection(EDITABLE_SECTIONS);
+  const pathname = usePathname();
+  const section = useAgentSection(EDITABLE_SECTIONS);
 
   const onSave = useCallback(async () => {
     if (!editor.isDirty || update.isPending) return;
@@ -724,69 +779,45 @@ function EditableAgentPage({
     }
   }, [editor, update, agent.name]);
 
-  const leaveGuard = useUnsavedChangesGuard(editor.isDirty);
+  // Rail links change only `?section=` on this same path; the guard lets those
+  // through so switching topics never asks about unsaved edits — the draft is
+  // shared across topics and nothing is lost.
+  const leaveGuard = useUnsavedChangesGuard(editor.isDirty, pathname);
   useSaveShortcut(onSave);
 
   return (
     <AgentPageFrame
-      documentRef={documentRef}
-      paneRef={paneRef}
-      document={
-        <>
-          <CompactBar
-            visible={condensed}
-            projectId={projectId}
-            agent={agent}
-            config={config}
-            canWrite
-            color={editor.oc.color}
-          />
-          <DocumentColumn>
-            <AgentHeader
-              projectId={projectId}
-              agent={agent}
-              config={config}
-              canWrite
-              color={editor.oc.color}
-            />
-
-            <div className="mt-8 space-y-8">
-              <section className="space-y-2.5">
-                <div className="space-y-1">
-                  <Label>Description</Label>
-                  <p className="text-muted-foreground text-xs leading-relaxed text-pretty">
-                    {editor.oc.mode === 'subagent'
-                      ? 'Required. This is how other agents decide to call it.'
-                      : 'One line on what this agent is for. Other agents read it when picking a subagent.'}
-                  </p>
-                </div>
-                <Textarea
-                  aria-label="Description"
-                  value={editor.oc.description ?? ''}
-                  placeholder="What this agent is for"
-                  minHeight={44}
-                  className="text-sm"
-                  onChange={(e) => editor.setOc('description', e.target.value)}
-                />
-              </section>
-
-              <InstructionsPanel
-                value={editor.oc.prompt ?? ''}
-                onChange={(next) => editor.setOc('prompt', next)}
-              />
-            </div>
-          </DocumentColumn>
-        </>
+      header={
+        <AgentHeader
+          projectId={projectId}
+          agent={agent}
+          config={config}
+          canWrite
+          color={editor.oc.color}
+        />
       }
-      paneHeader={
-        <PaneHeader section={section} onSelect={selectSection} keys={EDITABLE_SECTIONS} />
-      }
+      section={section}
+      sections={EDITABLE_SECTIONS}
+      sectionHref={sectionHrefFor(pathname)}
       pane={
         <AgentConfigSections
           section={section}
           editor={editor}
           options={options}
           skillsOptions={skillsOptions}
+          overview={
+            <OverviewPane
+              description={editor.oc.description ?? ''}
+              onDescriptionChange={(next) => editor.setOc('description', next)}
+              descriptionHelp={
+                editor.oc.mode === 'subagent'
+                  ? 'Required. This is how other agents decide to call it.'
+                  : 'One line on what this agent is for. Other agents read it when picking a subagent.'
+              }
+              prompt={editor.oc.prompt ?? ''}
+              onPromptChange={(next) => editor.setOc('prompt', next)}
+            />
+          }
           triggers={
             <AgentTriggersSection
               projectId={projectId}
@@ -842,6 +873,48 @@ function EditableAgentPage({
 }
 
 /**
+ * The Overview topic — what the agent IS: one line of description and the
+ * instructions, which are the agent. Two cards, in the pane's card dialect.
+ */
+function OverviewPane({
+  description,
+  onDescriptionChange,
+  descriptionHelp,
+  prompt,
+  onPromptChange,
+}: {
+  description: string;
+  onDescriptionChange: (next: string) => void;
+  descriptionHelp: string;
+  prompt: string;
+  onPromptChange: (next: string) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <section className="bg-popover rounded-md border">
+        <div className="border-border/60 border-b px-4 pt-4 pb-3">
+          <h3 className="text-foreground text-sm font-medium">Description</h3>
+          <p className="text-muted-foreground mt-1 text-xs leading-relaxed text-pretty">
+            {descriptionHelp}
+          </p>
+        </div>
+        <div className="px-4 py-4">
+          <Textarea
+            aria-label="Description"
+            value={description}
+            placeholder="What this agent is for"
+            minHeight={44}
+            className="text-sm"
+            onChange={(e) => onDescriptionChange(e.target.value)}
+          />
+        </div>
+      </section>
+      <InstructionsPanel value={prompt} onChange={onPromptChange} />
+    </div>
+  );
+}
+
+/**
  * The instructions — the agent's system prompt, and the thing that most IS
  * the agent. Two views of one field: Edit is the textarea, Preview renders
  * the markdown the way the agent's source file reads. It opens on Preview
@@ -858,10 +931,10 @@ function InstructionsPanel({
 }) {
   const [view, setView] = useState<'edit' | 'preview'>(value.trim() ? 'preview' : 'edit');
   return (
-    <section className="space-y-2.5">
-      <div className="flex items-end justify-between gap-3">
+    <section className="bg-popover rounded-md border">
+      <div className="border-border/60 flex items-end justify-between gap-3 border-b px-4 pt-4 pb-3">
         <div className="space-y-1">
-          <Label>Instructions</Label>
+          <h3 className="text-foreground text-sm font-medium">Instructions</h3>
           <p className="text-muted-foreground text-xs leading-relaxed text-pretty">
             Told to this agent at the start of every session. Markdown. Leave empty to use the
             default instructions.
@@ -875,17 +948,19 @@ function InstructionsPanel({
         </Tabs>
       </div>
       {view === 'edit' ? (
-        <Textarea
-          aria-label="Instructions"
-          value={value}
-          placeholder={'You are…\n\nGoal: …\n\nSteps:\n1. …'}
-          minHeight={400}
-          autoFocus={value.trim().length > 0}
-          className="font-mono text-xs leading-relaxed"
-          onChange={(e) => onChange(e.target.value)}
-        />
+        <div className="p-2">
+          <Textarea
+            aria-label="Instructions"
+            value={value}
+            placeholder={'You are…\n\nGoal: …\n\nSteps:\n1. …'}
+            minHeight={420}
+            autoFocus={value.trim().length > 0}
+            className="border-0 font-mono text-xs leading-relaxed focus-visible:ring-0"
+            onChange={(e) => onChange(e.target.value)}
+          />
+        </div>
       ) : (
-        <div className="bg-popover min-h-[400px] rounded-md border px-5 py-4">
+        <div className="min-h-[420px] px-5 py-4">
           <MarkdownWithFrontmatter content={value} />
         </div>
       )}
@@ -977,7 +1052,7 @@ function useSaveShortcut(onSave: () => void) {
  * pushes the parked href; `stay` drops it. Modified clicks (new tab) and
  * external links pass through — nothing is lost by opening a second tab.
  */
-function useUnsavedChangesGuard(isDirty: boolean) {
+function useUnsavedChangesGuard(isDirty: boolean, currentPath?: string) {
   const router = useRouter();
   const [pendingHref, setPendingHref] = useState<string | null>(null);
 
@@ -995,6 +1070,9 @@ function useUnsavedChangesGuard(isDirty: boolean) {
       if (anchor.origin !== window.location.origin) return;
       const href = anchor.pathname + anchor.search + anchor.hash;
       if (href === window.location.pathname + window.location.search + window.location.hash) return;
+      // A link that only changes `?section=` on this page switches topic; the
+      // draft survives that, so it never needs the question.
+      if (currentPath && anchor.pathname === currentPath) return;
       event.preventDefault();
       event.stopPropagation();
       setPendingHref(href);
@@ -1005,7 +1083,7 @@ function useUnsavedChangesGuard(isDirty: boolean) {
       window.removeEventListener('beforeunload', onBeforeUnload);
       document.removeEventListener('click', onClick, true);
     };
-  }, [isDirty]);
+  }, [isDirty, currentPath]);
 
   return {
     pendingHref,
@@ -1042,102 +1120,83 @@ function ReadOnlyAgentPage({
     queryFn: () => readProjectFile(projectId, sourcePath),
     staleTime: 30_000,
   });
-  const documentRef = useRef<HTMLDivElement>(null);
-  const paneRef = useRef<HTMLDivElement>(null);
-  // A stable list, so the scroll hook subscribes once rather than on every
-  // render (`useMemo`, not a ref read during render).
-  const scrollRefs = useMemo(() => [documentRef], []);
-  const condensed = useScrolledPast(scrollRefs, 96);
-  const [section, selectSection] = usePaneSection(READ_ONLY_SECTIONS);
+  const pathname = usePathname();
+  const section = useAgentSection(READ_ONLY_SECTIONS);
+
+  const source = (
+    <section className="bg-popover rounded-md border">
+      <div className="border-border/60 border-b px-4 pt-4 pb-3">
+        <h3 className="text-foreground text-sm font-medium">Instructions</h3>
+        <p className="text-muted-foreground mt-1 text-xs">
+          <span className="font-mono">{sourcePath}</span>
+        </p>
+      </div>
+      {fileQuery.isLoading ? (
+        <div className="space-y-2.5 p-4">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-11/12" />
+          <Skeleton className="h-4 w-10/12" />
+          <Skeleton className="h-4 w-9/12" />
+        </div>
+      ) : fileQuery.isError ? (
+        <div className="p-4">
+          <ErrorState
+            size="sm"
+            title="Couldn't load the source"
+            description={
+              fileQuery.error instanceof Error
+                ? fileQuery.error.message
+                : 'You may not have permission to read this file.'
+            }
+            action={
+              <Button variant="outline" size="sm" onClick={() => fileQuery.refetch()}>
+                Retry
+              </Button>
+            }
+          />
+        </div>
+      ) : isMarkdownPath(sourcePath) ? (
+        <div className="p-4">
+          <MarkdownWithFrontmatter content={fileQuery.data?.content ?? ''} />
+        </div>
+      ) : (
+        <pre
+          className={cn(
+            'overflow-x-auto p-4',
+            'text-foreground font-mono text-sm leading-[1.65]',
+            '[&_code]:border-none [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-inherit',
+            '[&_.shiki]:!bg-transparent [&_span]:border-none [&_span]:!bg-transparent [&_span]:outline-none',
+          )}
+        >
+          <HighlightedCode
+            code={fileQuery.data?.content ?? ''}
+            language={languageForPath(sourcePath)}
+          />
+        </pre>
+      )}
+    </section>
+  );
 
   return (
     <AgentPageFrame
-      documentRef={documentRef}
-      paneRef={paneRef}
-      document={
-        <>
-          <CompactBar
-            visible={condensed}
-            projectId={projectId}
-            agent={agent}
-            config={config}
-            canWrite={canWrite}
-            color={agent.color}
-          />
-          <DocumentColumn>
-            <AgentHeader
-              projectId={projectId}
-              agent={agent}
-              config={config}
-              canWrite={canWrite}
-              color={agent.color}
-            >
-              {agent.description ? (
-                <p className="text-muted-foreground max-w-2xl text-sm text-pretty">
-                  {agent.description}
-                </p>
-              ) : null}
-            </AgentHeader>
-
-            <div className="mt-8 space-y-2.5">
-              <div className="space-y-1">
-                <Label>Instructions</Label>
-                <p className="text-muted-foreground text-xs">
-                  <span className="font-mono">{sourcePath}</span>
-                </p>
-              </div>
-              <div className="bg-popover rounded-md border">
-                {fileQuery.isLoading ? (
-                  <div className="space-y-2.5 p-4">
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-11/12" />
-                    <Skeleton className="h-4 w-10/12" />
-                    <Skeleton className="h-4 w-9/12" />
-                  </div>
-                ) : fileQuery.isError ? (
-                  <div className="p-4">
-                    <ErrorState
-                      size="sm"
-                      title="Couldn't load the source"
-                      description={
-                        fileQuery.error instanceof Error
-                          ? fileQuery.error.message
-                          : 'You may not have permission to read this file.'
-                      }
-                      action={
-                        <Button variant="outline" size="sm" onClick={() => fileQuery.refetch()}>
-                          Retry
-                        </Button>
-                      }
-                    />
-                  </div>
-                ) : isMarkdownPath(sourcePath) ? (
-                  <div className="p-4">
-                    <MarkdownWithFrontmatter content={fileQuery.data?.content ?? ''} />
-                  </div>
-                ) : (
-                  <pre
-                    className={cn(
-                      'overflow-x-auto p-4',
-                      'text-foreground font-mono text-sm leading-[1.65]',
-                      '[&_code]:border-none [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-inherit',
-                      '[&_.shiki]:!bg-transparent [&_span]:border-none [&_span]:!bg-transparent [&_span]:outline-none',
-                    )}
-                  >
-                    <HighlightedCode
-                      code={fileQuery.data?.content ?? ''}
-                      language={languageForPath(sourcePath)}
-                    />
-                  </pre>
-                )}
-              </div>
-            </div>
-          </DocumentColumn>
-        </>
+      header={
+        <AgentHeader
+          projectId={projectId}
+          agent={agent}
+          config={config}
+          canWrite={canWrite}
+          color={agent.color}
+        >
+          {agent.description ? (
+            <p className="text-muted-foreground max-w-2xl text-sm text-pretty">
+              {agent.description}
+            </p>
+          ) : null}
+        </AgentHeader>
       }
-      paneHeader={
-        <PaneHeader section={section} onSelect={selectSection} keys={READ_ONLY_SECTIONS} />
-      }
+      section={section}
+      sections={READ_ONLY_SECTIONS}
+      sectionHref={sectionHrefFor(pathname)}
       pane={
         <EditorSectionStyleProvider value="panel">
           <div className="space-y-4">
@@ -1148,11 +1207,12 @@ function ReadOnlyAgentPage({
                 agent's instructions, model, tool permissions and access here.
               </InfoBanner>
             ) : null}
-            {section === 'access' ? (
-              <div className="space-y-4">
-                <AgentPeopleSection projectId={projectId} agentName={agent.name} />
-                <AgentScope projectId={projectId} agentName={agent.name} scope={agent.scope} />
-              </div>
+            {section === 'overview' ? (
+              source
+            ) : section === 'people' ? (
+              <AgentPeopleSection projectId={projectId} agentName={agent.name} />
+            ) : section === 'access' ? (
+              <AgentScope projectId={projectId} agentName={agent.name} scope={agent.scope} />
             ) : section === 'triggers' ? (
               <AgentTriggersSection
                 projectId={projectId}
@@ -1160,7 +1220,7 @@ function ReadOnlyAgentPage({
                 defaultAgent={config.open_code_default_agent}
               />
             ) : (
-              <div className="space-y-6">
+              <div className="space-y-4">
                 <AgentModel projectId={projectId} agentName={agent.name} />
                 <p className="text-muted-foreground text-xs text-pretty">
                   The model this agent runs on is set in its source file. With the model gateway on,

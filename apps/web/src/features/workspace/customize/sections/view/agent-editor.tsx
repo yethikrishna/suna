@@ -245,9 +245,11 @@ export function useAgentEditorOptions(
  * are set once and rarely revisited, so they sit further down.
  */
 export const AGENT_CONFIG_SECTIONS = [
-  // People first: granting an agent to a person or a group IS the access
-  // path in Kortix (Marko, 2026-09-03), so who may use it leads, and what it
-  // may reach — which those people inherit — follows on its own tab.
+  // Overview is the agent itself — description and instructions. Then People:
+  // granting an agent to a person or a group IS the access path in Kortix
+  // (Marko, 2026-09-03), so who may use it comes right after, and what it may
+  // reach — which those people inherit — follows.
+  { key: 'overview', label: 'Overview' },
   { key: 'people', label: 'People' },
   { key: 'access', label: 'Access' },
   { key: 'triggers', label: 'Triggers' },
@@ -260,7 +262,7 @@ export const AGENT_CONFIG_SECTIONS = [
 export type AgentConfigSectionKey = (typeof AGENT_CONFIG_SECTIONS)[number]['key'];
 
 /** The tab the pane opens on, and the one an unknown `?section=` falls back to. */
-export const DEFAULT_AGENT_CONFIG_SECTION: AgentConfigSectionKey = 'people';
+export const DEFAULT_AGENT_CONFIG_SECTION: AgentConfigSectionKey = 'overview';
 
 export function isAgentConfigSectionKey(value: string | null): value is AgentConfigSectionKey {
   return AGENT_CONFIG_SECTIONS.some((s) => s.key === value);
@@ -280,6 +282,7 @@ export function AgentConfigSections({
   editor,
   options,
   skillsOptions,
+  overview,
   triggers,
   people,
 }: {
@@ -287,6 +290,8 @@ export function AgentConfigSections({
   editor: AgentDraft;
   options: AgentEditorOptions;
   skillsOptions: { id: string; label: string }[];
+  /** Description + instructions — a page-owned section, the Overview tab. */
+  overview?: React.ReactNode;
   /** The agent's triggers — a page-owned section, the Triggers tab. */
   triggers?: React.ReactNode;
   /** Who may use the agent — a page-owned section, the People tab. */
@@ -297,6 +302,8 @@ export function AgentConfigSections({
   // two of them — Access holds the people and the grants — shows two blocks.
   const body = (() => {
     switch (section) {
+      case 'overview':
+        return <>{overview}</>;
       case 'people':
         return <>{people}</>;
       case 'access':

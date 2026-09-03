@@ -133,6 +133,7 @@ import { EditorSectionStyleProvider } from '@/features/workspace/customize/secti
 
 import { AgentModel, AgentScope } from './agent-detail-aside';
 import { AgentPeopleSection } from './agent-people-section';
+import { AgentShareControl } from './agent-share-control';
 import { AgentTriggersSection } from './agent-triggers-section';
 
 type Agent = ProjectConfigSummary['agents'][number];
@@ -426,8 +427,14 @@ function AgentActions({
     onError: (error: Error) => errorToast(error.message || 'Failed to update default agent'),
   });
 
+  const pathname = usePathname();
   return (
     <div className="flex shrink-0 items-center gap-2">
+      <AgentShareControl
+        projectId={projectId}
+        agentName={agent.name}
+        peopleHref={`${pathname}?section=people`}
+      />
       {startBlocked ? (
         <Hint label={startBlocked}>
           {/* A span, so the tooltip still fires over a disabled button. */}

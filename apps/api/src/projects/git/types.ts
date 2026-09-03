@@ -37,6 +37,11 @@ export interface ProjectConfigSummary {
     path: string;
     description: string | null;
     mode: string | null;
+    /** The agent's `color:` frontmatter — a named theme colour (`primary`,
+     *  `accent`, …) or a hex — so lists can draw the same mark the session
+     *  badge wears. null when the file sets none; optional so fixtures built
+     *  before the field keep compiling. */
+    color?: string | null;
     source: 'opencode' | 'kortix.yaml';
     enabled?: boolean;
     sandbox?: string | null;

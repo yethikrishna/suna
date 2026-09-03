@@ -148,6 +148,10 @@ export interface ProjectConfigSummary {
     path: string;
     description: string | null;
     mode: string | null;
+    /** The agent's `color:` frontmatter — a named theme colour or a hex —
+     *  so lists can draw the mark its session badge wears. Absent on older
+     *  servers, null when the file sets none. */
+    color?: string | null;
     source?: 'opencode' | 'kortix.toml';
     enabled?: boolean;
     /** Agent-specific sandbox template. null or absent inherits the project default. */

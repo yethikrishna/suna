@@ -542,6 +542,237 @@
       "reassurance": "O repositório Git conectado não é excluído. Todo código já enviado permanece no lugar.",
       "keepWorkspace": "Manter espaço de trabalho"
     },
+    "sandbox": {
+      "states": {
+        "ready": "Pronto",
+        "pulling": "Baixando",
+        "building": "Criando",
+        "removing": "Removendo",
+        "error": "Erro",
+        "buildFailed": "Falha na criação",
+        "notBuilt": "Ainda não criado",
+        "unknown": "Desconhecido"
+      },
+      "sources": { "platform": "Plataforma Kortix", "dashboard": "Este painel" },
+      "facts": {
+        "processor": "Processador",
+        "memory": "Memória",
+        "storage": "Armazenamento",
+        "baseImage": "Imagem base",
+        "builtFrom": "Criado a partir de",
+        "kortixDefault": "Padrão da Kortix",
+        "definedIn": "Definido em"
+      },
+      "routing": {
+        "title": "Roteamento",
+        "automatic": "Automático",
+        "pinned": "Fixado",
+        "pinnedWithProvider": "Fixado · {provider}"
+      },
+      "toasts": {
+        "rebuildStarted": "Recriação iniciada para “{name}”",
+        "buildFailed": "Não foi possível iniciar a criação",
+        "deleted": "“{name}” excluído",
+        "deleteFailed": "Não foi possível excluir o modelo"
+      },
+      "actions": {
+        "new": "Novo modelo",
+        "edit": "Editar modelo",
+        "delete": "Excluir modelo",
+        "rebuild": "Recriar"
+      },
+      "coverage": {
+        "ready": "Pronto",
+        "building": "Criando",
+        "failed": "Falhou",
+        "notReady": "Não está pronto",
+        "unavailable": "Indisponível",
+        "selected": "Selecionado",
+        "selectedAria": "selecionado"
+      },
+      "defaultBadge": "Padrão",
+      "runtime": "Ambiente da sessão",
+      "checked": "Verificado {value}",
+      "deleteDialog": {
+        "title": "Excluir o modelo de sandbox “{name}”?",
+        "description": "Isto remove o modelo do projeto. As sessões que já o usam não são alteradas.",
+        "confirm": "Excluir"
+      },
+      "provider": {
+        "label": "Provedor de sandbox",
+        "experimental": "Experimental",
+        "description": "Fixe este projeto em um provedor de sandbox específico e substitua o padrão da plataforma. Novas sessões usam o provedor escolhido. “Automático” segue o padrão da plataforma.",
+        "preparing": "Preparando {provider}… isso pode levar alguns minutos",
+        "fallback": "provedor de sandbox",
+        "switched": "Alterado para {provider}",
+        "switchFailed": "Falha ao alterar o provedor de sandbox",
+        "updateFailed": "Não foi possível atualizar o provedor de sandbox"
+      },
+      "loadFailed": "Não foi possível carregar os modelos de sandbox:",
+      "retry": "Tentar novamente",
+      "descriptionStart": "Cada sessão começa com um modelo de sandbox, uma máquina preparada com seu repositório já disponível em",
+      "descriptionEnd": "O padrão da Kortix funciona para a maioria dos projetos. Adicione seu próprio modelo abaixo ou declare-o como",
+      "configReadFailed": "Não foi possível ler a configuração de sandbox do projeto:",
+      "emptyTitle": "Nenhum modelo resolvido ainda.",
+      "emptyDescription": "Crie um modelo ou adicione-o ao manifesto do projeto.",
+      "form": {
+        "newTitle": "Novo modelo de sandbox",
+        "editTitle": "Editar “{name}”",
+        "description": "Defina uma imagem de sandbox na qual as sessões podem iniciar. Escolha uma imagem Docker pública ou um Dockerfile no repositório. A camada de execução da Kortix é adicionada automaticamente.",
+        "name": "Nome",
+        "namePlaceholder": "Desenvolvimento de ML",
+        "slug": "Identificador",
+        "imageSource": "Origem da imagem",
+        "publicImage": "Imagem pública",
+        "example": "ex.",
+        "pathInsideRepo": "Caminho neste repositório",
+        "image": "Imagem",
+        "specificTag": "Deve incluir uma tag específica, não",
+        "dockerfilePath": "Caminho do Dockerfile",
+        "relativeToRoot": "Relativo à raiz do repositório.",
+        "resources": "Recursos",
+        "memory": "Memória (GiB)",
+        "disk": "Disco (GiB)",
+        "entrypoint": "Ponto de entrada",
+        "optional": "opcional",
+        "entrypointPlaceholder": "Deixe em branco para usar o padrão da Kortix (recomendado).",
+        "cancel": "Cancelar",
+        "save": "Salvar alterações",
+        "create": "Criar modelo",
+        "errors": {
+          "reservedSlug": "O identificador “default” é reservado para o modelo da plataforma.",
+          "invalidSlug": "Use letras minúsculas, dígitos, hífens ou sublinhados (1–64 caracteres).",
+          "imageRequired": "A referência da imagem é obrigatória.",
+          "dockerfileRequired": "O caminho do Dockerfile é obrigatório.",
+          "latestTag": "Fixe uma tag específica em vez de “latest”."
+        },
+        "toasts": {
+          "created": "Modelo criado — criação iniciada",
+          "createFailed": "Não foi possível criar o modelo",
+          "updated": "Modelo atualizado — sincronização do provedor iniciada",
+          "updateFailed": "Não foi possível atualizar o modelo"
+        }
+      }
+    },
+    "snapshots": {
+      "categories": {
+        "quota": {
+          "label": "Limite de snapshots atingido",
+          "help": "Este espaço de trabalho armazenou o máximo de máquinas preparadas permitido pelo plano. Exclua um modelo de sandbox que não usa mais ou aumente o limite e recrie."
+        },
+        "dockerfile": {
+          "label": "Falha na criação do Dockerfile",
+          "help": "Um comando no Dockerfile deste projeto retornou um erro. O registro abaixo termina no comando que falhou."
+        },
+        "layer": {
+          "label": "Falha na camada de execução da Kortix",
+          "help": "A imagem foi criada, mas a Kortix não conseguiu instalar suas ferramentas nela. Isso costuma ser temporário. Recrie."
+        },
+        "git": {
+          "label": "Falha no acesso ao repositório",
+          "help": "A Kortix não conseguiu ler o repositório deste projeto. Verifique se a conexão ainda está autorizada e recrie."
+        },
+        "tunnel": {
+          "label": "Retorno do sandbox inacessível",
+          "help": "A nova máquina não conseguiu contatar a Kortix durante a configuração. Isso costuma ser temporário. Recrie."
+        },
+        "provider": {
+          "label": "Erro do provedor de sandbox",
+          "help": "A empresa que executa a máquina retornou um erro. Não há problema com o projeto. Recrie."
+        },
+        "timeout": {
+          "label": "Tempo de criação esgotado",
+          "help": "A preparação da máquina excedeu o limite de tempo. Retire etapas lentas do Dockerfile ou tente quando o provedor estiver menos ocupado."
+        },
+        "runtime": {
+          "label": "Artefato de execução ausente",
+          "help": "A máquina foi preparada, mas falta um arquivo necessário à Kortix na inicialização. Recrie. Se ocorrer novamente, verifique a imagem base do modelo."
+        },
+        "unknown": {
+          "label": "Falha na criação",
+          "help": "A criação parou por um erro que a Kortix não conseguiu classificar. O registro completo está abaixo."
+        }
+      },
+      "sources": {
+        "session-start": "Início da sessão",
+        "project-create": "Projeto criado",
+        "cr-merge": "Mesclagem de revisão de código",
+        "manual": "Recriação manual",
+        "background": "Sincronização em segundo plano",
+        "startup": "Inicialização"
+      },
+      "statuses": { "ready": "pronto", "building": "criando", "failed": "falhou" },
+      "stale": {
+        "superseded": "Não terminou e uma configuração mais recente o substituiu",
+        "recovered": "Não terminou, mas o ambiente já está pronto",
+        "retrying": "Não terminou — uma nova tentativa está em andamento"
+      },
+      "outcomes": {
+        "ready": "Pronto para novas sessões",
+        "building": "Sendo preparado agora",
+        "blocked": "Novas sessões não podem iniciar aqui",
+        "failed": "Não terminou"
+      },
+      "facts": {
+        "triggeredBy": "Acionado por",
+        "started": "Iniciado",
+        "took": "Duração",
+        "stillRunning": "Ainda em andamento",
+        "runsOn": "Executado em",
+        "imageId": "ID da imagem",
+        "unknown": "Desconhecido"
+      },
+      "duration": {
+        "underMinute": "menos de 1 min",
+        "minutes": "{count} min",
+        "hours": "{count} h"
+      },
+      "environment": {
+        "ready": {
+          "title": "O ambiente deste projeto está pronto",
+          "body": "Novas sessões iniciam imediatamente na máquina preparada. Não há nada a fazer nesta página."
+        },
+        "building": {
+          "title": "Preparando o ambiente deste projeto",
+          "body": "Uma nova máquina está sendo preparada. Sessões iniciadas agora aguardam a conclusão e não falham."
+        },
+        "notBuilt": {
+          "title": "Nada preparado ainda",
+          "body": "A Kortix prepara uma máquina na primeira vez que você inicia uma sessão aqui. Nenhuma configuração antecipada é necessária."
+        }
+      },
+      "banner": {
+        "blockedTitle": "As sessões não podem iniciar",
+        "degradedTitle": "Algumas sessões não iniciarão",
+        "blockedBody": "A máquina usada para iniciar este projeto não foi criada e nenhuma cópia funcional está disponível. Cada nova sessão tenta novamente e encontra o mesmo erro.",
+        "degradedBody": "A máquina está pronta em {ready}, mas falha em {failed}. As sessões encaminhadas para lá não iniciarão."
+      },
+      "actions": { "fix": "Corrigir com o agente", "rebuild": "Recriar" },
+      "faq": {
+        "title": "Como funciona",
+        "items": {
+          "1": {
+            "question": "O que é um snapshot?",
+            "answer": "Um snapshot é uma máquina já configurada: o repositório do projeto, suas dependências e as ferramentas da Kortix são instalados antecipadamente. Ao iniciar uma sessão, essa máquina é copiada em vez de instalar tudo do zero. Por isso a sessão fica pronta em segundos, não minutos."
+          },
+          "2": {
+            "question": "Por que novas linhas continuam aparecendo?",
+            "answer": "A Kortix prepara uma nova máquina sempre que a receita muda: um novo modelo de sandbox, um Dockerfile editado ou uma alteração mesclada. Cada tentativa recebe uma linha. As linhas antigas são mantidas como histórico, não como tarefas pendentes."
+          },
+          "3": {
+            "question": "Uma tentativa falhou. Isso é um problema?",
+            "answer": "Geralmente não. Uma tentativa com falha só importa enquanto não houver uma máquina funcional. Nesse caso, um aviso com um botão para recriar aparece no topo. Uma linha com falha sem aviso já foi substituída por uma tentativa bem-sucedida."
+          }
+        }
+      },
+      "view": {
+        "loadFailed": "Não foi possível carregar os snapshots de sandbox:",
+        "retry": "Tentar novamente",
+        "logTitle": "Registro de criações",
+        "logDescription": "Uma linha para cada vez que a Kortix preparou uma máquina para este projeto. Abra uma linha para ver os detalhes.",
+        "empty": "Nenhuma criação registrada ainda. O padrão da plataforma é criado uma vez globalmente; modelos personalizados são criados no primeiro uso."
+      }
+    },
     "plan": {
       "managedByAdmin": "Gerenciado por um administrador da conta",
       "adminOnly": "Somente administradores desta conta podem alterar o plano ou comprar créditos.",

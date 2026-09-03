@@ -545,6 +545,237 @@
       "reassurance": "Il repository Git connesso non viene eliminato. Il codice già inviato resta al suo posto.",
       "keepWorkspace": "Mantieni spazio di lavoro"
     },
+    "sandbox": {
+      "states": {
+        "ready": "Pronto",
+        "pulling": "Download in corso",
+        "building": "Creazione in corso",
+        "removing": "Rimozione in corso",
+        "error": "Errore",
+        "buildFailed": "Creazione non riuscita",
+        "notBuilt": "Non ancora creato",
+        "unknown": "Sconosciuto"
+      },
+      "sources": { "platform": "Piattaforma Kortix", "dashboard": "Questa dashboard" },
+      "facts": {
+        "processor": "Processore",
+        "memory": "Memoria",
+        "storage": "Archiviazione",
+        "baseImage": "Immagine di base",
+        "builtFrom": "Creato da",
+        "kortixDefault": "Predefinito Kortix",
+        "definedIn": "Definito in"
+      },
+      "routing": {
+        "title": "Instradamento",
+        "automatic": "Automatico",
+        "pinned": "Fissato",
+        "pinnedWithProvider": "Fissato · {provider}"
+      },
+      "toasts": {
+        "rebuildStarted": "Ricreazione avviata per «{name}»",
+        "buildFailed": "Impossibile avviare la creazione",
+        "deleted": "«{name}» eliminato",
+        "deleteFailed": "Impossibile eliminare il modello"
+      },
+      "actions": {
+        "new": "Nuovo modello",
+        "edit": "Modifica modello",
+        "delete": "Elimina modello",
+        "rebuild": "Ricrea"
+      },
+      "coverage": {
+        "ready": "Pronto",
+        "building": "Creazione in corso",
+        "failed": "Non riuscito",
+        "notReady": "Non pronto",
+        "unavailable": "Non disponibile",
+        "selected": "Selezionato",
+        "selectedAria": "selezionato"
+      },
+      "defaultBadge": "Predefinito",
+      "runtime": "Runtime sessione",
+      "checked": "Verificato {value}",
+      "deleteDialog": {
+        "title": "Eliminare il modello sandbox «{name}»?",
+        "description": "Rimuove il modello dal progetto. Le sessioni che lo usano già non subiranno modifiche.",
+        "confirm": "Elimina"
+      },
+      "provider": {
+        "label": "Provider sandbox",
+        "experimental": "Sperimentale",
+        "description": "Fissa questo progetto a un provider sandbox specifico e sostituisce il valore predefinito della piattaforma. Le nuove sessioni usano il provider scelto. «Automatico» segue il valore della piattaforma.",
+        "preparing": "Preparazione di {provider}… potrebbe richiedere alcuni minuti",
+        "fallback": "provider sandbox",
+        "switched": "Passaggio a {provider} completato",
+        "switchFailed": "Passaggio del provider sandbox non riuscito",
+        "updateFailed": "Impossibile aggiornare il provider sandbox"
+      },
+      "loadFailed": "Impossibile caricare i modelli sandbox:",
+      "retry": "Riprova",
+      "descriptionStart": "Ogni sessione parte da un modello sandbox, una macchina preparata con il repository già disponibile in",
+      "descriptionEnd": "Il modello Kortix predefinito è adatto alla maggior parte dei progetti. Aggiungine uno qui sotto oppure dichiaralo come",
+      "configReadFailed": "Impossibile leggere la configurazione sandbox del progetto:",
+      "emptyTitle": "Nessun modello ancora risolto.",
+      "emptyDescription": "Creane uno oppure aggiungilo al manifest del progetto.",
+      "form": {
+        "newTitle": "Nuovo modello sandbox",
+        "editTitle": "Modifica «{name}»",
+        "description": "Definisci un'immagine sandbox da cui avviare le sessioni. Scegli un'immagine Docker pubblica o un Dockerfile nel repository. Il livello runtime di Kortix viene aggiunto automaticamente.",
+        "name": "Nome",
+        "namePlaceholder": "Sviluppo ML",
+        "slug": "Slug",
+        "imageSource": "Origine immagine",
+        "publicImage": "Immagine pubblica",
+        "example": "es.",
+        "pathInsideRepo": "Percorso nel repository",
+        "image": "Immagine",
+        "specificTag": "Deve includere un tag specifico, non",
+        "dockerfilePath": "Percorso Dockerfile",
+        "relativeToRoot": "Relativo alla radice del repository.",
+        "resources": "Risorse",
+        "memory": "Memoria (GiB)",
+        "disk": "Disco (GiB)",
+        "entrypoint": "Punto di ingresso",
+        "optional": "facoltativo",
+        "entrypointPlaceholder": "Lascia vuoto per usare il valore Kortix predefinito (consigliato).",
+        "cancel": "Annulla",
+        "save": "Salva modifiche",
+        "create": "Crea modello",
+        "errors": {
+          "reservedSlug": "Lo slug «default» è riservato al modello della piattaforma.",
+          "invalidSlug": "Usa lettere minuscole, cifre, trattini o trattini bassi (1–64 caratteri).",
+          "imageRequired": "Il riferimento all'immagine è obbligatorio.",
+          "dockerfileRequired": "Il percorso Dockerfile è obbligatorio.",
+          "latestTag": "Fissa un tag specifico invece di «latest»."
+        },
+        "toasts": {
+          "created": "Modello creato — creazione avviata",
+          "createFailed": "Impossibile creare il modello",
+          "updated": "Modello aggiornato — sincronizzazione provider avviata",
+          "updateFailed": "Impossibile aggiornare il modello"
+        }
+      }
+    },
+    "snapshots": {
+      "categories": {
+        "quota": {
+          "label": "Limite snapshot raggiunto",
+          "help": "Questo spazio di lavoro ha memorizzato il numero massimo di macchine preparate consentito dal piano. Elimina un modello sandbox inutilizzato o aumenta il limite, quindi ripeti la creazione."
+        },
+        "dockerfile": {
+          "label": "Creazione Dockerfile non riuscita",
+          "help": "Un comando nel Dockerfile del progetto ha restituito un errore. Il registro qui sotto termina con il comando non riuscito."
+        },
+        "layer": {
+          "label": "Livello runtime Kortix non riuscito",
+          "help": "L’immagine è stata creata, ma Kortix non ha potuto installarvi i propri strumenti. In genere è un problema temporaneo. Ripeti la creazione."
+        },
+        "git": {
+          "label": "Accesso al repository non riuscito",
+          "help": "Kortix non ha potuto leggere il repository del progetto. Controlla che la connessione sia ancora autorizzata, quindi ripeti la creazione."
+        },
+        "tunnel": {
+          "label": "Richiamata sandbox non raggiungibile",
+          "help": "La nuova macchina non ha potuto contattare Kortix durante la configurazione. In genere è un problema temporaneo. Ripeti la creazione."
+        },
+        "provider": {
+          "label": "Errore del provider sandbox",
+          "help": "L’azienda che esegue la macchina ha restituito un errore. Il progetto non presenta problemi. Ripeti la creazione."
+        },
+        "timeout": {
+          "label": "Tempo di creazione scaduto",
+          "help": "La preparazione della macchina ha superato il limite di tempo. Sposta i passaggi lenti fuori dal Dockerfile o riprova quando il provider è meno occupato."
+        },
+        "runtime": {
+          "label": "Artefatto runtime mancante",
+          "help": "La macchina è stata preparata, ma manca un file necessario a Kortix all’avvio. Ripeti la creazione. Se succede ancora, controlla l’immagine di base del modello."
+        },
+        "unknown": {
+          "label": "Creazione non riuscita",
+          "help": "La creazione si è fermata per un errore che Kortix non ha potuto classificare. Il registro completo è qui sotto."
+        }
+      },
+      "sources": {
+        "session-start": "Avvio sessione",
+        "project-create": "Progetto creato",
+        "cr-merge": "Unione revisione codice",
+        "manual": "Ricreazione manuale",
+        "background": "Sincronizzazione in background",
+        "startup": "Avvio"
+      },
+      "statuses": { "ready": "pronto", "building": "creazione", "failed": "non riuscito" },
+      "stale": {
+        "superseded": "Non completato; una configurazione più recente lo ha sostituito",
+        "recovered": "Non completato, ma l’ambiente ora è pronto",
+        "retrying": "Non completato — è in corso un nuovo tentativo"
+      },
+      "outcomes": {
+        "ready": "Pronto per nuove sessioni",
+        "building": "Preparazione in corso",
+        "blocked": "Le nuove sessioni non possono avviarsi qui",
+        "failed": "Non completato"
+      },
+      "facts": {
+        "triggeredBy": "Avviato da",
+        "started": "Avviato",
+        "took": "Durata",
+        "stillRunning": "Ancora in corso",
+        "runsOn": "Eseguito su",
+        "imageId": "ID immagine",
+        "unknown": "Sconosciuto"
+      },
+      "duration": {
+        "underMinute": "meno di 1 min",
+        "minutes": "{count} min",
+        "hours": "{count} h"
+      },
+      "environment": {
+        "ready": {
+          "title": "L’ambiente del progetto è pronto",
+          "body": "Le nuove sessioni si avviano subito sulla macchina preparata. Non occorre fare nulla in questa pagina."
+        },
+        "building": {
+          "title": "Preparazione dell’ambiente del progetto",
+          "body": "È in preparazione una nuova macchina. Le sessioni avviate ora attendono il completamento e non generano errori."
+        },
+        "notBuilt": {
+          "title": "Non è stato ancora preparato nulla",
+          "body": "Kortix prepara una macchina al primo avvio di una sessione qui. Non occorre alcuna configurazione preventiva."
+        }
+      },
+      "banner": {
+        "blockedTitle": "Le sessioni non possono avviarsi",
+        "degradedTitle": "Alcune sessioni non si avvieranno",
+        "blockedBody": "La creazione della macchina di avvio del progetto non è riuscita e non è disponibile una copia funzionante. Ogni nuova sessione riprova e incontra lo stesso errore.",
+        "degradedBody": "La macchina è pronta su {ready}, ma non funziona su {failed}. Le sessioni instradate lì non si avvieranno."
+      },
+      "actions": { "fix": "Correggi con l’agente", "rebuild": "Ricrea" },
+      "faq": {
+        "title": "Come funziona",
+        "items": {
+          "1": {
+            "question": "Che cos’è uno snapshot?",
+            "answer": "Uno snapshot è una macchina già configurata: il repository del progetto, le dipendenze e gli strumenti Kortix sono installati in anticipo. L’avvio di una sessione copia questa macchina invece di installare tutto da zero. Per questo la sessione è pronta in pochi secondi anziché minuti."
+          },
+          "2": {
+            "question": "Perché continuano ad apparire nuove righe?",
+            "answer": "Kortix prepara una nuova macchina ogni volta che cambia la ricetta: un nuovo modello sandbox, un Dockerfile modificato o una modifica unita. Ogni tentativo ha una riga. Le righe precedenti restano come cronologia e non sono attività da completare."
+          },
+          "3": {
+            "question": "Un tentativo non è riuscito. È un problema?",
+            "answer": "In genere no. Un tentativo non riuscito conta solo quando non resta alcuna macchina funzionante. In quel caso compare in alto un avviso con il pulsante per ricrearla. Una riga non riuscita senza avviso è già stata sostituita da un tentativo riuscito."
+          }
+        }
+      },
+      "view": {
+        "loadFailed": "Impossibile caricare gli snapshot sandbox:",
+        "retry": "Riprova",
+        "logTitle": "Registro creazioni",
+        "logDescription": "Una riga per ogni preparazione di una macchina per questo progetto. Apri una riga per i dettagli.",
+        "empty": "Non sono ancora registrate creazioni. Il modello predefinito della piattaforma viene creato una volta globalmente; i modelli personalizzati al primo utilizzo."
+      }
+    },
     "plan": {
       "managedByAdmin": "Gestito da un amministratore dell'account",
       "adminOnly": "Solo gli amministratori di questo account possono modificare il piano o acquistare crediti.",

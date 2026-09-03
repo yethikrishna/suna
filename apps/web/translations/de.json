@@ -542,6 +542,237 @@
       "reassurance": "Das verbundene Git-Repository wird nicht gelöscht. Bereits übertragener Code bleibt erhalten.",
       "keepWorkspace": "Arbeitsbereich behalten"
     },
+    "sandbox": {
+      "states": {
+        "ready": "Bereit",
+        "pulling": "Wird geladen",
+        "building": "Wird erstellt",
+        "removing": "Wird entfernt",
+        "error": "Fehler",
+        "buildFailed": "Erstellung fehlgeschlagen",
+        "notBuilt": "Noch nicht erstellt",
+        "unknown": "Unbekannt"
+      },
+      "sources": { "platform": "Kortix-Plattform", "dashboard": "Dieses Dashboard" },
+      "facts": {
+        "processor": "Prozessor",
+        "memory": "Arbeitsspeicher",
+        "storage": "Speicher",
+        "baseImage": "Basis-Image",
+        "builtFrom": "Erstellt aus",
+        "kortixDefault": "Kortix-Standard",
+        "definedIn": "Definiert in"
+      },
+      "routing": {
+        "title": "Routing",
+        "automatic": "Automatisch",
+        "pinned": "Festgelegt",
+        "pinnedWithProvider": "Festgelegt · {provider}"
+      },
+      "toasts": {
+        "rebuildStarted": "Neuerstellung für „{name}“ gestartet",
+        "buildFailed": "Erstellung konnte nicht gestartet werden",
+        "deleted": "„{name}“ gelöscht",
+        "deleteFailed": "Vorlage konnte nicht gelöscht werden"
+      },
+      "actions": {
+        "new": "Neue Vorlage",
+        "edit": "Vorlage bearbeiten",
+        "delete": "Vorlage löschen",
+        "rebuild": "Neu erstellen"
+      },
+      "coverage": {
+        "ready": "Bereit",
+        "building": "Wird erstellt",
+        "failed": "Fehlgeschlagen",
+        "notReady": "Nicht bereit",
+        "unavailable": "Nicht verfügbar",
+        "selected": "Ausgewählt",
+        "selectedAria": "ausgewählt"
+      },
+      "defaultBadge": "Standard",
+      "runtime": "Sitzungslaufzeit",
+      "checked": "Geprüft {value}",
+      "deleteDialog": {
+        "title": "Sandbox-Vorlage „{name}“ löschen?",
+        "description": "Dies entfernt die Vorlage aus dem Projekt. Bereits verwendende Sitzungen bleiben unverändert.",
+        "confirm": "Löschen"
+      },
+      "provider": {
+        "label": "Sandbox-Anbieter",
+        "experimental": "Experimentell",
+        "description": "Dieses Projekt einem bestimmten Sandbox-Anbieter zuordnen und den Plattformstandard überschreiben. Neue Sitzungen verwenden den gewählten Anbieter. „Automatisch“ folgt dem Plattformstandard.",
+        "preparing": "{provider} wird vorbereitet… dies kann einige Minuten dauern",
+        "fallback": "Sandbox-Anbieter",
+        "switched": "Zu {provider} gewechselt",
+        "switchFailed": "Wechsel des Sandbox-Anbieters fehlgeschlagen",
+        "updateFailed": "Sandbox-Anbieter konnte nicht aktualisiert werden"
+      },
+      "loadFailed": "Sandbox-Vorlagen konnten nicht geladen werden:",
+      "retry": "Erneut versuchen",
+      "descriptionStart": "Jede Sitzung startet aus einer Sandbox-Vorlage — einer vorbereiteten Maschine mit Ihrem Repository unter",
+      "descriptionEnd": "Der Kortix-Standard eignet sich für die meisten Projekte. Fügen Sie unten eine eigene Vorlage hinzu oder deklarieren Sie Vorlagen als",
+      "configReadFailed": "Sandbox-Konfiguration des Projekts konnte nicht gelesen werden:",
+      "emptyTitle": "Noch keine Vorlagen aufgelöst.",
+      "emptyDescription": "Erstellen Sie eine Vorlage oder fügen Sie sie dem Projektmanifest hinzu.",
+      "form": {
+        "newTitle": "Neue Sandbox-Vorlage",
+        "editTitle": "„{name}“ bearbeiten",
+        "description": "Definieren Sie ein Sandbox-Image, aus dem Sitzungen starten können. Wählen Sie ein öffentliches Docker-Image oder eine Dockerfile in Ihrem Repository. Die Kortix-Laufzeitschicht wird automatisch hinzugefügt.",
+        "name": "Name",
+        "namePlaceholder": "ML-Entwicklung",
+        "slug": "Kurzname",
+        "imageSource": "Image-Quelle",
+        "publicImage": "Öffentliches Image",
+        "example": "z. B.",
+        "pathInsideRepo": "Pfad in diesem Repository",
+        "image": "Image",
+        "specificTag": "Ein bestimmtes Tag ist erforderlich, nicht",
+        "dockerfilePath": "Dockerfile-Pfad",
+        "relativeToRoot": "Relativ zum Stammverzeichnis des Repositorys.",
+        "resources": "Ressourcen",
+        "memory": "Arbeitsspeicher (GiB)",
+        "disk": "Datenträger (GiB)",
+        "entrypoint": "Startbefehl",
+        "optional": "optional",
+        "entrypointPlaceholder": "Leer lassen, um den Kortix-Standard zu verwenden (empfohlen).",
+        "cancel": "Abbrechen",
+        "save": "Änderungen speichern",
+        "create": "Vorlage erstellen",
+        "errors": {
+          "reservedSlug": "Der Kurzname „default“ ist für die Plattformvorlage reserviert.",
+          "invalidSlug": "Verwenden Sie Kleinbuchstaben, Ziffern, Bindestriche oder Unterstriche (1–64 Zeichen).",
+          "imageRequired": "Eine Image-Referenz ist erforderlich.",
+          "dockerfileRequired": "Ein Dockerfile-Pfad ist erforderlich.",
+          "latestTag": "Legen Sie statt „latest“ ein bestimmtes Tag fest."
+        },
+        "toasts": {
+          "created": "Vorlage erstellt — Erstellung gestartet",
+          "createFailed": "Vorlage konnte nicht erstellt werden",
+          "updated": "Vorlage aktualisiert — Anbietersynchronisierung gestartet",
+          "updateFailed": "Vorlage konnte nicht aktualisiert werden"
+        }
+      }
+    },
+    "snapshots": {
+      "categories": {
+        "quota": {
+          "label": "Snapshot-Limit erreicht",
+          "help": "Dieser Arbeitsbereich hat so viele vorbereitete Maschinen gespeichert, wie der Plan erlaubt. Löschen Sie eine nicht mehr benötigte Sandbox-Vorlage oder erhöhen Sie das Limit. Starten Sie danach die Erstellung erneut."
+        },
+        "dockerfile": {
+          "label": "Dockerfile-Erstellung fehlgeschlagen",
+          "help": "Ein Befehl in der Dockerfile dieses Projekts hat einen Fehler zurückgegeben. Das Protokoll unten endet mit dem fehlgeschlagenen Befehl."
+        },
+        "layer": {
+          "label": "Kortix-Laufzeitschicht fehlgeschlagen",
+          "help": "Das Image wurde erstellt, aber Kortix konnte seine Werkzeuge nicht darauf installieren. Dies ist meist vorübergehend. Starten Sie die Erstellung erneut."
+        },
+        "git": {
+          "label": "Repository-Zugriff fehlgeschlagen",
+          "help": "Kortix konnte das Repository dieses Projekts nicht lesen. Prüfen Sie die Autorisierung der Repository-Verbindung und starten Sie die Erstellung erneut."
+        },
+        "tunnel": {
+          "label": "Sandbox-Rückruf nicht erreichbar",
+          "help": "Die neue Maschine konnte Kortix während der Einrichtung nicht erreichen. Dies ist meist vorübergehend. Starten Sie die Erstellung erneut."
+        },
+        "provider": {
+          "label": "Fehler des Sandbox-Anbieters",
+          "help": "Der Betreiber der Maschine hat einen Fehler zurückgegeben. Ihr Projekt ist nicht fehlerhaft. Starten Sie die Erstellung erneut."
+        },
+        "timeout": {
+          "label": "Zeitüberschreitung bei der Erstellung",
+          "help": "Die Vorbereitung dauerte länger als zulässig. Verschieben Sie langsame Schritte aus der Dockerfile oder versuchen Sie es erneut, wenn der Anbieter weniger ausgelastet ist."
+        },
+        "runtime": {
+          "label": "Laufzeitartefakt fehlt",
+          "help": "Die Maschine wurde vorbereitet, aber eine beim Start benötigte Kortix-Datei fehlt. Erstellen Sie sie erneut. Prüfen Sie bei einer Wiederholung das Basis-Image der Vorlage."
+        },
+        "unknown": {
+          "label": "Erstellung fehlgeschlagen",
+          "help": "Die Erstellung wurde durch einen Fehler beendet, den Kortix nicht klassifizieren konnte. Das vollständige Protokoll steht unten."
+        }
+      },
+      "sources": {
+        "session-start": "Sitzungsstart",
+        "project-create": "Projekt erstellt",
+        "cr-merge": "Codeprüfung zusammengeführt",
+        "manual": "Manuelle Neuerstellung",
+        "background": "Hintergrundsynchronisierung",
+        "startup": "Start"
+      },
+      "statuses": { "ready": "bereit", "building": "wird erstellt", "failed": "fehlgeschlagen" },
+      "stale": {
+        "superseded": "Nicht abgeschlossen; eine neuere Einrichtung hat diesen Versuch ersetzt",
+        "recovered": "Nicht abgeschlossen; die Umgebung ist jetzt aber bereit",
+        "retrying": "Nicht abgeschlossen — ein neuer Versuch läuft"
+      },
+      "outcomes": {
+        "ready": "Bereit für neue Sitzungen",
+        "building": "Wird jetzt vorbereitet",
+        "blocked": "Neue Sitzungen können damit nicht starten",
+        "failed": "Nicht abgeschlossen"
+      },
+      "facts": {
+        "triggeredBy": "Ausgelöst durch",
+        "started": "Gestartet",
+        "took": "Dauer",
+        "stillRunning": "Läuft noch",
+        "runsOn": "Läuft auf",
+        "imageId": "Image-ID",
+        "unknown": "Unbekannt"
+      },
+      "duration": {
+        "underMinute": "unter 1 Min.",
+        "minutes": "{count} Min.",
+        "hours": "{count} Std."
+      },
+      "environment": {
+        "ready": {
+          "title": "Die Umgebung dieses Projekts ist bereit",
+          "body": "Neue Sitzungen starten sofort auf der vorbereiteten Maschine. Auf dieser Seite ist keine Aktion erforderlich."
+        },
+        "building": {
+          "title": "Die Umgebung dieses Projekts wird vorbereitet",
+          "body": "Eine neue Maschine wird vorbereitet. Jetzt gestartete Sitzungen warten auf den Abschluss und schlagen nicht fehl."
+        },
+        "notBuilt": {
+          "title": "Noch nichts vorbereitet",
+          "body": "Kortix bereitet beim ersten Sitzungsstart eine Maschine vor. Eine vorherige Einrichtung ist nicht erforderlich."
+        }
+      },
+      "banner": {
+        "blockedTitle": "Sitzungen können nicht starten",
+        "degradedTitle": "Einige Sitzungen können nicht starten",
+        "blockedBody": "Die Maschine für dieses Projekt konnte nicht erstellt werden und es ist keine funktionierende Kopie verfügbar. Jede neue Sitzung versucht es erneut und trifft denselben Fehler.",
+        "degradedBody": "Die Maschine ist auf {ready} bereit, schlägt aber auf {failed} fehl. Dorthin geleitete Sitzungen können nicht starten."
+      },
+      "actions": { "fix": "Mit Agent beheben", "rebuild": "Neu erstellen" },
+      "faq": {
+        "title": "Funktionsweise",
+        "items": {
+          "1": {
+            "question": "Was ist ein Snapshot?",
+            "answer": "Ein Snapshot ist eine bereits eingerichtete Maschine. Das Repository dieses Projekts, seine Abhängigkeiten und die Kortix-Werkzeuge sind vorinstalliert. Eine Sitzung kopiert diese Maschine, anstatt alles neu zu installieren. Deshalb ist sie in Sekunden statt Minuten bereit."
+          },
+          "2": {
+            "question": "Warum erscheinen immer neue Zeilen?",
+            "answer": "Kortix bereitet bei jeder Rezeptänderung eine neue Maschine vor, etwa bei einer neuen Sandbox-Vorlage, einer geänderten Dockerfile oder einer zusammengeführten Änderung. Jeder Versuch erhält eine eigene Zeile. Ältere Zeilen bleiben als Verlauf erhalten und sind keine Aufgabenliste."
+          },
+          "3": {
+            "question": "Ein Versuch ist fehlgeschlagen. Ist das ein Problem?",
+            "answer": "Meist nicht. Ein fehlgeschlagener Versuch ist nur relevant, solange keine funktionierende Maschine verfügbar ist. Dann erscheint oben ein Hinweis mit einer Schaltfläche zur Neuerstellung. Eine fehlgeschlagene Zeile ohne Hinweis wurde bereits durch einen erfolgreichen Versuch ersetzt."
+          }
+        }
+      },
+      "view": {
+        "loadFailed": "Sandbox-Snapshots konnten nicht geladen werden:",
+        "retry": "Erneut versuchen",
+        "logTitle": "Erstellungsprotokoll",
+        "logDescription": "Eine Zeile für jede Vorbereitung einer Maschine für dieses Projekt. Öffnen Sie eine Zeile für Details.",
+        "empty": "Noch keine Erstellungen aufgezeichnet. Der Plattformstandard wird einmal global erstellt; eigene Vorlagen werden bei der ersten Verwendung erstellt."
+      }
+    },
     "plan": {
       "managedByAdmin": "Von einem Kontoadministrator verwaltet",
       "adminOnly": "Nur Administratoren dieses Kontos können den Plan ändern oder Credits kaufen.",

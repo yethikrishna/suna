@@ -545,6 +545,237 @@
       "reassurance": "El repositorio Git conectado no se elimina. El código que ya se haya enviado permanece intacto.",
       "keepWorkspace": "Conservar espacio de trabajo"
     },
+    "sandbox": {
+      "states": {
+        "ready": "Listo",
+        "pulling": "Descargando",
+        "building": "Creando",
+        "removing": "Eliminando",
+        "error": "Error",
+        "buildFailed": "Error de creación",
+        "notBuilt": "Aún no creado",
+        "unknown": "Desconocido"
+      },
+      "sources": { "platform": "Plataforma Kortix", "dashboard": "Este panel" },
+      "facts": {
+        "processor": "Procesador",
+        "memory": "Memoria",
+        "storage": "Almacenamiento",
+        "baseImage": "Imagen base",
+        "builtFrom": "Creado desde",
+        "kortixDefault": "Predeterminado de Kortix",
+        "definedIn": "Definido en"
+      },
+      "routing": {
+        "title": "Enrutamiento",
+        "automatic": "Automático",
+        "pinned": "Fijado",
+        "pinnedWithProvider": "Fijado · {provider}"
+      },
+      "toasts": {
+        "rebuildStarted": "Recreación iniciada para «{name}»",
+        "buildFailed": "No se pudo iniciar la creación",
+        "deleted": "«{name}» eliminado",
+        "deleteFailed": "No se pudo eliminar la plantilla"
+      },
+      "actions": {
+        "new": "Nueva plantilla",
+        "edit": "Editar plantilla",
+        "delete": "Eliminar plantilla",
+        "rebuild": "Recrear"
+      },
+      "coverage": {
+        "ready": "Listo",
+        "building": "Creando",
+        "failed": "Fallido",
+        "notReady": "No listo",
+        "unavailable": "No disponible",
+        "selected": "Seleccionado",
+        "selectedAria": "seleccionado"
+      },
+      "defaultBadge": "Predeterminado",
+      "runtime": "Entorno de sesión",
+      "checked": "Comprobado {value}",
+      "deleteDialog": {
+        "title": "¿Eliminar la plantilla de sandbox «{name}»?",
+        "description": "Esto elimina la plantilla del proyecto. Las sesiones que ya la usan no cambian.",
+        "confirm": "Eliminar"
+      },
+      "provider": {
+        "label": "Proveedor de sandbox",
+        "experimental": "Experimental",
+        "description": "Fija este proyecto a un proveedor de sandbox específico y reemplaza el valor predeterminado de la plataforma. Las sesiones nuevas usan el proveedor elegido. «Automático» sigue el valor de la plataforma.",
+        "preparing": "Preparando {provider}… puede tardar unos minutos",
+        "fallback": "proveedor de sandbox",
+        "switched": "Se cambió a {provider}",
+        "switchFailed": "Error al cambiar el proveedor de sandbox",
+        "updateFailed": "No se pudo actualizar el proveedor de sandbox"
+      },
+      "loadFailed": "No se pudieron cargar las plantillas de sandbox:",
+      "retry": "Reintentar",
+      "descriptionStart": "Cada sesión comienza desde una plantilla de sandbox, una máquina preparada con el repositorio ya disponible en",
+      "descriptionEnd": "La plantilla predeterminada de Kortix sirve para la mayoría de proyectos. Añade una propia o declárala como",
+      "configReadFailed": "No se pudo leer la configuración de sandbox del proyecto:",
+      "emptyTitle": "Aún no hay plantillas resueltas.",
+      "emptyDescription": "Crea una o añádela al manifiesto del proyecto.",
+      "form": {
+        "newTitle": "Nueva plantilla de sandbox",
+        "editTitle": "Editar «{name}»",
+        "description": "Define una imagen de sandbox desde la que puedan arrancar las sesiones. Elige una imagen Docker pública o un Dockerfile del repositorio. La capa de ejecución de Kortix se añade automáticamente.",
+        "name": "Nombre",
+        "namePlaceholder": "Desarrollo ML",
+        "slug": "Identificador",
+        "imageSource": "Origen de la imagen",
+        "publicImage": "Imagen pública",
+        "example": "p. ej.",
+        "pathInsideRepo": "Ruta dentro de este repositorio",
+        "image": "Imagen",
+        "specificTag": "Debe incluir una etiqueta específica, no",
+        "dockerfilePath": "Ruta del Dockerfile",
+        "relativeToRoot": "Relativa a la raíz del repositorio.",
+        "resources": "Recursos",
+        "memory": "Memoria (GiB)",
+        "disk": "Disco (GiB)",
+        "entrypoint": "Punto de entrada",
+        "optional": "opcional",
+        "entrypointPlaceholder": "Déjalo vacío para usar el valor predeterminado de Kortix (recomendado).",
+        "cancel": "Cancelar",
+        "save": "Guardar cambios",
+        "create": "Crear plantilla",
+        "errors": {
+          "reservedSlug": "El identificador «default» está reservado para la plantilla de la plataforma.",
+          "invalidSlug": "Usa letras minúsculas, dígitos, guiones o guiones bajos (1–64 caracteres).",
+          "imageRequired": "Se requiere una referencia de imagen.",
+          "dockerfileRequired": "Se requiere la ruta del Dockerfile.",
+          "latestTag": "Fija una etiqueta específica en lugar de «latest»."
+        },
+        "toasts": {
+          "created": "Plantilla creada — creación iniciada",
+          "createFailed": "No se pudo crear la plantilla",
+          "updated": "Plantilla actualizada — sincronización del proveedor iniciada",
+          "updateFailed": "No se pudo actualizar la plantilla"
+        }
+      }
+    },
+    "snapshots": {
+      "categories": {
+        "quota": {
+          "label": "Se alcanzó el límite de instantáneas",
+          "help": "Este espacio de trabajo ha guardado tantas máquinas preparadas como permite su plan. Elimina una plantilla de sandbox que ya no uses o aumenta el límite y vuelve a crearla."
+        },
+        "dockerfile": {
+          "label": "Error al crear el Dockerfile",
+          "help": "Un comando del Dockerfile de este proyecto devolvió un error. El registro siguiente termina con el comando que falló."
+        },
+        "layer": {
+          "label": "Error en la capa de ejecución de Kortix",
+          "help": "La imagen se creó, pero Kortix no pudo instalar sus herramientas encima. Suele ser temporal. Vuelve a crearla."
+        },
+        "git": {
+          "label": "Error de acceso al repositorio",
+          "help": "Kortix no pudo leer el repositorio de este proyecto. Comprueba que la conexión siga autorizada y vuelve a crearla."
+        },
+        "tunnel": {
+          "label": "La devolución de llamada del sandbox no responde",
+          "help": "La máquina nueva no pudo contactar con Kortix durante la configuración. Suele ser temporal. Vuelve a crearla."
+        },
+        "provider": {
+          "label": "Error del proveedor de sandbox",
+          "help": "La empresa que ejecuta la máquina devolvió un error. Tu proyecto no tiene ningún problema. Vuelve a crearla."
+        },
+        "timeout": {
+          "label": "Se agotó el tiempo de creación",
+          "help": "La preparación de la máquina superó el tiempo permitido. Saca los pasos lentos del Dockerfile o inténtalo cuando el proveedor tenga menos carga."
+        },
+        "runtime": {
+          "label": "Falta un artefacto de ejecución",
+          "help": "La máquina se preparó, pero falta un archivo que Kortix necesita al arrancar. Vuelve a crearla. Si se repite, revisa la imagen base de la plantilla."
+        },
+        "unknown": {
+          "label": "Error de creación",
+          "help": "La creación se detuvo por un error que Kortix no pudo clasificar. El registro completo aparece abajo."
+        }
+      },
+      "sources": {
+        "session-start": "Inicio de sesión",
+        "project-create": "Proyecto creado",
+        "cr-merge": "Fusión de revisión de código",
+        "manual": "Recreación manual",
+        "background": "Sincronización en segundo plano",
+        "startup": "Arranque"
+      },
+      "statuses": { "ready": "listo", "building": "creando", "failed": "fallido" },
+      "stale": {
+        "superseded": "No terminó y una configuración más reciente lo reemplazó",
+        "recovered": "No terminó, pero el entorno ya está listo",
+        "retrying": "No terminó — hay un nuevo intento en curso"
+      },
+      "outcomes": {
+        "ready": "Listo para sesiones nuevas",
+        "building": "Preparándose ahora",
+        "blocked": "Las sesiones nuevas no pueden iniciarse aquí",
+        "failed": "No terminó"
+      },
+      "facts": {
+        "triggeredBy": "Iniciado por",
+        "started": "Inicio",
+        "took": "Duración",
+        "stillRunning": "Sigue en curso",
+        "runsOn": "Se ejecuta en",
+        "imageId": "ID de imagen",
+        "unknown": "Desconocido"
+      },
+      "duration": {
+        "underMinute": "menos de 1 min",
+        "minutes": "{count} min",
+        "hours": "{count} h"
+      },
+      "environment": {
+        "ready": {
+          "title": "El entorno de este proyecto está listo",
+          "body": "Las sesiones nuevas se inician inmediatamente en la máquina preparada. No tienes que hacer nada en esta página."
+        },
+        "building": {
+          "title": "Preparando el entorno del proyecto",
+          "body": "Se está preparando una máquina nueva. Las sesiones iniciadas ahora esperan a que termine; no fallan."
+        },
+        "notBuilt": {
+          "title": "Aún no hay nada preparado",
+          "body": "Kortix prepara una máquina la primera vez que inicias una sesión aquí. No necesitas configurar nada antes."
+        }
+      },
+      "banner": {
+        "blockedTitle": "Las sesiones no pueden iniciarse",
+        "degradedTitle": "Algunas sesiones no se iniciarán",
+        "blockedBody": "La máquina desde la que arranca este proyecto no pudo crearse y no hay ninguna copia operativa. Cada sesión nueva lo vuelve a intentar y encuentra el mismo error.",
+        "degradedBody": "La máquina está lista en {ready}, pero falla en {failed}. Las sesiones dirigidas allí no se iniciarán."
+      },
+      "actions": { "fix": "Corregir con el agente", "rebuild": "Recrear" },
+      "faq": {
+        "title": "Cómo funciona",
+        "items": {
+          "1": {
+            "question": "¿Qué es una instantánea?",
+            "answer": "Una instantánea es una máquina ya configurada: el repositorio del proyecto, sus dependencias y las herramientas de Kortix están instalados de antemano. Al iniciar una sesión se copia esa máquina en vez de instalarlo todo desde cero. Por eso la sesión está lista en segundos y no en minutos."
+          },
+          "2": {
+            "question": "¿Por qué siguen apareciendo filas nuevas?",
+            "answer": "Kortix prepara una máquina nueva cuando cambia la receta: una plantilla de sandbox nueva, un Dockerfile editado o un cambio fusionado. Cada intento tiene su propia fila. Las filas antiguas se guardan como historial y no son tareas pendientes."
+          },
+          "3": {
+            "question": "Un intento falló. ¿Es un problema?",
+            "answer": "Normalmente no. Un intento fallido solo importa mientras no quede ninguna máquina operativa. En ese caso aparece arriba un aviso con un botón para recrearla. Una fila fallida sin aviso ya fue reemplazada por un intento correcto."
+          }
+        }
+      },
+      "view": {
+        "loadFailed": "No se pudieron cargar las instantáneas de sandbox:",
+        "retry": "Reintentar",
+        "logTitle": "Registro de creación",
+        "logDescription": "Una fila por cada preparación de una máquina para este proyecto. Abre una fila para ver los detalles.",
+        "empty": "Aún no hay creaciones registradas. La plantilla predeterminada de la plataforma se crea una vez globalmente; las plantillas personalizadas se crean al usarlas por primera vez."
+      }
+    },
     "plan": {
       "managedByAdmin": "Gestionado por un administrador de la cuenta",
       "adminOnly": "Solo los administradores de esta cuenta pueden cambiar el plan o comprar créditos.",

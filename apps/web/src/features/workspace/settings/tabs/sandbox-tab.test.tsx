@@ -59,10 +59,14 @@ function renderProviderPresentation({
   providerMode,
   coverage,
   selectedProvider,
+  badgeCopy,
+  runtimeLabel,
 }: {
   providerMode: 'automatic' | 'pinned';
   coverage: ProviderCoverageEntry[];
   selectedProvider: ProviderCoverageEntry['provider'] | null;
+  badgeCopy?: Parameters<typeof TemplateRuntimeFooter>[0]['badgeCopy'];
+  runtimeLabel?: string;
 }) {
   return renderToStaticMarkup(
     createElement(TemplateRuntimeFooter, {
@@ -70,6 +74,8 @@ function renderProviderPresentation({
       coverage,
       selectedProvider,
       formatObservedAt: () => 'now',
+      badgeCopy,
+      runtimeLabel,
     }),
   );
 }
@@ -172,6 +178,25 @@ describe('sandbox template provider coverage presentation', () => {
     expect(html).not.toContain('Pinned provider');
   });
 
+  test('renders localized runtime and provider status copy', () => {
+    const html = renderProviderPresentation({
+      providerMode: 'pinned',
+      selectedProvider: 'daytona',
+      coverage: [coverageEntry({ provider: 'daytona', status: 'ready' })],
+      runtimeLabel: 'Окружење сесије',
+      badgeCopy: {
+        states: { ready: 'Спремно' },
+        selected: 'Изабрано',
+        selectedAria: 'изабрано',
+      },
+    });
+    expect(html).toContain('Окружење сесије');
+    expect(html).toContain('Спремно');
+    expect(html).toContain('Изабрано');
+    expect(html).not.toContain('Ready');
+    expect(html).not.toContain('Selected');
+  });
+
   test('pinned with no available providers renders no runtime strip at all', () => {
     const html = renderProviderPresentation({
       providerMode: 'pinned',
@@ -208,6 +233,24 @@ describe('sandbox template provider coverage presentation', () => {
  * build-log content ever appears here.
  */
 describe('SandboxTabView', () => {
+  test('renders injected Serbian view copy without an intl provider', () => {
+    const out = renderToStaticMarkup(
+      <SandboxTabView
+        copy={{
+          loadFailed: 'Учитавање није успело:',
+          retry: 'Покушај поново',
+          descriptionStart: 'Свака сесија почиње у',
+          descriptionEnd: 'Додајте шаблон као',
+          configReadFailed: 'Конфигурација није учитана:',
+          emptyTitle: 'Још нема шаблона.',
+          emptyDescription: 'Направите шаблон.',
+        }}
+      />,
+    );
+    expect(out).toContain('Свака сесија почиње у');
+    expect(out).toContain('Још нема шаблона.');
+    expect(out).not.toContain('Every session starts');
+  });
   test('renders the header and the templates slot', () => {
     const out = renderToStaticMarkup(
       <SandboxTabView isEmpty={false} templatesSlot={<li>template-row-marker</li>} />,

@@ -356,6 +356,233 @@
       "reassurance": "Your connected Git repository is not deleted. Any code already pushed to it stays where it is.",
       "keepWorkspace": "Keep workspace"
     },
+    "sandbox": {
+      "states": {
+        "ready": "Ready",
+        "pulling": "Pulling",
+        "building": "Building",
+        "removing": "Removing",
+        "error": "Error",
+        "buildFailed": "Build failed",
+        "notBuilt": "Not built yet",
+        "unknown": "Unknown"
+      },
+      "sources": { "platform": "Kortix platform", "dashboard": "This dashboard" },
+      "facts": {
+        "processor": "Processor",
+        "memory": "Memory",
+        "storage": "Storage",
+        "baseImage": "Base image",
+        "builtFrom": "Built from",
+        "kortixDefault": "Kortix default",
+        "definedIn": "Defined in"
+      },
+      "routing": {
+        "title": "Routing",
+        "automatic": "Automatic",
+        "pinned": "Pinned",
+        "pinnedWithProvider": "Pinned · {provider}"
+      },
+      "toasts": {
+        "rebuildStarted": "Rebuild started for “{name}”",
+        "buildFailed": "Failed to start build",
+        "deleted": "Deleted “{name}”",
+        "deleteFailed": "Failed to delete template"
+      },
+      "actions": {
+        "new": "New template",
+        "edit": "Edit template",
+        "delete": "Delete template",
+        "rebuild": "Rebuild"
+      },
+      "coverage": {
+        "ready": "Ready",
+        "building": "Building",
+        "failed": "Failed",
+        "notReady": "Not ready",
+        "unavailable": "Unavailable",
+        "selected": "Selected",
+        "selectedAria": "selected"
+      },
+      "defaultBadge": "Default",
+      "runtime": "Session runtime",
+      "checked": "Checked {value}",
+      "deleteDialog": {
+        "title": "Delete sandbox template “{name}”?",
+        "description": "This removes the template from the project. Sessions already using it are unaffected.",
+        "confirm": "Delete"
+      },
+      "provider": {
+        "label": "Sandbox provider",
+        "experimental": "Experimental",
+        "description": "Pin this project to a specific sandbox provider, overriding the platform default. New sessions here run on the chosen provider — “Automatic” follows the platform default.",
+        "preparing": "Preparing {provider}… this can take a few minutes",
+        "fallback": "the sandbox provider",
+        "switched": "Switched to {provider}",
+        "switchFailed": "Sandbox provider switch failed",
+        "updateFailed": "Failed to update sandbox provider"
+      },
+      "loadFailed": "Failed to load sandbox templates:",
+      "retry": "Retry",
+      "descriptionStart": "Every session starts from a sandbox template — a prepared machine with your repository already checked out at",
+      "descriptionEnd": "The Kortix default works for most projects. Add your own below, or declare them as",
+      "configReadFailed": "Couldn’t read project sandbox config:",
+      "emptyTitle": "No templates resolved yet.",
+      "emptyDescription": "Create one, or add it to your project's manifest.",
+      "form": {
+        "newTitle": "New sandbox template",
+        "editTitle": "Edit “{name}”",
+        "description": "Define a sandbox image sessions can boot from. Pick either a public Docker image or a Dockerfile in your repo. The Kortix runtime layer is added automatically.",
+        "name": "Name",
+        "namePlaceholder": "ML Development",
+        "slug": "Slug",
+        "imageSource": "Image source",
+        "publicImage": "Public image",
+        "example": "e.g.",
+        "pathInsideRepo": "Path inside this repo",
+        "image": "Image",
+        "specificTag": "Must include a specific tag, not",
+        "dockerfilePath": "Dockerfile path",
+        "relativeToRoot": "Relative to the repository root.",
+        "resources": "Resources",
+        "memory": "Memory (GiB)",
+        "disk": "Disk (GiB)",
+        "entrypoint": "Entrypoint",
+        "optional": "optional",
+        "entrypointPlaceholder": "Leave blank to use the Kortix default (recommended).",
+        "cancel": "Cancel",
+        "save": "Save changes",
+        "create": "Create template",
+        "errors": {
+          "reservedSlug": "Slug “default” is reserved for the platform template.",
+          "invalidSlug": "Use lowercase letters, digits, dashes, or underscores (1–64 characters).",
+          "imageRequired": "Image reference required.",
+          "dockerfileRequired": "Dockerfile path required.",
+          "latestTag": "Pin a specific tag instead of “latest”."
+        },
+        "toasts": {
+          "created": "Template created — build started",
+          "createFailed": "Failed to create template",
+          "updated": "Template updated — provider sync started",
+          "updateFailed": "Failed to update template"
+        }
+      }
+    },
+    "snapshots": {
+      "categories": {
+        "quota": {
+          "label": "Snapshot quota reached",
+          "help": "This workspace has stored as many prepared machines as its plan allows. Delete a sandbox template you no longer use, or raise the limit, then build again."
+        },
+        "dockerfile": {
+          "label": "Dockerfile build failed",
+          "help": "A command in this project’s Dockerfile returned an error. The log below ends on the command that failed."
+        },
+        "layer": {
+          "label": "Kortix runtime layer failed",
+          "help": "The image built, but Kortix could not install its own tools on top of it. This is usually temporary — try building again."
+        },
+        "git": {
+          "label": "Repository access failed",
+          "help": "Kortix could not read this project’s repository. Check that the repository connection is still authorised, then build again."
+        },
+        "tunnel": {
+          "label": "Sandbox callback unreachable",
+          "help": "The new machine could not call back to Kortix while it was being set up. This is usually temporary — try building again."
+        },
+        "provider": {
+          "label": "Sandbox provider error",
+          "help": "The company that runs the machine returned an error. Nothing is wrong with your project — try building again."
+        },
+        "timeout": {
+          "label": "Build timed out",
+          "help": "Preparing the machine took longer than the time limit allows. Move slow steps out of the Dockerfile, or try again when the provider is less busy."
+        },
+        "runtime": {
+          "label": "Runtime artifact missing",
+          "help": "The machine was prepared, but a file Kortix needs at start-up was missing from it. Build again; if it repeats, the template’s base image is the place to look."
+        },
+        "unknown": {
+          "label": "Build failed",
+          "help": "The build stopped on an error Kortix could not classify. The full log is below."
+        }
+      },
+      "sources": {
+        "session-start": "Session start",
+        "project-create": "Project created",
+        "cr-merge": "Code review merge",
+        "manual": "Manual rebuild",
+        "background": "Background sync",
+        "startup": "Startup"
+      },
+      "statuses": { "ready": "ready", "building": "building", "failed": "failed" },
+      "stale": {
+        "superseded": "Didn’t finish, and a newer setup has replaced it",
+        "recovered": "Didn’t finish, but the environment is ready now",
+        "retrying": "Didn’t finish — a new attempt is running"
+      },
+      "outcomes": {
+        "ready": "Ready for new sessions",
+        "building": "Being prepared now",
+        "blocked": "New sessions can’t start on this",
+        "failed": "Didn’t finish"
+      },
+      "facts": {
+        "triggeredBy": "Triggered by",
+        "started": "Started",
+        "took": "Took",
+        "stillRunning": "Still running",
+        "runsOn": "Runs on",
+        "imageId": "Image ID",
+        "unknown": "Unknown"
+      },
+      "duration": { "underMinute": "under 1m", "minutes": "{count}m", "hours": "{count}h" },
+      "environment": {
+        "ready": {
+          "title": "This project’s environment is ready",
+          "body": "New sessions start on the prepared machine right away. There is nothing to do on this page."
+        },
+        "building": {
+          "title": "Preparing this project’s environment",
+          "body": "A new machine is being prepared. Sessions started now wait for it to finish — they don’t fail."
+        },
+        "notBuilt": {
+          "title": "Nothing prepared yet",
+          "body": "Kortix prepares a machine the first time you start a session here. Nothing needs to be set up in advance."
+        }
+      },
+      "banner": {
+        "blockedTitle": "Sessions can’t start",
+        "degradedTitle": "Some sessions won’t start",
+        "blockedBody": "The machine this project boots from failed to build, and no working copy is available. Every new session retries it and hits the same error.",
+        "degradedBody": "The machine is ready on {ready} but failing on {failed}. Sessions routed there won’t start."
+      },
+      "actions": { "fix": "Fix with agent", "rebuild": "Rebuild" },
+      "faq": {
+        "title": "How this works",
+        "items": {
+          "1": {
+            "question": "What is a snapshot?",
+            "answer": "A snapshot is a machine that has already been set up: this project’s repository, its dependencies, and the Kortix tools, all installed ahead of time. Starting a session copies that prepared machine instead of installing everything from scratch, which is why a session is ready in seconds rather than minutes."
+          },
+          "2": {
+            "question": "Why do new rows keep appearing?",
+            "answer": "Kortix prepares a new machine whenever the recipe changes — a new sandbox template, an edited Dockerfile, or a merged change — and each attempt gets its own row. Older rows are kept as a record. They are history, not a list of things to deal with."
+          },
+          "3": {
+            "question": "One of them failed. Is that a problem?",
+            "answer": "Usually not. A failed attempt only matters while no working machine is left, and when that happens a banner appears at the top of this page with a Rebuild button. A failed row with no banner above it has already been replaced by one that worked."
+          }
+        }
+      },
+      "view": {
+        "loadFailed": "Failed to load sandbox snapshots:",
+        "retry": "Retry",
+        "logTitle": "Build log",
+        "logDescription": "One row for every time Kortix prepared a machine for this project. Open a row for the details.",
+        "empty": "No builds recorded yet. The platform default builds once globally; custom templates build on first use."
+      }
+    },
     "plan": {
       "managedByAdmin": "Managed by an account admin",
       "adminOnly": "Only admins of this account can change its plan or buy credits.",

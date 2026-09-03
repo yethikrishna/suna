@@ -29,15 +29,11 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import Loading from '@/components/ui/loading';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
-import {
-  createSandboxTemplate,
-  updateSandboxTemplate,
-  type SandboxTemplate,
-} from '@kortix/sdk';
+import { createSandboxTemplate, updateSandboxTemplate, type SandboxTemplate } from '@kortix/sdk';
 import { qk } from '@kortix/sdk/react';
 
 type Mode = 'image' | 'dockerfile';
@@ -70,7 +66,7 @@ export function SandboxTemplateForm({
   onOpenChange,
   template,
 }: SandboxTemplateFormProps) {
-  const tI18nHardcoded = useTranslations('hardcodedUi');
+  const t = useTranslations('settings.sandbox.form');
   const isEdit = !!template;
   const queryClient = useQueryClient();
 
@@ -126,20 +122,19 @@ export function SandboxTemplateForm({
 
   const slugError = useMemo(() => {
     if (!slug) return null;
-    if (slug === 'default') return 'Slug "default" is reserved for the platform template.';
-    if (!isValidSlug(slug))
-      return 'Use lowercase letters, digits, dashes, or underscores (1-64 chars).';
+    if (slug === 'default') return t('errors.reservedSlug');
+    if (!isValidSlug(slug)) return t('errors.invalidSlug');
     return null;
-  }, [slug]);
+  }, [slug, t]);
 
   const sourceError = useMemo(() => {
-    if (mode === 'image' && !image.trim()) return 'Image reference required.';
-    if (mode === 'dockerfile' && !dockerfilePath.trim()) return 'Dockerfile path required.';
+    if (mode === 'image' && !image.trim()) return t('errors.imageRequired');
+    if (mode === 'dockerfile' && !dockerfilePath.trim()) return t('errors.dockerfileRequired');
     if (mode === 'image' && image.trim().endsWith(':latest')) {
-      return 'Pin a specific tag instead of "latest".';
+      return t('errors.latestTag');
     }
     return null;
-  }, [mode, image, dockerfilePath]);
+  }, [mode, image, dockerfilePath, t]);
 
   const canSubmit = !!slug && !slugError && !sourceError && !!name.trim();
 
@@ -157,12 +152,12 @@ export function SandboxTemplateForm({
         disk_gb: parsePosInt(diskGb),
       }),
     onSuccess: () => {
-      toast.success('Template created — build started');
+      toast.success(t('toasts.created'));
       queryClient.invalidateQueries({ queryKey: qk.project.snapshots(projectId) });
       queryClient.invalidateQueries({ queryKey: qk.project.sandboxes(projectId) });
       onOpenChange(false);
     },
-    onError: (err: Error) => toast.error(err.message || 'Failed to create template'),
+    onError: (err: Error) => toast.error(err.message || t('toasts.createFailed')),
   });
 
   const editMut = useMutation({
@@ -177,12 +172,12 @@ export function SandboxTemplateForm({
         disk_gb: parsePosInt(diskGb) ?? null,
       }),
     onSuccess: () => {
-      toast.success('Template updated — provider sync started');
+      toast.success(t('toasts.updated'));
       queryClient.invalidateQueries({ queryKey: qk.project.snapshots(projectId) });
       queryClient.invalidateQueries({ queryKey: qk.project.sandboxes(projectId) });
       onOpenChange(false);
     },
-    onError: (err: Error) => toast.error(err.message || 'Failed to update template'),
+    onError: (err: Error) => toast.error(err.message || t('toasts.updateFailed')),
   });
 
   const submitting = createMut.isPending || editMut.isPending;
@@ -193,30 +188,24 @@ export function SandboxTemplateForm({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Container className="size-4" />
-            {isEdit ? `Edit "${template?.name}"` : 'New sandbox template'}
+            {isEdit ? t('editTitle', { name: template?.name ?? '' }) : t('newTitle')}
           </DialogTitle>
-          <DialogDescription>
-            {tI18nHardcoded.raw(
-              'autoComponentsProjectsSandboxTemplateFormJsxTextDefineASandbox3c0ec6b6',
-            )}
-          </DialogDescription>
+          <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label htmlFor="tpl-name">Name</Label>
+              <Label htmlFor="tpl-name">{t('name')}</Label>
               <Input
                 id="tpl-name"
-                placeholder={tI18nHardcoded.raw(
-                  'autoComponentsProjectsSandboxTemplateFormJsxAttrPlaceholderMLDevelopment53e1277c',
-                )}
+                placeholder={t('namePlaceholder')}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
             <div>
-              <Label htmlFor="tpl-slug">Slug</Label>
+              <Label htmlFor="tpl-slug">{t('slug')}</Label>
               <Input
                 id="tpl-slug"
                 placeholder="ml"
@@ -233,37 +222,29 @@ export function SandboxTemplateForm({
           </div>
 
           <div>
-            <Label>
-              {tI18nHardcoded.raw(
-                'autoComponentsProjectsSandboxTemplateFormJsxTextImageSourcecaa2d535',
-              )}
-            </Label>
+            <Label>{t('imageSource')}</Label>
             <div className="mt-2 grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setMode('image')}
                 className={cn(
-                  'border-border/60 flex flex-col items-start gap-1 rounded-2xl border p-3 text-left text-sm transition-colors',
+                  'border-border/60 flex flex-col items-start gap-1 rounded-md border p-3 text-left text-sm transition-colors',
                   mode === 'image' && 'border-foreground/30 bg-muted/40',
                 )}
               >
                 <div className="flex items-center gap-2">
                   <Package className="size-4" />
-                  <span className="font-medium">
-                    {tI18nHardcoded.raw(
-                      'autoComponentsProjectsSandboxTemplateFormJsxTextPublicImage51d40ec2',
-                    )}
-                  </span>
+                  <span className="font-medium">{t('publicImage')}</span>
                 </div>
                 <span className="text-muted-foreground text-xs">
-                  e.g. <code className="font-mono">python:3.12-slim</code>
+                  {t('example')} <code className="font-mono">python:3.12-slim</code>
                 </span>
               </button>
               <button
                 type="button"
                 onClick={() => setMode('dockerfile')}
                 className={cn(
-                  'border-border/60 flex flex-col items-start gap-1 rounded-2xl border p-3 text-left text-sm transition-colors',
+                  'border-border/60 flex flex-col items-start gap-1 rounded-md border p-3 text-left text-sm transition-colors',
                   mode === 'dockerfile' && 'border-foreground/30 bg-muted/40',
                 )}
               >
@@ -271,17 +252,13 @@ export function SandboxTemplateForm({
                   <FileCode className="size-4" />
                   <span className="font-medium">Dockerfile</span>
                 </div>
-                <span className="text-muted-foreground text-xs">
-                  {tI18nHardcoded.raw(
-                    'autoComponentsProjectsSandboxTemplateFormJsxTextPathInsideThis6fc72ad4',
-                  )}
-                </span>
+                <span className="text-muted-foreground text-xs">{t('pathInsideRepo')}</span>
               </button>
             </div>
             <div className="mt-3">
               {mode === 'image' ? (
                 <>
-                  <Label htmlFor="tpl-image">Image</Label>
+                  <Label htmlFor="tpl-image">{t('image')}</Label>
                   <Input
                     id="tpl-image"
                     placeholder="python:3.12-slim"
@@ -289,30 +266,19 @@ export function SandboxTemplateForm({
                     onChange={(e) => setImage(e.target.value)}
                   />
                   <p className="text-muted-foreground mt-1 text-xs">
-                    {tI18nHardcoded.raw(
-                      'autoComponentsProjectsSandboxTemplateFormJsxTextMustIncludeA5f4b959e',
-                    )}
-                    <code className="font-mono">latest</code>).
+                    {t('specificTag')} (<code className="font-mono">latest</code>).
                   </p>
                 </>
               ) : (
                 <>
-                  <Label htmlFor="tpl-df">
-                    {tI18nHardcoded.raw(
-                      'autoComponentsProjectsSandboxTemplateFormJsxTextDockerfilePathda3717f2',
-                    )}
-                  </Label>
+                  <Label htmlFor="tpl-df">{t('dockerfilePath')}</Label>
                   <Input
                     id="tpl-df"
                     placeholder=".kortix/Dockerfile.ml"
                     value={dockerfilePath}
                     onChange={(e) => setDockerfilePath(e.target.value)}
                   />
-                  <p className="text-muted-foreground mt-1 text-xs">
-                    {tI18nHardcoded.raw(
-                      'autoComponentsProjectsSandboxTemplateFormJsxTextRelativeToThe552e0897',
-                    )}
-                  </p>
+                  <p className="text-muted-foreground mt-1 text-xs">{t('relativeToRoot')}</p>
                 </>
               )}
               {sourceError && <p className="text-destructive mt-1 text-xs">{sourceError}</p>}
@@ -320,14 +286,12 @@ export function SandboxTemplateForm({
           </div>
 
           <div>
-            <Label>Resources</Label>
+            <Label>{t('resources')}</Label>
             <div className="mt-2 grid grid-cols-3 gap-3">
               <NumericField id="cpu" label="vCPU" value={cpu} onChange={setCpu} min={1} max={32} />
               <NumericField
                 id="mem"
-                label={tI18nHardcoded.raw(
-                  'autoComponentsProjectsSandboxTemplateFormJsxAttrLabelMemoryGiB200ca9a8',
-                )}
+                label={t('memory')}
                 value={memoryGb}
                 onChange={setMemoryGb}
                 min={1}
@@ -335,9 +299,7 @@ export function SandboxTemplateForm({
               />
               <NumericField
                 id="disk"
-                label={tI18nHardcoded.raw(
-                  'autoComponentsProjectsSandboxTemplateFormJsxAttrLabelDiskGiB94935856',
-                )}
+                label={t('disk')}
                 value={diskGb}
                 onChange={setDiskGb}
                 min={1}
@@ -348,13 +310,11 @@ export function SandboxTemplateForm({
 
           <div>
             <Label htmlFor="tpl-entry">
-              Entrypoint <span className="text-muted-foreground">(optional)</span>
+              {t('entrypoint')} <span className="text-muted-foreground">({t('optional')})</span>
             </Label>
             <Textarea
               id="tpl-entry"
-              placeholder={tI18nHardcoded.raw(
-                'autoComponentsProjectsSandboxTemplateFormJsxAttrPlaceholderLeaveBlank4adf74ef',
-              )}
+              placeholder={t('entrypointPlaceholder')}
               value={entrypoint}
               onChange={(e) => setEntrypoint(e.target.value)}
               className="font-mono text-xs"
@@ -365,14 +325,14 @@ export function SandboxTemplateForm({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
-            Cancel
+            {t('cancel')}
           </Button>
           <Button
             onClick={() => (isEdit ? editMut.mutate() : createMut.mutate())}
             disabled={!canSubmit || submitting}
           >
             {submitting && <Loading className="mr-2 size-4" />}
-            {isEdit ? 'Save changes' : 'Create template'}
+            {isEdit ? t('save') : t('create')}
           </Button>
         </DialogFooter>
       </DialogContent>

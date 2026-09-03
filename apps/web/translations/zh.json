@@ -521,6 +521,237 @@
       "reassurance": "已连接的 Git 存储库不会被删除。已推送的代码将保留在原处。",
       "keepWorkspace": "保留工作区"
     },
+    "sandbox": {
+      "states": {
+        "ready": "就绪",
+        "pulling": "正在拉取",
+        "building": "正在构建",
+        "removing": "正在移除",
+        "error": "错误",
+        "buildFailed": "构建失败",
+        "notBuilt": "尚未构建",
+        "unknown": "未知"
+      },
+      "sources": { "platform": "Kortix 平台", "dashboard": "此控制面板" },
+      "facts": {
+        "processor": "处理器",
+        "memory": "内存",
+        "storage": "存储空间",
+        "baseImage": "基础镜像",
+        "builtFrom": "构建来源",
+        "kortixDefault": "Kortix 默认值",
+        "definedIn": "定义位置"
+      },
+      "routing": {
+        "title": "路由",
+        "automatic": "自动",
+        "pinned": "已固定",
+        "pinnedWithProvider": "已固定 · {provider}"
+      },
+      "toasts": {
+        "rebuildStarted": "已开始重新构建“{name}”",
+        "buildFailed": "无法开始构建",
+        "deleted": "已删除“{name}”",
+        "deleteFailed": "无法删除模板"
+      },
+      "actions": {
+        "new": "新建模板",
+        "edit": "编辑模板",
+        "delete": "删除模板",
+        "rebuild": "重新构建"
+      },
+      "coverage": {
+        "ready": "就绪",
+        "building": "正在构建",
+        "failed": "失败",
+        "notReady": "未就绪",
+        "unavailable": "不可用",
+        "selected": "已选择",
+        "selectedAria": "已选择"
+      },
+      "defaultBadge": "默认",
+      "runtime": "会话运行环境",
+      "checked": "检查于 {value}",
+      "deleteDialog": {
+        "title": "删除沙盒模板“{name}”？",
+        "description": "这会从项目中移除该模板。已经使用它的会话不受影响。",
+        "confirm": "删除"
+      },
+      "provider": {
+        "label": "沙盒提供商",
+        "experimental": "实验性",
+        "description": "将此项目固定到指定的沙盒提供商，并覆盖平台默认值。新会话使用所选提供商。“自动”会跟随平台默认值。",
+        "preparing": "正在准备 {provider}…这可能需要几分钟",
+        "fallback": "沙盒提供商",
+        "switched": "已切换到 {provider}",
+        "switchFailed": "沙盒提供商切换失败",
+        "updateFailed": "无法更新沙盒提供商"
+      },
+      "loadFailed": "无法加载沙盒模板：",
+      "retry": "重试",
+      "descriptionStart": "每个会话都从沙盒模板启动。它是一台准备好的机器，您的仓库已检出到",
+      "descriptionEnd": "Kortix 默认模板适用于大多数项目。您可以在下方添加自己的模板，或将其声明为",
+      "configReadFailed": "无法读取项目沙盒配置：",
+      "emptyTitle": "尚未解析任何模板。",
+      "emptyDescription": "创建一个模板，或将其添加到项目清单中。",
+      "form": {
+        "newTitle": "新建沙盒模板",
+        "editTitle": "编辑“{name}”",
+        "description": "定义一个可供会话启动的沙盒镜像。请选择公共 Docker 镜像或仓库中的 Dockerfile。Kortix 会自动添加运行时层。",
+        "name": "名称",
+        "namePlaceholder": "机器学习开发",
+        "slug": "标识符",
+        "imageSource": "镜像来源",
+        "publicImage": "公共镜像",
+        "example": "例如",
+        "pathInsideRepo": "此仓库中的路径",
+        "image": "镜像",
+        "specificTag": "必须包含具体标签，不能使用",
+        "dockerfilePath": "Dockerfile 路径",
+        "relativeToRoot": "相对于仓库根目录。",
+        "resources": "资源",
+        "memory": "内存 (GiB)",
+        "disk": "磁盘 (GiB)",
+        "entrypoint": "入口命令",
+        "optional": "可选",
+        "entrypointPlaceholder": "留空以使用 Kortix 默认值（推荐）。",
+        "cancel": "取消",
+        "save": "保存更改",
+        "create": "创建模板",
+        "errors": {
+          "reservedSlug": "标识符“default”保留给平台模板。",
+          "invalidSlug": "请使用小写字母、数字、连字符或下划线（1–64 个字符）。",
+          "imageRequired": "必须填写镜像引用。",
+          "dockerfileRequired": "必须填写 Dockerfile 路径。",
+          "latestTag": "请固定具体标签，不要使用“latest”。"
+        },
+        "toasts": {
+          "created": "模板已创建 — 构建已开始",
+          "createFailed": "无法创建模板",
+          "updated": "模板已更新 — 提供商同步已开始",
+          "updateFailed": "无法更新模板"
+        }
+      }
+    },
+    "snapshots": {
+      "categories": {
+        "quota": {
+          "label": "已达到快照限额",
+          "help": "此工作区保存的预备机器数量已达到套餐上限。请删除不再使用的沙盒模板或提高限额，然后重新构建。"
+        },
+        "dockerfile": {
+          "label": "Dockerfile 构建失败",
+          "help": "此项目 Dockerfile 中的命令返回了错误。下方日志的最后一项是失败的命令。"
+        },
+        "layer": {
+          "label": "Kortix 运行时层失败",
+          "help": "镜像已构建，但 Kortix 无法在其上安装工具。这通常是临时问题，请重新构建。"
+        },
+        "git": {
+          "label": "仓库访问失败",
+          "help": "Kortix 无法读取此项目的仓库。请检查仓库连接是否仍获授权，然后重新构建。"
+        },
+        "tunnel": {
+          "label": "无法访问沙盒回调",
+          "help": "新机器在设置期间无法回调 Kortix。这通常是临时问题，请重新构建。"
+        },
+        "provider": {
+          "label": "沙盒提供商错误",
+          "help": "运行机器的公司返回了错误。您的项目没有问题，请重新构建。"
+        },
+        "timeout": {
+          "label": "构建超时",
+          "help": "机器准备时间超过了允许的时限。请将耗时步骤移出 Dockerfile，或在提供商负载较低时重试。"
+        },
+        "runtime": {
+          "label": "缺少运行时产物",
+          "help": "机器已准备，但缺少 Kortix 启动时所需的文件。请重新构建。如果问题再次出现，请检查模板的基础镜像。"
+        },
+        "unknown": {
+          "label": "构建失败",
+          "help": "构建因 Kortix 无法分类的错误而停止。完整日志如下。"
+        }
+      },
+      "sources": {
+        "session-start": "会话启动",
+        "project-create": "项目已创建",
+        "cr-merge": "代码审查合并",
+        "manual": "手动重新构建",
+        "background": "后台同步",
+        "startup": "启动"
+      },
+      "statuses": { "ready": "就绪", "building": "构建中", "failed": "失败" },
+      "stale": {
+        "superseded": "未完成，已由较新的设置取代",
+        "recovered": "未完成，但环境现在已就绪",
+        "retrying": "未完成 — 新的尝试正在运行"
+      },
+      "outcomes": {
+        "ready": "可供新会话使用",
+        "building": "正在准备",
+        "blocked": "新会话无法在此启动",
+        "failed": "未完成"
+      },
+      "facts": {
+        "triggeredBy": "触发来源",
+        "started": "开始时间",
+        "took": "耗时",
+        "stillRunning": "仍在运行",
+        "runsOn": "运行位置",
+        "imageId": "镜像 ID",
+        "unknown": "未知"
+      },
+      "duration": {
+        "underMinute": "不到 1 分钟",
+        "minutes": "{count} 分钟",
+        "hours": "{count} 小时"
+      },
+      "environment": {
+        "ready": {
+          "title": "此项目的环境已就绪",
+          "body": "新会话会立即在预备机器上启动。您无需在此页面执行任何操作。"
+        },
+        "building": {
+          "title": "正在准备此项目的环境",
+          "body": "正在准备新机器。现在启动的会话会等待准备完成，不会失败。"
+        },
+        "notBuilt": {
+          "title": "尚未准备任何内容",
+          "body": "您首次在此启动会话时，Kortix 会准备一台机器。无需提前设置。"
+        }
+      },
+      "banner": {
+        "blockedTitle": "会话无法启动",
+        "degradedTitle": "部分会话无法启动",
+        "blockedBody": "此项目用于启动的机器构建失败，且没有可用副本。每个新会话都会重试并遇到相同错误。",
+        "degradedBody": "机器在 {ready} 上已就绪，但在 {failed} 上失败。路由到后者的会话无法启动。"
+      },
+      "actions": { "fix": "使用智能体修复", "rebuild": "重新构建" },
+      "faq": {
+        "title": "工作原理",
+        "items": {
+          "1": {
+            "question": "什么是快照？",
+            "answer": "快照是已经设置好的机器，其中提前安装了此项目的仓库、依赖项和 Kortix 工具。启动会话时会复制这台预备机器，而不是从头安装所有内容。因此，会话可在几秒钟内就绪，而无需几分钟。"
+          },
+          "2": {
+            "question": "为什么会不断出现新行？",
+            "answer": "每当配置发生变化时，Kortix 都会准备新机器，例如新增沙盒模板、编辑 Dockerfile 或合并更改。每次尝试都会生成一行。旧行作为历史记录保留，并非待处理事项。"
+          },
+          "3": {
+            "question": "有一次尝试失败了，这是问题吗？",
+            "answer": "通常不是。只有在没有可用机器时，失败的尝试才会产生影响。此时页面顶部会显示带有重新构建按钮的提示。上方没有提示的失败行已经被成功尝试取代。"
+          }
+        }
+      },
+      "view": {
+        "loadFailed": "无法加载沙盒快照：",
+        "retry": "重试",
+        "logTitle": "构建日志",
+        "logDescription": "Kortix 每次为此项目准备机器时都会生成一行。打开某行可查看详情。",
+        "empty": "尚无构建记录。平台默认模板只在全局构建一次；自定义模板在首次使用时构建。"
+      }
+    },
     "plan": {
       "managedByAdmin": "由帐户管理员管理",
       "adminOnly": "只有此帐户的管理员才能更改套餐或购买积分。",

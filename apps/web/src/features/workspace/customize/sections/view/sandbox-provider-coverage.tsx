@@ -51,6 +51,12 @@ export function describeProviderCoverage(status: ProviderCoverageStatus): {
   }
 }
 
+export interface SandboxProviderBadgeCopy {
+  states?: Partial<Record<ProviderCoverageStatus, string>>;
+  selected?: string;
+  selectedAria?: string;
+}
+
 export function availableProviderCoverage(
   coverage: SandboxTemplate['provider_coverage'] | null | undefined,
 ): ProviderCoverageEntry[] {
@@ -102,19 +108,22 @@ export function latestObservedAt(
 export function SandboxProviderBadge({
   item,
   selected = false,
+  copy = {},
 }: {
   item: ProviderCoverageEntry;
   /** Pinned mode only — marks the provider sessions actually route to. */
   selected?: boolean;
+  copy?: SandboxProviderBadgeCopy;
 }) {
   const state = describeProviderCoverage(item.status);
+  const stateLabel = copy.states?.[item.status] ?? state.label;
   const provider = sandboxProviderLabel(item.provider);
 
   return (
     <Badge
       variant={providerCoverageVariant(state.tone)}
       size="xs"
-      aria-label={`${provider}${selected ? ' selected' : ''}: ${state.label}`}
+      aria-label={`${provider}${selected ? ` ${copy.selectedAria ?? 'selected'}` : ''}: ${stateLabel}`}
     >
       {provider}
       {selected ? (
@@ -122,13 +131,13 @@ export function SandboxProviderBadge({
           <span className="opacity-50" aria-hidden="true">
             &bull;
           </span>
-          Selected
+          {copy.selected ?? 'Selected'}
         </>
       ) : null}
       <span className="opacity-50" aria-hidden="true">
         &bull;
       </span>
-      {state.label}
+      {stateLabel}
     </Badge>
   );
 }

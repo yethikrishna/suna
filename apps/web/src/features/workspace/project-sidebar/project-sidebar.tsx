@@ -113,7 +113,10 @@ export function ProjectSidebar({ projectId }: { projectId: string }) {
       // square fill behind the flyout card and it showed at all four corners.
       className="[scrollbar-width:'none'] [-ms-overflow-style:'none'] [&::-webkit-scrollbar]:hidden"
     >
-      <SidebarHeader className="safe-area-top space-y-2 pt-2">
+      <SidebarHeader
+        className="space-y-2"
+        style={{ paddingTop: 'max(calc(var(--spacing) * 2), env(safe-area-inset-top, 0px))' }}
+      >
         {/* Offcanvas everywhere: the whole panel slides, so the header keeps a
             single layout. Three controls on one 240px row, all 32px tall: the
             merged brand/switcher control, search, and the panel's own collapse

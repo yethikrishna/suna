@@ -34,6 +34,19 @@ const nativeLocaleNames: Record<Locale, string> = {
 
 interface LocaleMessages {
   common: { close: string };
+  projectOnboarding: {
+    progress: string;
+    company: {
+      title: string;
+      description: string;
+      domain: string;
+      continue: string;
+    };
+    tools: { title: string; searchPlaceholder: string; continue: string };
+    slack: { title: string; notNow: string };
+    plan: { title: string; continue: string };
+    done: { title: string; firstMessage: string; openProject: string };
+  };
   billing: {
     plan: {
       currentPlan: string;
@@ -200,7 +213,7 @@ test.describe("26 — Settings localization", () => {
   test("each supported locale persists and renders the complete language-and-shortcuts surface", async ({
     page,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(360_000);
 
     const runId = Date.now().toString(36);
     const email = `e2e-i18n-settings-${runId}@example.test`;
@@ -709,6 +722,100 @@ test.describe("26 — Settings localization", () => {
               page.getByText(upgradeText, { exact: true }).first(),
             ).toBeVisible();
           }
+
+          await page.goto(`/projects/${projectId}?onboarding-reset`);
+          const wizard = page.getByRole("dialog");
+          await expect(
+            wizard.getByRole("heading", {
+              name: copy.projectOnboarding.company.title,
+              exact: true,
+            }),
+          ).toBeVisible({ timeout: 30_000 });
+          await expect(
+            wizard.getByRole("progressbar", {
+              name: copy.projectOnboarding.progress,
+            }),
+          ).toHaveAttribute("aria-valuenow", "1");
+          await expect(
+            wizard.getByText(copy.projectOnboarding.company.description, {
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(
+            wizard.getByRole("textbox", {
+              name: copy.projectOnboarding.company.domain,
+            }),
+          ).toBeVisible();
+          await wizard
+            .getByRole("button", {
+              name: copy.projectOnboarding.company.continue,
+              exact: true,
+            })
+            .click();
+
+          await expect(
+            wizard.getByRole("heading", {
+              name: copy.projectOnboarding.tools.title,
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(
+            wizard.getByRole("textbox", {
+              name: copy.projectOnboarding.tools.searchPlaceholder,
+            }),
+          ).toBeVisible();
+          await wizard
+            .getByRole("button", {
+              name: copy.projectOnboarding.tools.continue,
+              exact: true,
+            })
+            .click();
+
+          await expect(
+            wizard.getByRole("heading", {
+              name: copy.projectOnboarding.slack.title,
+              exact: true,
+            }),
+          ).toBeVisible();
+          await wizard
+            .getByRole("button", {
+              name: copy.projectOnboarding.slack.notNow,
+              exact: true,
+            })
+            .click();
+
+          await expect(
+            wizard.getByRole("heading", {
+              name: copy.projectOnboarding.plan.title,
+              exact: true,
+            }),
+          ).toBeVisible();
+          await wizard
+            .getByRole("button", {
+              name: copy.projectOnboarding.plan.continue,
+              exact: true,
+            })
+            .click();
+
+          await expect(
+            wizard.getByRole("heading", {
+              name: copy.projectOnboarding.done.title,
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(
+            wizard.getByText(copy.projectOnboarding.done.firstMessage, {
+              exact: true,
+            }),
+          ).toBeVisible();
+          await expect(
+            wizard.getByRole("button", {
+              name: copy.projectOnboarding.done.openProject,
+              exact: true,
+            }),
+          ).toBeVisible();
+
+          await page.goto(`/projects/${projectId}/settings/preferences`);
 
           await page
             .getByRole("tab", {

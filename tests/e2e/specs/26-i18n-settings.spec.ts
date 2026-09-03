@@ -40,6 +40,14 @@ interface LocaleMessages {
       modifierKey: string;
       shortcuts: Record<string, string>;
     };
+    profile: {
+      profilePicture: string;
+      email: string;
+      name: string;
+      organizations: { title: string; manage: string };
+      dangerZone: string;
+      deleteAccount: string;
+    };
   };
 }
 
@@ -162,6 +170,40 @@ test.describe("26 — Settings localization", () => {
           await expect(page.getByRole("combobox").first()).toHaveText(
             nativeLocaleNames[locale],
           );
+
+          await page
+            .getByRole("tab", {
+              name: copy.settings.rail.items.profile.label,
+              exact: true,
+            })
+            .click();
+          await expect(
+            page.getByRole("heading", {
+              name: copy.settings.rail.items.profile.label,
+              exact: true,
+            }),
+          ).toBeVisible();
+          for (const profileText of [
+            copy.settings.profile.profilePicture,
+            copy.settings.profile.email,
+            copy.settings.profile.name,
+            copy.settings.profile.organizations.title,
+            copy.settings.profile.organizations.manage,
+            copy.settings.profile.dangerZone,
+            copy.settings.profile.deleteAccount,
+          ]) {
+            await expect(
+              page.getByText(profileText, { exact: true }).first(),
+            ).toBeVisible();
+          }
+
+          await page
+            .getByRole("tab", {
+              name: copy.settings.rail.items.preferences.label,
+              exact: true,
+            })
+            .click();
+          await expect(page.getByRole("combobox").first()).toBeVisible();
         });
       }
 

@@ -195,7 +195,11 @@
       "backToApp": "Zurück zur App",
       "close": "Schließen",
       "docs": "Dokumentation",
-      "groups": { "workspace": "Arbeitsbereich", "personal": "Persönlich", "account": "Konto" },
+      "groups": {
+        "workspace": "Arbeitsbereich",
+        "personal": "Persönlich",
+        "account": "Konto"
+      },
       "items": {
         "workspace": {
           "label": "Allgemein",
@@ -229,8 +233,13 @@
           "label": "Sitzungen",
           "description": "Wie eine laufende Sitzung Sie benachrichtigt."
         },
-        "preferences": { "label": "Einstellungen", "description": "Sprache und Tastaturkürzel." },
-        "connected": { "label": "Verbundene Konten" },
+        "preferences": {
+          "label": "Einstellungen",
+          "description": "Sprache und Tastaturkürzel."
+        },
+        "connected": {
+          "label": "Verbundene Konten"
+        },
         "tokens": {
           "label": "API-Schlüssel",
           "description": "Schlüssel, die die CLI, ein Skript oder einen CI-Auftrag als Sie anmelden."
@@ -270,6 +279,66 @@
         "toggleLeftSidebar": "Linke Seitenleiste umschalten",
         "toggleRightSidebar": "Rechte Seitenleiste umschalten",
         "toggleSessionActionPanel": "Sitzungsaktionsfeld umschalten"
+      }
+    },
+    "profile": {
+      "profilePicture": "Profilbild",
+      "profilePictureDescription": "JPG, PNG oder GIF. Maximal 5 MB.",
+      "remove": "Entfernen",
+      "uploadProfilePicture": "Profilbild hochladen",
+      "email": "E-Mail",
+      "emailDescription": "Wird zur Anmeldung verwendet – kann hier nicht geändert werden.",
+      "name": "Name",
+      "nameDescription": "Ihr Anzeigename in Kortix.",
+      "namePlaceholder": "Dein Name",
+      "save": "Speichern",
+      "organizations": {
+        "title": "Organisationen",
+        "description": "Mitglieder, Abrechnung, Rollen und Audit befinden sich in den Einstellungen der jeweiligen Organisation.",
+        "fallbackAccountName": "Konto",
+        "owner": "Besitzer",
+        "admin": "Admin",
+        "member": "Mitglied",
+        "manage": "Verwalten"
+      },
+      "dangerZone": "Gefahrenzone",
+      "deleteAccount": "Konto löschen",
+      "deletionUnavailable": "Das Löschen von Konten ist in dieser Bereitstellung nicht verfügbar. Wenden Sie sich an den Support, um Ihr Konto zu schließen.",
+      "scheduledForDeletionOn": "Geplante Löschung am {date}.",
+      "scheduledForDeletion": "Zum Löschen geplant.",
+      "cancelBeforeDeletion": "Sie können die Löschung bis dahin jederzeit abbrechen.",
+      "deletionDescription": "Dadurch werden alle mit Ihrem Konto verknüpften Agenten, Threads, Anmeldeinformationen und Abonnements gelöscht. Dies kann nicht rückgängig gemacht werden.",
+      "unavailable": "Nicht verfügbar",
+      "keepMyAccount": "Behalte mein Konto",
+      "deleteDialogTitle": "Konto löschen?",
+      "immediateWarning": "Dadurch wird Ihr Konto sofort gelöscht. Es gibt keine Nachfrist und keine Möglichkeit, dies rückgängig zu machen.",
+      "gracePeriodWarning": "Die Löschung Ihres Kontos ist nach einer 30-tägigen Kulanzfrist geplant, in der Sie kündigen können.",
+      "whenDeleted": "Wenn Ihr Konto gelöscht wird:",
+      "agentsDeleted": "Jeder Agent, den Sie besitzen, wird gelöscht",
+      "threadsDeleted": "Jeder Thread und jede Nachricht wird gelöscht",
+      "credentialsDeleted": "Alle Anmeldeinformationen und Geheimnisse werden entfernt",
+      "subscriptionCancelled": "Ihr Abonnement ist gekündigt",
+      "billingHistoryRemoved": "Ihr Abrechnungsverlauf wird entfernt",
+      "chooseWhen": "Wählen Sie wann",
+      "gracePeriodLabel": "30-tägige Nachfrist",
+      "gracePeriodDescription": "Die Löschung erfolgt automatisch nach 30 Tagen. Bis dahin ist eine Kündigung jederzeit möglich.",
+      "immediateLabel": "Sofort löschen",
+      "immediateDescription": "Ihr Konto und seine Daten werden umgehend gelöscht. Dies kann nicht rückgängig gemacht werden.",
+      "typeDeleteToConfirm": "Geben Sie zur Bestätigung „delete“ ein",
+      "keepAccount": "Konto behalten",
+      "processing": "Verarbeitung…",
+      "keepAccountTitle": "Konto behalten?",
+      "keepAccountDescription": "Dadurch wird der geplante Löschvorgang abgebrochen. Ihr Konto und seine Daten bleiben unverändert.",
+      "toasts": {
+        "nameUpdated": "Name aktualisiert",
+        "nameUpdateFailed": "Der Name konnte nicht aktualisiert werden",
+        "userNotFound": "Benutzer nicht gefunden",
+        "profilePictureUpdated": "Profilbild aktualisiert",
+        "profilePictureUploadFailed": "Profilbild konnte nicht hochgeladen werden",
+        "profilePictureRemoved": "Profilbild entfernt",
+        "profilePictureRemoveFailed": "Profilbild konnte nicht entfernt werden",
+        "chooseImageFile": "Bitte wählen Sie eine Bilddatei aus",
+        "imageTooLarge": "Das Bild muss kleiner als 5 MB sein"
       }
     }
   },

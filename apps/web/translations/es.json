@@ -195,7 +195,11 @@
       "backToApp": "Volver a la aplicación",
       "close": "Cerrar",
       "docs": "Documentación",
-      "groups": { "workspace": "Espacio de trabajo", "personal": "Personal", "account": "Cuenta" },
+      "groups": {
+        "workspace": "Espacio de trabajo",
+        "personal": "Personal",
+        "account": "Cuenta"
+      },
       "items": {
         "workspace": {
           "label": "General",
@@ -229,8 +233,13 @@
           "label": "Sesiones",
           "description": "Cómo una sesión en ejecución llama tu atención."
         },
-        "preferences": { "label": "Preferencias", "description": "Idioma y atajos de teclado." },
-        "connected": { "label": "Cuentas conectadas" },
+        "preferences": {
+          "label": "Preferencias",
+          "description": "Idioma y atajos de teclado."
+        },
+        "connected": {
+          "label": "Cuentas conectadas"
+        },
         "tokens": {
           "label": "Claves API",
           "description": "Claves que autentican la CLI, un script o un trabajo de CI como tú."
@@ -270,6 +279,66 @@
         "toggleLeftSidebar": "Alternar barra lateral izquierda",
         "toggleRightSidebar": "Alternar barra lateral derecha",
         "toggleSessionActionPanel": "Alternar panel de acciones de sesión"
+      }
+    },
+    "profile": {
+      "profilePicture": "Foto de perfil",
+      "profilePictureDescription": "JPG, PNG o GIF. Máximo 5 MB.",
+      "remove": "Quitar",
+      "uploadProfilePicture": "Subir foto de perfil",
+      "email": "Correo electrónico",
+      "emailDescription": "Se utiliza para iniciar sesión; no se puede cambiar aquí.",
+      "name": "Nombre",
+      "nameDescription": "Su nombre para mostrar en Kortix.",
+      "namePlaceholder": "Tu nombre",
+      "save": "Guardar",
+      "organizations": {
+        "title": "Organizaciones",
+        "description": "Los miembros, la facturación, las funciones y la auditoría viven en la configuración propia de cada organización.",
+        "fallbackAccountName": "Cuenta",
+        "owner": "Propietario",
+        "admin": "Administrador",
+        "member": "Miembro",
+        "manage": "Administrar"
+      },
+      "dangerZone": "Zona de peligro",
+      "deleteAccount": "Eliminar cuenta",
+      "deletionUnavailable": "La eliminación de cuentas no está disponible en esta implementación. Póngase en contacto con el soporte para cerrar su cuenta.",
+      "scheduledForDeletionOn": "Programado para su eliminación el {date}.",
+      "scheduledForDeletion": "Programado para su eliminación.",
+      "cancelBeforeDeletion": "Puedes cancelar en cualquier momento antes de esa fecha.",
+      "deletionDescription": "Esto elimina todos los agentes, subprocesos, credenciales y suscripciones vinculados a su cuenta. Esto no se puede deshacer.",
+      "unavailable": "No disponible",
+      "keepMyAccount": "Mantener mi cuenta",
+      "deleteDialogTitle": "¿Eliminar tu cuenta?",
+      "immediateWarning": "Esto elimina su cuenta de inmediato. No hay período de gracia ni forma de deshacerlo.",
+      "gracePeriodWarning": "Su cuenta está programada para ser eliminada después de un período de gracia de 30 días, durante el cual puede cancelar.",
+      "whenDeleted": "Cuando se elimina su cuenta:",
+      "agentsDeleted": "Todos los agentes que posees se eliminan",
+      "threadsDeleted": "Se eliminan todos los hilos y mensajes.",
+      "credentialsDeleted": "Se eliminan todas las credenciales y secretos.",
+      "subscriptionCancelled": "Tu suscripción está cancelada",
+      "billingHistoryRemoved": "Se elimina tu historial de facturación",
+      "chooseWhen": "Elige cuando",
+      "gracePeriodLabel": "período de gracia de 30 días",
+      "gracePeriodDescription": "La eliminación se produce automáticamente después de 30 días. Cancele en cualquier momento antes de esa fecha.",
+      "immediateLabel": "Eliminar inmediatamente",
+      "immediateDescription": "Su cuenta y sus datos se eliminan de inmediato. Esto no se puede deshacer.",
+      "typeDeleteToConfirm": "Escribe \"delete\" para confirmar",
+      "keepAccount": "Mantener cuenta",
+      "processing": "Procesando…",
+      "keepAccountTitle": "¿Mantener tu cuenta?",
+      "keepAccountDescription": "Esto cancela la eliminación programada. Su cuenta y sus datos permanecen exactamente como están.",
+      "toasts": {
+        "nameUpdated": "Nombre actualizado",
+        "nameUpdateFailed": "No se pudo actualizar el nombre",
+        "userNotFound": "Usuario no encontrado",
+        "profilePictureUpdated": "Foto de perfil actualizada",
+        "profilePictureUploadFailed": "No se pudo subir la foto de perfil",
+        "profilePictureRemoved": "Foto de perfil eliminada",
+        "profilePictureRemoveFailed": "No se pudo eliminar la foto de perfil",
+        "chooseImageFile": "Por favor elija un archivo de imagen",
+        "imageTooLarge": "La imagen debe tener menos de 5 MB."
       }
     }
   },

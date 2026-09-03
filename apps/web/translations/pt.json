@@ -195,9 +195,16 @@
       "backToApp": "Voltar ao aplicativo",
       "close": "Fechar",
       "docs": "Documentação",
-      "groups": { "workspace": "Espaço de trabalho", "personal": "Pessoal", "account": "Conta" },
+      "groups": {
+        "workspace": "Espaço de trabalho",
+        "personal": "Pessoal",
+        "account": "Conta"
+      },
       "items": {
-        "workspace": { "label": "Geral", "description": "Nome e ícone deste espaço de trabalho." },
+        "workspace": {
+          "label": "Geral",
+          "description": "Nome e ícone deste espaço de trabalho."
+        },
         "sandbox": {
           "label": "Modelos de sandbox",
           "description": "A configuração da máquina em que uma sessão é executada e o registro de cada preparação feita pelo Kortix."
@@ -210,7 +217,10 @@
           "label": "Atualizações",
           "description": "Alterações que um agente faz neste espaço de trabalho. Cada execução abre uma solicitação de alteração para sua revisão. Nada é mesclado automaticamente."
         },
-        "profile": { "label": "Perfil", "description": "Sua imagem, nome, e-mail e organizações." },
+        "profile": {
+          "label": "Perfil",
+          "description": "Sua imagem, nome, e-mail e organizações."
+        },
         "security": {
           "label": "Segurança",
           "description": "Autenticação de dois fatores e dispositivos conectados à sua conta."
@@ -223,8 +233,13 @@
           "label": "Sessões",
           "description": "Como uma sessão em execução chama sua atenção."
         },
-        "preferences": { "label": "Preferências", "description": "Idioma e atalhos de teclado." },
-        "connected": { "label": "Contas conectadas" },
+        "preferences": {
+          "label": "Preferências",
+          "description": "Idioma e atalhos de teclado."
+        },
+        "connected": {
+          "label": "Contas conectadas"
+        },
         "tokens": {
           "label": "Chaves de API",
           "description": "Chaves que autenticam a CLI, um script ou um trabalho de CI como você."
@@ -264,6 +279,66 @@
         "toggleLeftSidebar": "Alternar barra lateral esquerda",
         "toggleRightSidebar": "Alternar barra lateral direita",
         "toggleSessionActionPanel": "Alternar painel de ação da sessão"
+      }
+    },
+    "profile": {
+      "profilePicture": "Foto do perfil",
+      "profilePictureDescription": "JPG, PNG ou GIF. Máximo de 5 MB.",
+      "remove": "Remover",
+      "uploadProfilePicture": "Carregar foto do perfil",
+      "email": "E-mail",
+      "emailDescription": "Usado para fazer login – não pode ser alterado aqui.",
+      "name": "Nome",
+      "nameDescription": "Seu nome de exibição em Kortix.",
+      "namePlaceholder": "Seu nome",
+      "save": "Salvar",
+      "organizations": {
+        "title": "Organizações",
+        "description": "Membros, faturamento, funções e auditoria dependem das configurações de cada organização.",
+        "fallbackAccountName": "Conta",
+        "owner": "Proprietário",
+        "admin": "Administrador",
+        "member": "Membro",
+        "manage": "Gerenciar"
+      },
+      "dangerZone": "Zona de perigo",
+      "deleteAccount": "Excluir conta",
+      "deletionUnavailable": "A exclusão da conta não está disponível nesta implantação. Entre em contato com o suporte para encerrar sua conta.",
+      "scheduledForDeletionOn": "Programado para exclusão em {date}.",
+      "scheduledForDeletion": "Programado para exclusão.",
+      "cancelBeforeDeletion": "Você pode cancelar a qualquer momento antes disso.",
+      "deletionDescription": "Isso exclui todos os agentes, threads, credenciais e assinaturas vinculadas à sua conta. Isto não pode ser desfeito.",
+      "unavailable": "Indisponível",
+      "keepMyAccount": "Manter minha conta",
+      "deleteDialogTitle": "Excluir sua conta?",
+      "immediateWarning": "Isso exclui sua conta imediatamente. Não há período de carência e não há como desfazê-lo.",
+      "gracePeriodWarning": "Sua conta está programada para exclusão após um período de carência de 30 dias, durante o qual você pode cancelar.",
+      "whenDeleted": "Quando sua conta for excluída:",
+      "agentsDeleted": "Cada agente que você possui é excluído",
+      "threadsDeleted": "Cada tópico e mensagem é excluído",
+      "credentialsDeleted": "Todas as credenciais e segredos são removidos",
+      "subscriptionCancelled": "Sua assinatura foi cancelada",
+      "billingHistoryRemoved": "Seu histórico de faturamento foi removido",
+      "chooseWhen": "Escolha quando",
+      "gracePeriodLabel": "Período de carência de 30 dias",
+      "gracePeriodDescription": "A exclusão acontece automaticamente após 30 dias. Cancele a qualquer momento antes disso.",
+      "immediateLabel": "Excluir imediatamente",
+      "immediateDescription": "Sua conta e seus dados são excluídos imediatamente. Isto não pode ser desfeito.",
+      "typeDeleteToConfirm": "Digite \"delete\" para confirmar",
+      "keepAccount": "Manter conta",
+      "processing": "Processando…",
+      "keepAccountTitle": "Manter sua conta?",
+      "keepAccountDescription": "Isso cancela a exclusão agendada. Sua conta e seus dados permanecem exatamente como estão.",
+      "toasts": {
+        "nameUpdated": "Nome atualizado",
+        "nameUpdateFailed": "Não foi possível atualizar o nome",
+        "userNotFound": "Usuário não encontrado",
+        "profilePictureUpdated": "Foto do perfil atualizada",
+        "profilePictureUploadFailed": "Não foi possível enviar a foto do perfil",
+        "profilePictureRemoved": "Foto do perfil removida",
+        "profilePictureRemoveFailed": "Não foi possível remover a foto do perfil",
+        "chooseImageFile": "Escolha um arquivo de imagem",
+        "imageTooLarge": "A imagem deve ser menor que 5 MB"
       }
     }
   },

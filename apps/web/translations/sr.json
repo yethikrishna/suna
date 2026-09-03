@@ -48,9 +48,16 @@
       "backToApp": "Назад у апликацију",
       "close": "Затвори",
       "docs": "Документација",
-      "groups": { "workspace": "Радни простор", "personal": "Лично", "account": "Налог" },
+      "groups": {
+        "workspace": "Радни простор",
+        "personal": "Лично",
+        "account": "Налог"
+      },
       "items": {
-        "workspace": { "label": "Опште", "description": "Име и икона овог радног простора." },
+        "workspace": {
+          "label": "Опште",
+          "description": "Име и икона овог радног простора."
+        },
         "sandbox": {
           "label": "Шаблони изолованог окружења",
           "description": "Конфигурација машине на којој се сесија извршава и запис сваке припреме коју је Kortix обавио."
@@ -79,8 +86,13 @@
           "label": "Сесије",
           "description": "Како активна сесија привлачи вашу пажњу."
         },
-        "preferences": { "label": "Преференце", "description": "Језик и пречице на тастатури." },
-        "connected": { "label": "Повезани налози" },
+        "preferences": {
+          "label": "Преференце",
+          "description": "Језик и пречице на тастатури."
+        },
+        "connected": {
+          "label": "Повезани налози"
+        },
         "tokens": {
           "label": "API кључеви",
           "description": "Кључеви који пријављују CLI, скрипту или CI посао као вас."
@@ -268,6 +280,66 @@
     "connectors": {
       "opening": "Отварање конектора",
       "redirecting": "Преусмеравање на страницу са конекторима..."
+    },
+    "profile": {
+      "profilePicture": "Профилна слика",
+      "profilePictureDescription": "JPG, PNG или GIF. Највише 5 MB.",
+      "remove": "Уклони",
+      "uploadProfilePicture": "Отпремите слику профила",
+      "email": "Имејл",
+      "emailDescription": "Користи се за пријављивање — не може се променити овде.",
+      "name": "Име",
+      "nameDescription": "Ваше име за приказ у апликацији Kortix.",
+      "namePlaceholder": "Ваше име",
+      "save": "Сачувај",
+      "organizations": {
+        "title": "Организације",
+        "description": "Чланови, наплата, улоге и евиденција налазе се у подешавањима сваке организације.",
+        "fallbackAccountName": "Налог",
+        "owner": "Власник",
+        "admin": "Админ",
+        "member": "Члан",
+        "manage": "Управљај"
+      },
+      "dangerZone": "Опасна зона",
+      "deleteAccount": "Избриши налог",
+      "deletionUnavailable": "Брисање налога није доступно у овом окружењу. Обратите се подршци да затворите налог.",
+      "scheduledForDeletionOn": "Брисање је заказано за {date}.",
+      "scheduledForDeletion": "Заказано за брисање.",
+      "cancelBeforeDeletion": "Можете отказати било када пре тога.",
+      "deletionDescription": "Ово брише све агенте, разговоре, приступне податке и претплате повезане са вашим налогом. Радња се не може опозвати.",
+      "unavailable": "Недоступно",
+      "keepMyAccount": "Задржи мој налог",
+      "deleteDialogTitle": "Желите ли да избришете налог?",
+      "immediateWarning": "Ово одмах брише ваш налог. Нема периода за отказивање и радња се не може опозвати.",
+      "gracePeriodWarning": "Ваш налог ће бити избрисан након периода од 30 дана. Током тог периода можете да откажете брисање.",
+      "whenDeleted": "Када избришете налог:",
+      "agentsDeleted": "Сваки агент који поседујете се брише",
+      "threadsDeleted": "Свака нит и порука се бришу",
+      "credentialsDeleted": "Сви приступни подаци и тајне се уклањају",
+      "subscriptionCancelled": "Ваша претплата је отказана",
+      "billingHistoryRemoved": "Историја наплате се уклања",
+      "chooseWhen": "Изаберите када",
+      "gracePeriodLabel": "Период за отказивање од 30 дана",
+      "gracePeriodDescription": "Брисање се дешава аутоматски након 30 дана. Откажите било када пре тога.",
+      "immediateLabel": "Избриши одмах",
+      "immediateDescription": "Ваш налог и његови подаци се одмах бришу. Ово се не може поништити.",
+      "typeDeleteToConfirm": "Унесите „delete“ да потврдите",
+      "keepAccount": "Задржи налог",
+      "processing": "Обрада…",
+      "keepAccountTitle": "Задржите свој налог?",
+      "keepAccountDescription": "Ово поништава заказано брисање. Ваш налог и његови подаци остају управо онакви какви јесу.",
+      "toasts": {
+        "nameUpdated": "Име је ажурирано",
+        "nameUpdateFailed": "Није могуће ажурирати име",
+        "userNotFound": "Корисник није пронађен",
+        "profilePictureUpdated": "Слика профила је ажурирана",
+        "profilePictureUploadFailed": "Није могуће отпремити слику профила",
+        "profilePictureRemoved": "Слика профила је уклоњена",
+        "profilePictureRemoveFailed": "Није могуће уклонити слику профила",
+        "chooseImageFile": "Изаберите датотеку слике",
+        "imageTooLarge": "Слика мора бити мања од 5МБ"
+      }
     }
   },
   "triggers": {

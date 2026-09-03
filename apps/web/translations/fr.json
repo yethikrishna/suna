@@ -195,7 +195,11 @@
       "backToApp": "Retour à l'application",
       "close": "Fermer",
       "docs": "Documentation",
-      "groups": { "workspace": "Espace de travail", "personal": "Personnel", "account": "Compte" },
+      "groups": {
+        "workspace": "Espace de travail",
+        "personal": "Personnel",
+        "account": "Compte"
+      },
       "items": {
         "workspace": {
           "label": "Général",
@@ -229,8 +233,13 @@
           "label": "Sessions",
           "description": "Comment une session en cours attire votre attention."
         },
-        "preferences": { "label": "Préférences", "description": "Langue et raccourcis clavier." },
-        "connected": { "label": "Comptes connectés" },
+        "preferences": {
+          "label": "Préférences",
+          "description": "Langue et raccourcis clavier."
+        },
+        "connected": {
+          "label": "Comptes connectés"
+        },
         "tokens": {
           "label": "Clés API",
           "description": "Clés qui authentifient la CLI, un script ou une tâche CI sous votre identité."
@@ -270,6 +279,66 @@
         "toggleLeftSidebar": "Basculer la barre latérale gauche",
         "toggleRightSidebar": "Basculer la barre latérale droite",
         "toggleSessionActionPanel": "Basculer le panneau d'action de la session"
+      }
+    },
+    "profile": {
+      "profilePicture": "Photo de profil",
+      "profilePictureDescription": "JPG, PNG ou GIF. Maximum 5 Mo.",
+      "remove": "Supprimer",
+      "uploadProfilePicture": "Télécharger une photo de profil",
+      "email": "Courriel",
+      "emailDescription": "Utilisé pour se connecter — ne peut pas être modifié ici.",
+      "name": "Nom",
+      "nameDescription": "Votre nom d’affichage sur Kortix.",
+      "namePlaceholder": "Votre nom",
+      "save": "Enregistrer",
+      "organizations": {
+        "title": "Organisations",
+        "description": "Les membres, la facturation, les rôles et l'audit se trouvent dans les paramètres de chaque organisation.",
+        "fallbackAccountName": "Compte",
+        "owner": "Propriétaire",
+        "admin": "Administrateur",
+        "member": "Membre",
+        "manage": "Gérer"
+      },
+      "dangerZone": "Zone dangereuse",
+      "deleteAccount": "Supprimer le compte",
+      "deletionUnavailable": "La suppression de compte n'est pas disponible sur ce déploiement. Contactez le support pour fermer votre compte.",
+      "scheduledForDeletionOn": "Suppression prévue le {date}.",
+      "scheduledForDeletion": "Suppression prévue.",
+      "cancelBeforeDeletion": "Vous pouvez annuler à tout moment avant cette date.",
+      "deletionDescription": "Cela supprime tous les agents, fils de discussion, informations d'identification et abonnement liés à votre compte. Cela ne peut pas être annulé.",
+      "unavailable": "Indisponible",
+      "keepMyAccount": "Garder mon compte",
+      "deleteDialogTitle": "Supprimer votre compte ?",
+      "immediateWarning": "Cela supprime immédiatement votre compte. Il n’y a pas de délai de grâce ni aucun moyen de l’annuler.",
+      "gracePeriodWarning": "La suppression de votre compte est programmée après une période de grâce de 30 jours, pendant laquelle vous pouvez l'annuler.",
+      "whenDeleted": "Lorsque votre compte est supprimé :",
+      "agentsDeleted": "Chaque agent que vous possédez est supprimé",
+      "threadsDeleted": "Chaque fil de discussion et message est supprimé",
+      "credentialsDeleted": "Chaque identifiant et secret est supprimé",
+      "subscriptionCancelled": "Votre abonnement est annulé",
+      "billingHistoryRemoved": "Votre historique de facturation est supprimé",
+      "chooseWhen": "Choisissez quand",
+      "gracePeriodLabel": "Délai de grâce de 30 jours",
+      "gracePeriodDescription": "La suppression se produit automatiquement après 30 jours. Annulez à tout moment avant cette date.",
+      "immediateLabel": "Supprimer immédiatement",
+      "immediateDescription": "Votre compte et ses données sont immédiatement supprimés. Cela ne peut pas être annulé.",
+      "typeDeleteToConfirm": "Saisissez \"delete\" pour confirmer",
+      "keepAccount": "Conserver le compte",
+      "processing": "Traitement…",
+      "keepAccountTitle": "Conserver votre compte ?",
+      "keepAccountDescription": "Cela annule la suppression programmée. Votre compte et ses données restent exactement tels qu'ils sont.",
+      "toasts": {
+        "nameUpdated": "Nom mis à jour",
+        "nameUpdateFailed": "Impossible de mettre à jour le nom",
+        "userNotFound": "Utilisateur introuvable",
+        "profilePictureUpdated": "Photo de profil mise à jour",
+        "profilePictureUploadFailed": "Impossible de télécharger la photo de profil",
+        "profilePictureRemoved": "Photo de profil supprimée",
+        "profilePictureRemoveFailed": "Impossible de supprimer la photo de profil",
+        "chooseImageFile": "Veuillez choisir un fichier image",
+        "imageTooLarge": "L'image doit être inférieure à 5 Mo"
       }
     }
   },

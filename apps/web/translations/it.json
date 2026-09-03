@@ -195,7 +195,11 @@
       "backToApp": "Torna all'app",
       "close": "Chiudi",
       "docs": "Documentazione",
-      "groups": { "workspace": "Spazio di lavoro", "personal": "Personale", "account": "Account" },
+      "groups": {
+        "workspace": "Spazio di lavoro",
+        "personal": "Personale",
+        "account": "Account"
+      },
       "items": {
         "workspace": {
           "label": "Generale",
@@ -233,7 +237,9 @@
           "label": "Preferenze",
           "description": "Lingua e scorciatoie da tastiera."
         },
-        "connected": { "label": "Account collegati" },
+        "connected": {
+          "label": "Account collegati"
+        },
         "tokens": {
           "label": "Chiavi API",
           "description": "Chiavi che autenticano come te la CLI, uno script o un processo CI."
@@ -273,6 +279,66 @@
         "toggleLeftSidebar": "Attiva/disattiva la barra laterale sinistra",
         "toggleRightSidebar": "Attiva/disattiva la barra laterale destra",
         "toggleSessionActionPanel": "Attiva/disattiva il pannello delle azioni della sessione"
+      }
+    },
+    "profile": {
+      "profilePicture": "Immagine del profilo",
+      "profilePictureDescription": "JPG, PNG o GIF. Massimo 5 MB.",
+      "remove": "Rimuovi",
+      "uploadProfilePicture": "Carica l'immagine del profilo",
+      "email": "E-mail",
+      "emailDescription": "Utilizzato per accedere: non può essere modificato qui.",
+      "name": "Nome",
+      "nameDescription": "Il tuo nome visualizzato su Kortix.",
+      "namePlaceholder": "Il tuo nome",
+      "save": "Salva",
+      "organizations": {
+        "title": "Organizzazioni",
+        "description": "Membri, fatturazione, ruoli e controllo risiedono nelle impostazioni di ciascuna organizzazione.",
+        "fallbackAccountName": "Conto",
+        "owner": "Proprietario",
+        "admin": "Ammin",
+        "member": "Membro",
+        "manage": "Gestisci"
+      },
+      "dangerZone": "Zona pericolosa",
+      "deleteAccount": "Elimina account",
+      "deletionUnavailable": "L'eliminazione dell'account non è disponibile in questa distribuzione. Contatta l'assistenza per chiudere il tuo account.",
+      "scheduledForDeletionOn": "Cancellazione prevista per {date}.",
+      "scheduledForDeletion": "Prevista per l'eliminazione.",
+      "cancelBeforeDeletion": "Puoi annullare in qualsiasi momento prima di allora.",
+      "deletionDescription": "Ciò elimina ogni agente, thread, credenziale e abbonamento legato al tuo account. Questa operazione non può essere annullata.",
+      "unavailable": "Non disponibile",
+      "keepMyAccount": "Mantieni il mio account",
+      "deleteDialogTitle": "Eliminare il tuo account?",
+      "immediateWarning": "Questo elimina immediatamente il tuo account. Non esiste un periodo di grazia e non c'è modo di annullarlo.",
+      "gracePeriodWarning": "È prevista l'eliminazione del tuo account dopo un periodo di grazia di 30 giorni, durante il quale puoi annullare.",
+      "whenDeleted": "Quando il tuo account viene eliminato:",
+      "agentsDeleted": "Ogni agente di tua proprietà viene eliminato",
+      "threadsDeleted": "Ogni thread e messaggio viene eliminato",
+      "credentialsDeleted": "Ogni credenziale e segreto viene rimosso",
+      "subscriptionCancelled": "Il tuo abbonamento è stato annullato",
+      "billingHistoryRemoved": "La cronologia di fatturazione viene rimossa",
+      "chooseWhen": "Scegli quando",
+      "gracePeriodLabel": "Periodo di grazia di 30 giorni",
+      "gracePeriodDescription": "La cancellazione avviene automaticamente dopo 30 giorni. Annulla in qualsiasi momento prima di allora.",
+      "immediateLabel": "Elimina immediatamente",
+      "immediateDescription": "Il tuo account e i suoi dati verranno eliminati immediatamente. Questa operazione non può essere annullata.",
+      "typeDeleteToConfirm": "Digita \"delete\" per confermare",
+      "keepAccount": "Mantieni l'account",
+      "processing": "Elaborazione...",
+      "keepAccountTitle": "Mantenere il tuo account?",
+      "keepAccountDescription": "Ciò annulla l'eliminazione pianificata. Il tuo account e i suoi dati rimangono esattamente come sono.",
+      "toasts": {
+        "nameUpdated": "Nome aggiornato",
+        "nameUpdateFailed": "Impossibile aggiornare il nome",
+        "userNotFound": "Utente non trovato",
+        "profilePictureUpdated": "Immagine del profilo aggiornata",
+        "profilePictureUploadFailed": "Impossibile caricare l'immagine del profilo",
+        "profilePictureRemoved": "Immagine del profilo rimossa",
+        "profilePictureRemoveFailed": "Impossibile rimuovere l'immagine del profilo",
+        "chooseImageFile": "Scegli un file immagine",
+        "imageTooLarge": "L'immagine deve essere inferiore a 5 MB"
       }
     }
   },

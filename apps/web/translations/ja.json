@@ -195,27 +195,51 @@
       "backToApp": "アプリに戻る",
       "close": "閉じる",
       "docs": "ドキュメント",
-      "groups": { "workspace": "ワークスペース", "personal": "個人", "account": "アカウント" },
+      "groups": {
+        "workspace": "ワークスペース",
+        "personal": "個人",
+        "account": "アカウント"
+      },
       "items": {
-        "workspace": { "label": "一般", "description": "このワークスペースの名前とアイコン。" },
+        "workspace": {
+          "label": "一般",
+          "description": "このワークスペースの名前とアイコン。"
+        },
         "sandbox": {
           "label": "サンドボックステンプレート",
           "description": "セッションを実行するマシンの構成と、Kortix がマシンを準備した履歴。"
         },
-        "feature-flags": { "label": "機能フラグ", "description": "一般公開前に有効にできる機能。" },
+        "feature-flags": {
+          "label": "機能フラグ",
+          "description": "一般公開前に有効にできる機能。"
+        },
         "upgrades": {
           "label": "アップグレード",
           "description": "エージェントがこのワークスペースに加えた変更。実行ごとに確認用の変更リクエストが作成されます。自動ではマージされません。"
         },
-        "profile": { "label": "プロフィール", "description": "画像、名前、メールアドレス、組織。" },
+        "profile": {
+          "label": "プロフィール",
+          "description": "画像、名前、メールアドレス、組織。"
+        },
         "security": {
           "label": "セキュリティ",
           "description": "2 要素認証と、あなたのアカウントでサインインしているデバイス。"
         },
-        "appearance": { "label": "外観", "description": "テーマ、壁紙、会話の表示量。" },
-        "sessions": { "label": "セッション", "description": "実行中のセッションからの通知方法。" },
-        "preferences": { "label": "環境設定", "description": "言語とキーボードショートカット。" },
-        "connected": { "label": "接続済みアカウント" },
+        "appearance": {
+          "label": "外観",
+          "description": "テーマ、壁紙、会話の表示量。"
+        },
+        "sessions": {
+          "label": "セッション",
+          "description": "実行中のセッションからの通知方法。"
+        },
+        "preferences": {
+          "label": "環境設定",
+          "description": "言語とキーボードショートカット。"
+        },
+        "connected": {
+          "label": "接続済みアカウント"
+        },
         "tokens": {
           "label": "API キー",
           "description": "CLI、スクリプト、CI ジョブをあなたとして認証するキー。"
@@ -255,6 +279,66 @@
         "toggleLeftSidebar": "左側のサイドバーを切り替えます",
         "toggleRightSidebar": "右サイドバーを切り替えます",
         "toggleSessionActionPanel": "セッションアクションパネルの切り替え"
+      }
+    },
+    "profile": {
+      "profilePicture": "プロフィール写真",
+      "profilePictureDescription": "JPG、PNG、または GIF。最大5MB。",
+      "remove": "削除",
+      "uploadProfilePicture": "プロフィール写真をアップロードする",
+      "email": "電子メール",
+      "emailDescription": "サインインに使用されます。ここでは変更できません。",
+      "name": "名前",
+      "nameDescription": "Kortix での表示名。",
+      "namePlaceholder": "あなたの名前",
+      "save": "保存",
+      "organizations": {
+        "title": "組織",
+        "description": "メンバー、請求、役割、および監査は、各組織の独自の設定で使用されます。",
+        "fallbackAccountName": "アカウント",
+        "owner": "オーナー",
+        "admin": "管理者",
+        "member": "メンバー",
+        "manage": "管理する"
+      },
+      "dangerZone": "危険地帯",
+      "deleteAccount": "アカウントを削除する",
+      "deletionUnavailable": "この展開ではアカウントの削除は利用できません。アカウントを閉鎖するにはサポートにお問い合わせください。",
+      "scheduledForDeletionOn": "{date}に削除予定。",
+      "scheduledForDeletion": "削除予定。",
+      "cancelBeforeDeletion": "それまではいつでもキャンセルできます。",
+      "deletionDescription": "これにより、アカウントに関連付けられたすべてのエージェント、スレッド、資格情報、およびサブスクリプションが削除されます。これを元に戻すことはできません。",
+      "unavailable": "利用不可",
+      "keepMyAccount": "アカウントを維持してください",
+      "deleteDialogTitle": "アカウントを削除しますか?",
+      "immediateWarning": "これにより、アカウントがすぐに削除されます。猶予期間はなく、元に戻す方法もありません。",
+      "gracePeriodWarning": "アカウントは 30 日間の猶予期間後に削除されるようにスケジュールされており、この期間内であればキャンセルできます。",
+      "whenDeleted": "アカウントが削除された場合:",
+      "agentsDeleted": "あなたが所有するすべてのエージェントが削除されます",
+      "threadsDeleted": "すべてのスレッドとメッセージが削除されます",
+      "credentialsDeleted": "すべての資格情報とシークレットが削除されます",
+      "subscriptionCancelled": "サブスクリプションがキャンセルされました",
+      "billingHistoryRemoved": "請求履歴は削除されます",
+      "chooseWhen": "いつ選択するか",
+      "gracePeriodLabel": "30日間の猶予期間",
+      "gracePeriodDescription": "削除は 30 日後に自動的に行われます。それまではいつでもキャンセルしてください。",
+      "immediateLabel": "すぐに削除",
+      "immediateDescription": "あなたのアカウントとそのデータはすぐに削除されます。これを元に戻すことはできません。",
+      "typeDeleteToConfirm": "確認のため「delete」と入力してください",
+      "keepAccount": "アカウントを維持する",
+      "processing": "処理中…",
+      "keepAccountTitle": "アカウントを保持しますか?",
+      "keepAccountDescription": "これにより、スケジュールされた削除がキャンセルされます。アカウントとそのデータはそのまま残ります。",
+      "toasts": {
+        "nameUpdated": "名前を更新しました",
+        "nameUpdateFailed": "名前を更新できませんでした",
+        "userNotFound": "ユーザーが見つかりません",
+        "profilePictureUpdated": "プロフィール写真を更新しました",
+        "profilePictureUploadFailed": "プロフィール写真をアップロードできませんでした",
+        "profilePictureRemoved": "プロフィール写真が削除されました",
+        "profilePictureRemoveFailed": "プロフィール写真を削除できませんでした",
+        "chooseImageFile": "画像ファイルを選択してください",
+        "imageTooLarge": "画像は 5MB 未満である必要があります"
       }
     }
   },

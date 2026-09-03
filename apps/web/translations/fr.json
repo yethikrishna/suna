@@ -1529,7 +1529,17 @@
     "stop": "Arrêter",
     "startingSession": "Démarrage de la session…",
     "sessionStarted": "Session démarrée",
-    "failedToStartSession": "Impossible de démarrer la session"
+    "failedToStartSession": "Impossible de démarrer la session",
+    "hintSkills": "Tape / pour les compétences, les commandes et les fichiers",
+    "hintMentions": "Tape @ pour mentionner des fichiers et des agents",
+    "hintWorkspaceFile": "Pose une question sur un fichier de l'espace de travail",
+    "hintCommandPalette": "Appuie sur {modifier}K pour ouvrir la palette de commandes",
+    "hintSwitchAgents": "Appuie sur Tab pour changer d'agent",
+    "hintAttachFiles": "Glisse-dépose des fichiers pour les joindre",
+    "hintChanged": "Demande ce qui a changé dans ton projet",
+    "hintNewLine": "Appuie sur Shift+Enter pour une nouvelle ligne",
+    "hintSettings": "Appuie sur {modifier}, pour ouvrir les paramètres",
+    "hintCompact": "Demande à compacter la session lorsqu'elle devient longue"
   },
   "billing": {
     "plan": {

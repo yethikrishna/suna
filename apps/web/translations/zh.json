@@ -1522,7 +1522,17 @@
     "stop": "停止",
     "startingSession": "正在启动会话…",
     "sessionStarted": "会话已启动",
-    "failedToStartSession": "无法启动会话"
+    "failedToStartSession": "无法启动会话",
+    "hintSkills": "输入 / 以使用技能、命令和文件",
+    "hintMentions": "输入 @ 以提及文件和智能体",
+    "hintWorkspaceFile": "询问工作区中的任何文件",
+    "hintCommandPalette": "按 {modifier}K 打开命令面板",
+    "hintSwitchAgents": "按 Tab 切换智能体",
+    "hintAttachFiles": "拖放文件以添加附件",
+    "hintChanged": "询问项目中发生了哪些变化",
+    "hintNewLine": "按 Shift+Enter 换行",
+    "hintSettings": "按 {modifier}, 打开设置",
+    "hintCompact": "会话过长时，请要求压缩会话"
   },
   "billing": {
     "plan": {

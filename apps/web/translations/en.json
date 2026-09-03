@@ -1529,7 +1529,17 @@
     "stop": "Stop",
     "startingSession": "Starting session…",
     "sessionStarted": "Session started",
-    "failedToStartSession": "Failed to start session"
+    "failedToStartSession": "Failed to start session",
+    "hintSkills": "Type / for skills, commands, and files",
+    "hintMentions": "Type @ to mention files and agents",
+    "hintWorkspaceFile": "Ask about any file in your workspace",
+    "hintCommandPalette": "Press {modifier}K to open the command palette",
+    "hintSwitchAgents": "Press Tab to switch agents",
+    "hintAttachFiles": "Drag and drop files to attach them",
+    "hintChanged": "Ask what's changed in your project",
+    "hintNewLine": "Press Shift+Enter for a new line",
+    "hintSettings": "Press {modifier}, to open settings",
+    "hintCompact": "Ask to compact the session when it gets long"
   },
   "billing": {
     "plan": {

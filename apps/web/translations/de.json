@@ -1526,7 +1526,17 @@
     "stop": "Stoppen",
     "startingSession": "Sitzung wird gestartet…",
     "sessionStarted": "Sitzung gestartet",
-    "failedToStartSession": "Sitzung konnte nicht gestartet werden"
+    "failedToStartSession": "Sitzung konnte nicht gestartet werden",
+    "hintSkills": "Gib / für Skills, Befehle und Dateien ein",
+    "hintMentions": "Gib @ ein, um Dateien und Agenten zu erwähnen",
+    "hintWorkspaceFile": "Frage nach einer beliebigen Datei in deinem Arbeitsbereich",
+    "hintCommandPalette": "Drücke {modifier}K, um die Befehlspalette zu öffnen",
+    "hintSwitchAgents": "Drücke Tab, um den Agenten zu wechseln",
+    "hintAttachFiles": "Ziehe Dateien hierher, um sie anzuhängen",
+    "hintChanged": "Frage, was sich in deinem Projekt geändert hat",
+    "hintNewLine": "Drücke Shift+Enter für eine neue Zeile",
+    "hintSettings": "Drücke {modifier}, um die Einstellungen zu öffnen",
+    "hintCompact": "Bitte darum, die Sitzung zu komprimieren, wenn sie lang wird"
   },
   "billing": {
     "plan": {

@@ -1526,7 +1526,17 @@
     "stop": "Interrompi",
     "startingSession": "Avvio della sessione…",
     "sessionStarted": "Sessione avviata",
-    "failedToStartSession": "Impossibile avviare la sessione"
+    "failedToStartSession": "Impossibile avviare la sessione",
+    "hintSkills": "Digita / per abilità, comandi e file",
+    "hintMentions": "Digita @ per menzionare file e agenti",
+    "hintWorkspaceFile": "Chiedi informazioni su qualsiasi file nell'area di lavoro",
+    "hintCommandPalette": "Premi {modifier}K per aprire la tavolozza dei comandi",
+    "hintSwitchAgents": "Premi Tab per cambiare agente",
+    "hintAttachFiles": "Trascina qui i file per allegarli",
+    "hintChanged": "Chiedi cosa è cambiato nel progetto",
+    "hintNewLine": "Premi Shift+Enter per una nuova riga",
+    "hintSettings": "Premi {modifier}, per aprire le impostazioni",
+    "hintCompact": "Chiedi di compattare la sessione quando diventa lunga"
   },
   "billing": {
     "plan": {

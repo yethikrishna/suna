@@ -1526,7 +1526,17 @@
     "stop": "停止",
     "startingSession": "セッションを開始しています…",
     "sessionStarted": "セッションを開始しました",
-    "failedToStartSession": "セッションを開始できませんでした"
+    "failedToStartSession": "セッションを開始できませんでした",
+    "hintSkills": "/ を入力してスキル、コマンド、ファイルを使用",
+    "hintMentions": "@ を入力してファイルやエージェントをメンション",
+    "hintWorkspaceFile": "ワークスペース内のファイルについて質問",
+    "hintCommandPalette": "{modifier}K を押してコマンドパレットを開く",
+    "hintSwitchAgents": "Tab を押してエージェントを切り替え",
+    "hintAttachFiles": "ファイルをドラッグ＆ドロップして添付",
+    "hintChanged": "プロジェクトの変更点について質問",
+    "hintNewLine": "Shift+Enter を押して改行",
+    "hintSettings": "{modifier}, を押して設定を開く",
+    "hintCompact": "長くなったセッションの圧縮を依頼"
   },
   "billing": {
     "plan": {

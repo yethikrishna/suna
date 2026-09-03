@@ -1526,7 +1526,17 @@
     "stop": "Detener",
     "startingSession": "Iniciando sesión…",
     "sessionStarted": "Sesión iniciada",
-    "failedToStartSession": "No se pudo iniciar la sesión"
+    "failedToStartSession": "No se pudo iniciar la sesión",
+    "hintSkills": "Escribe / para usar habilidades, comandos y archivos",
+    "hintMentions": "Escribe @ para mencionar archivos y agentes",
+    "hintWorkspaceFile": "Pregunta por cualquier archivo del espacio de trabajo",
+    "hintCommandPalette": "Pulsa {modifier}K para abrir la paleta de comandos",
+    "hintSwitchAgents": "Pulsa Tab para cambiar de agente",
+    "hintAttachFiles": "Arrastra y suelta archivos para adjuntarlos",
+    "hintChanged": "Pregunta qué ha cambiado en tu proyecto",
+    "hintNewLine": "Pulsa Shift+Enter para una nueva línea",
+    "hintSettings": "Pulsa {modifier}, para abrir los ajustes",
+    "hintCompact": "Pide que se compacte la sesión cuando sea demasiado larga"
   },
   "billing": {
     "plan": {

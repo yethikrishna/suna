@@ -1529,7 +1529,17 @@
     "stop": "Заустави",
     "startingSession": "Покретање сесије…",
     "sessionStarted": "Сесија је покренута",
-    "failedToStartSession": "Сесија није могла да се покрене"
+    "failedToStartSession": "Сесија није могла да се покрене",
+    "hintSkills": "Унесите / за вештине, команде и датотеке",
+    "hintMentions": "Унесите @ да поменете датотеке и агенте",
+    "hintWorkspaceFile": "Питајте о било којој датотеци у радном простору",
+    "hintCommandPalette": "Притисните {modifier}K да отворите палету команди",
+    "hintSwitchAgents": "Притисните Tab да промените агента",
+    "hintAttachFiles": "Превуците и отпустите датотеке да их приложите",
+    "hintChanged": "Питајте шта се променило у пројекту",
+    "hintNewLine": "Притисните Shift+Enter за нови ред",
+    "hintSettings": "Притисните {modifier}, да отворите подешавања",
+    "hintCompact": "Затражите сажимање сесије када постане дуга"
   },
   "billing": {
     "plan": {

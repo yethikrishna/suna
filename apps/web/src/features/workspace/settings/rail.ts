@@ -65,7 +65,10 @@ const STATIC_GROUPS: readonly RailGroup[] = [
       },
       {
         tab: 'sessions',
-        label: 'Sessions',
+        // "Notifications" (Marko, 2026-09-03): the pane is about how a running
+        // session gets your attention, not about sessions themselves — those
+        // are the sidebar. The id stays `sessions` (it is the URL segment).
+        label: 'Notifications',
         description: 'How a running session gets your attention.',
         icon: ChatCircle,
       },

@@ -43,20 +43,40 @@ const KIND_ICON: Record<ProjectTrigger['type'], Icon> = {
   monitor: PulseIcon,
 };
 
+/**
+ * Whether `trigger` starts `agentName`. A trigger that names no agent is
+ * stored as `default` (the manifest sentinel, `apps/api/src/projects/lib/
+ * triggers.ts`), which means "the project's default agent" — so the default
+ * agent's page owns those rows too, or a trigger created with the agent left
+ * on its default would show up nowhere.
+ */
+export function triggerStartsAgent(
+  trigger: Pick<ProjectTrigger, 'agent'>,
+  agentName: string,
+  defaultAgent: string | null | undefined,
+): boolean {
+  if (trigger.agent === agentName) return true;
+  return trigger.agent === 'default' && !!defaultAgent && defaultAgent === agentName;
+}
+
 /** The triggers that start `agentName`, in the order the API lists them. */
 export function triggersForAgent(
   triggers: readonly ProjectTrigger[],
   agentName: string,
+  defaultAgent: string | null | undefined = null,
 ): ProjectTrigger[] {
-  return triggers.filter((trigger) => trigger.agent === agentName);
+  return triggers.filter((trigger) => triggerStartsAgent(trigger, agentName, defaultAgent));
 }
 
 export function AgentTriggersSection({
   projectId,
   agentName,
+  defaultAgent,
 }: {
   projectId: string;
   agentName: string;
+  /** The project's default agent name — see `triggerStartsAgent`. */
+  defaultAgent?: string | null;
 }) {
   const queryClient = useQueryClient();
   const canCreate =
@@ -71,8 +91,8 @@ export function AgentTriggersSection({
     ...contract('config'),
   });
   const mine = useMemo(
-    () => triggersForAgent(triggersQuery.data?.triggers ?? [], agentName),
-    [triggersQuery.data, agentName],
+    () => triggersForAgent(triggersQuery.data?.triggers ?? [], agentName, defaultAgent),
+    [triggersQuery.data, agentName, defaultAgent],
   );
 
   return (

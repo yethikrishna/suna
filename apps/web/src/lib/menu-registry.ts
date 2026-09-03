@@ -492,6 +492,20 @@ export const menuRegistry: MenuItemDef[] = [
     keywords: 'customize configure setup capabilities overview hub',
   },
   {
+    id: 'proj-config-general',
+    label: 'Settings',
+    icon: CogOne,
+    group: 'navigation',
+    showIn: ['commandPalette'],
+    kind: 'navigate',
+    // The Customize bar's trailing Settings tab — general, sandbox templates,
+    // feature flags, upgrades. Retired 2026-09-02, back 2026-09-03 (Marko).
+    href: '/projects/{projectId}/config',
+    requiresProject: true,
+    keywords:
+      'settings general workspace rename delete danger zone name description git repo repository sandbox templates feature flags upgrades',
+  },
+  {
     id: 'proj-models',
     label: 'Models',
     icon: Cpu,

@@ -745,7 +745,11 @@ function EditableAgentPage({
           editor={editor}
           options={options}
           skillsOptions={skillsOptions}
-          triggers={<AgentTriggersSection projectId={projectId} agentName={agent.name} />}
+          triggers={<AgentTriggersSection
+            projectId={projectId}
+            agentName={agent.name}
+            defaultAgent={config.open_code_default_agent}
+          />}
           people={<AgentPeopleSection projectId={projectId} agentName={agent.name} />}
         />
       }
@@ -1093,7 +1097,11 @@ function ReadOnlyAgentPage({
               <AgentPeopleSection projectId={projectId} agentName={agent.name} />
             </div>
           ) : section === 'triggers' ? (
-            <AgentTriggersSection projectId={projectId} agentName={agent.name} />
+            <AgentTriggersSection
+            projectId={projectId}
+            agentName={agent.name}
+            defaultAgent={config.open_code_default_agent}
+          />
           ) : (
             <div className="space-y-6">
               <AgentModel projectId={projectId} agentName={agent.name} />

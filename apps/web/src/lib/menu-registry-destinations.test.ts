@@ -254,9 +254,10 @@ describe('every palette row points at a live route', () => {
     expect(ROUTES.some((r) => r.join('/') === 'projects/[id]/files')).toBe(true);
   });
 
-  test('/projects/[id]/config is gone, so nothing may point at it', () => {
-    // The specific route this test exists because of.
-    expect(isLiveRoute('/projects/{projectId}/config?section=feature-flags')).toBe(false);
+  test('/projects/[id]/config is live again, so its row may point at it', () => {
+    // The route this test exists because of. It was deleted on 2026-09-02
+    // and brought back on 2026-09-03 with the Customize bar's Settings tab.
+    expect(isLiveRoute('/projects/{projectId}/config')).toBe(true);
   });
 
   for (const row of paletteRows.filter((item) => item.kind === 'navigate' && item.href)) {
@@ -270,15 +271,17 @@ describe('every palette row points at a live route', () => {
   }
 });
 
-describe('the retired /config sections are reached through the settings overlay', () => {
-  test('no registry row keeps a /config href', () => {
-    // Belt-and-braces over the loop above, and the assertion that names the
-    // path rather than the row: a NEW row pointing at `/config` fails here
-    // even if someone also re-adds the route.
+describe('the /config sections are reached through the settings overlay and one Settings row', () => {
+  test('exactly one registry row points at /config — the Settings tab itself', () => {
+    // The per-section rows (`proj-config-sandbox`, `-review`, `-upgrades`,
+    // …) stayed retired on 2026-09-02: those sections are the overlay's
+    // Workspace group. The page came back on 2026-09-03 as the Customize
+    // bar's trailing Settings tab, so the ONE row that opens it is allowed
+    // and any second `/config` row fails here.
     const offenders = paletteRows
       .filter((item) => item.href?.includes('/config'))
       .map((item) => item.id);
-    expect(offenders).toEqual([]);
+    expect(offenders).toEqual(['proj-config-general']);
   });
 
   test('Feature flags is reachable, and only as the derived settings row', () => {

@@ -115,13 +115,17 @@ export function AgentsPage({ projectId }: { projectId: string }) {
     enabled: canReadTriggers,
     ...contract('config'),
   });
+  // A trigger stored as `default` counts for the project's default agent —
+  // see `triggerStartsAgent`.
   const triggerCounts = useMemo(() => {
     const counts = new Map<string, number>();
+    const fallback = config?.open_code_default_agent ?? null;
     for (const trigger of triggersQuery.data?.triggers ?? []) {
-      counts.set(trigger.agent, (counts.get(trigger.agent) ?? 0) + 1);
+      const owner = trigger.agent === 'default' && fallback ? fallback : trigger.agent;
+      counts.set(owner, (counts.get(owner) ?? 0) + 1);
     }
     return counts;
-  }, [triggersQuery.data]);
+  }, [triggersQuery.data, config]);
 
   const agents = useMemo(() => toArray(config?.agents), [config]);
 

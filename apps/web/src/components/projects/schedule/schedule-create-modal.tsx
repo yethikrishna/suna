@@ -174,7 +174,11 @@ export function ScheduleCreateModal({
     setKind(null);
     setName('');
     setInstruction('');
-    setAgentName(null);
+    // Back to the caller's agent, not to nothing: this effect also runs on
+    // the first render (the modal mounts closed), and `null` here threw the
+    // agent page's `initialAgent` away before the modal was ever opened — every
+    // trigger created from an agent page landed on `default`.
+    setAgentName(initialAgent);
     setModel(null);
     setCron('0 0 9 * * *');
     setRunAt(null);

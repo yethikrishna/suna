@@ -857,13 +857,16 @@ export function GitView({ projectId }: { projectId: string }) {
               it is the Kortix-signed address of THIS repo, so it belongs with
               the repo, not at the foot after who-can-access. */}
           <OwnGitClient project={project as ProjectWithOrigin} />
-          <LocalSetup projectId={projectId} />
+          {/* Who can reach the repo comes before how to work on it locally
+              (Marko, 2026-09-03): access is the decision, the local setup is
+              the how-to. */}
           <RepoAccessSection
             projectId={projectId}
             connection={detail.data?.git_connection}
             managed={managed}
             canManageMembers={canManageMembers}
           />
+          <LocalSetup projectId={projectId} />
         </>
       ) : null}
     </div>

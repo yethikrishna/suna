@@ -76,6 +76,22 @@ const localizedDesignSystemText = generatedTranslationText(
 // Reject the Latin form and the Cyrillic transliteration observed in production catalogs.
 const translationSentinelPattern = /(?:ZXQ|XZQ|ЗКСК|КСЗК)/iu;
 
+function isLikelyUntranslatedProse(key, sourceValue, targetValue, locale) {
+  if (locale === defaultLocale || sourceValue !== targetValue) return false;
+  if (!/[a-z]/.test(sourceValue) || sourceValue.trim().split(/\s+/).length < 4) return false;
+  if (/[{}<>@$=|`\[\]\\/]/.test(sourceValue)) return false;
+  if (key.endsWith('Platforms')) return false;
+  if (/DesignSystemPage|i18nComplete|JsxAttr(?:Class|Bg|Tint|Content)/.test(key)) return false;
+  if (/appHome(?:Berlin|Milano)Page/.test(key)) return false;
+  if (
+    /^(?:allow-|Claude Code, Cursor, Codex|Stripe · HubSpot · Linear|stripe\.|\d+ N Orange St\.)/.test(
+      sourceValue,
+    )
+  )
+    return false;
+  return true;
+}
+
 const ignoredPathParts = [
   '/.next/',
   '/node_modules/',
@@ -312,6 +328,22 @@ function messageIssues(english, messages, locale) {
 
     if (translationSentinelPattern.test(targetValue)) {
       issues.push(`${key}: contains a translation sentinel`);
+    }
+
+    if (targetValue.includes('\uFFFD')) {
+      issues.push(`${key}: contains a Unicode replacement character`);
+    }
+
+    if (/&(?:[a-z][a-z0-9]+|#\d+|#x[0-9a-f]+);/iu.test(targetValue)) {
+      issues.push(`${key}: contains an HTML entity instead of rendered text`);
+    }
+
+    if (sourceValue.length > 0 && targetValue.length === 0) {
+      issues.push(`${key}: translation is blank`);
+    }
+
+    if (isLikelyUntranslatedProse(key, sourceValue, targetValue, locale)) {
+      issues.push(`${key}: likely untranslated English prose`);
     }
 
     const sourceTemplates = templateVariables(sourceValue);

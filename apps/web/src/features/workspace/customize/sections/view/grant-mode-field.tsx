@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from '@/i18n/use-translations';
 /**
  * All · Pick · None — the one governance grant-mode machine, parameterized so
  * both a flat checklist (skills/connectors/secrets) and a grouped catalog
@@ -35,6 +36,7 @@ function GrantModeField({
   noneLabel: string;
   children: (ctx: { selected: Set<string>; toggle: (id: string) => void }) => React.ReactNode;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const mode: GrantMode =
     value === 'all' ? 'all' : value === 'none' || value === undefined ? 'none' : 'pick';
   const [wantPick, setWantPick] = useState(() => Array.isArray(value) && value.length > 0);
@@ -63,10 +65,14 @@ function GrantModeField({
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         <Tabs value={effectiveMode} onValueChange={(m) => pick(m as GrantMode)} className="w-fit">
-          <TabsListCompact type="default" aria-label="Grant mode">
+          <TabsListCompact type="default" aria-label={tI18nComplete.raw('text74009e6664f5')}>
             {GRANT_MODES.map((m) => (
               <TabsTriggerCompact key={m.value} value={m.value}>
-                {m.label}
+                {m.value === 'all'
+                  ? tI18nComplete.raw('texta52ace420f21')
+                  : m.value === 'pick'
+                    ? tI18nComplete.raw('text831a9d52a9c3')
+                    : tI18nComplete.raw('textdc937b598926')}
               </TabsTriggerCompact>
             ))}
           </TabsListCompact>
@@ -105,12 +111,13 @@ export function GrantSetField({
    *  sibling. Fields that pass nothing render exactly as before. */
   rowAccessory?: (id: string, isSelected: boolean) => ReactNode;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
     <GrantModeField
       value={value}
       onChange={onChange}
       allLabel={allLabel}
-      noneLabel="Deny — nothing granted."
+      noneLabel={tI18nComplete.raw('text765b240c2900')}
     >
       {({ selected, toggle }) => {
         const optionIds = new Set(options.map((o) => o.id));
@@ -150,7 +157,11 @@ export function GrantSetField({
                     {isSel ? <CheckIcon className="size-2.5" /> : null}
                   </span>
                   <span className="min-w-0 flex-1 truncate font-mono">{o.label}</span>
-                  {isOrphan && <span className="text-kortix-orange shrink-0">missing</span>}
+                  {isOrphan && (
+                    <span className="text-kortix-orange shrink-0">
+                      {tI18nComplete.raw('textffa63583dfa6')}
+                    </span>
+                  )}
                 </button>
               );
               return accessory ? (
@@ -177,12 +188,13 @@ export function KortixCliField({
   value: AgentGrantSetV2 | undefined;
   onChange: (v: AgentGrantSetV2) => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
     <GrantModeField
       value={value}
       onChange={onChange}
-      allLabel="Everything the person who started the session can do."
-      noneLabel="Deny — nothing granted."
+      allLabel={tI18nComplete.raw('text75a5e3a6d5d3')}
+      noneLabel={tI18nComplete.raw('text765b240c2900')}
     >
       {({ selected, toggle }) => (
         <div className="border-border/60 max-h-64 space-y-3 overflow-y-auto rounded-md border p-2.5">

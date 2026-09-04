@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 /**
  * Review Center — the unified human-in-the-loop inbox. One place to see what
  * finished, what changed, what needs approval, and what's waiting on a decision,
@@ -41,6 +41,8 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { infoToast, successToast } from '@/components/ui/toast';
 import { EmptyState } from '@/features/layout/section/empty-state';
 import { ErrorState } from '@/features/layout/section/error-state';
+import { localizeUiCatalog } from '@/i18n/localize-ui-catalog';
+import { PRODUCT_CATALOG_TRANSLATION_KEYS } from '@/i18n/product-catalog-translation-keys.generated';
 import { cn } from '@/lib/utils';
 import type { ReviewVerdict } from '@kortix/sdk';
 import {
@@ -56,7 +58,7 @@ import {
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { statusToVerdict } from './map';
-import { MOCK_ITEMS } from './mock-data';
+import { getLocalizedMockItems } from './mock-data';
 import {
   bulkSkipMessage,
   formatItemAge,
@@ -64,7 +66,13 @@ import {
   resolveBulkOutcome,
 } from './review-actions';
 import { type ReviewActions, ReviewDetail } from './review-detail';
-import { KIND_META, RISK_META, STATUS_META } from './review-meta';
+import {
+  KIND_META,
+  RISK_META,
+  reviewKindLabel,
+  reviewRiskLabel,
+  reviewStatusLabel,
+} from './review-meta';
 import {
   bulkSetStatus,
   decideApprovalAction,
@@ -203,7 +211,7 @@ function ItemRow({
           the same tone as the status check beside the title. */}
       <kind.icon
         className={cn('size-5 shrink-0', glyph ? glyph.className : kind.iconColor)}
-        aria-label={kind.label}
+        aria-label={reviewKindLabel(item.kind, tI18nComplete)}
       />
 
       <button
@@ -217,10 +225,10 @@ function ItemRow({
             <span className="text-muted-foreground shrink-0 text-sm tabular-nums">#{number}</span>
           )}
           {glyph && (
-            <Hint label={STATUS_META[item.status].label}>
+            <Hint label={reviewStatusLabel(item.status, tI18nComplete)}>
               <glyph.icon
                 className={cn('size-3.5 shrink-0', glyph.className)}
-                aria-label={STATUS_META[item.status].label}
+                aria-label={reviewStatusLabel(item.status, tI18nComplete)}
               />
             </Hint>
           )}
@@ -253,7 +261,7 @@ function ItemRow({
         )}
         {pending && risky && (
           <Badge variant={RISK_META[item.risk].badge} size="sm" className="hidden sm:inline-flex">
-            {RISK_META[item.risk].label}
+            {reviewRiskLabel(item.risk, tI18nComplete)}
           </Badge>
         )}
         {pending &&
@@ -281,7 +289,7 @@ function ItemRow({
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label={`More actions for ${item.title}`}
+              aria-label={tI18nComplete('textcbd7bbfcd257', { value0: item.title })}
               className="text-muted-foreground"
             >
               <DotsThree className="size-4" />
@@ -335,6 +343,7 @@ function ListSkeleton({ rows = 5 }: { rows?: number }) {
 
 function KeyboardHelp({ open, onClose }: { open: boolean; onClose: () => void }) {
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const shortcuts = localizeUiCatalog(SHORTCUTS, tI18nComplete, PRODUCT_CATALOG_TRANSLATION_KEYS);
   return (
     <Modal open={open} onOpenChange={(o) => !o && onClose()}>
       <ModalContent className="lg:max-w-sm">
@@ -343,7 +352,7 @@ function KeyboardHelp({ open, onClose }: { open: boolean; onClose: () => void })
         </ModalHeader>
         <ModalBody>
           <ul className="space-y-2">
-            {SHORTCUTS.map((s) => (
+            {shortcuts.map((s) => (
               <li key={s.label} className="flex items-center justify-between gap-4">
                 <span className="text-muted-foreground text-sm">{s.label}</span>
                 <span className="flex shrink-0 items-center gap-1">
@@ -401,8 +410,19 @@ export function ReviewCenter({
   sessionLabels?: Record<string, string>;
 } = {}) {
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const segments = useMemo(
+    () => localizeUiCatalog(SEGMENTS, tI18nComplete, PRODUCT_CATALOG_TRANSLATION_KEYS),
+    [tI18nComplete],
+  );
+  const kindFilters = useMemo(
+    () => localizeUiCatalog(KIND_FILTERS, tI18nComplete, PRODUCT_CATALOG_TRANSLATION_KEYS),
+    [tI18nComplete],
+  );
+  const localizedMockItems = useMemo(() => getLocalizedMockItems(tI18nComplete), [tI18nComplete]);
   const connected = !!onAct;
-  const [items, setItems] = useState<ReviewItem[]>(initialItems ?? (connected ? [] : MOCK_ITEMS));
+  const [items, setItems] = useState<ReviewItem[]>(
+    initialItems ?? (connected ? [] : localizedMockItems),
+  );
   const [segment, setSegment] = useState<ReviewSegment>('needs_you');
   const [kindFilter, setKindFilter] = useState<ReviewKind | 'all'>('all');
   const [query, setQuery] = useState('');
@@ -563,7 +583,7 @@ export function ReviewCenter({
             if (undoRef.current) {
               setItems(undoRef.current);
               undoRef.current = null;
-              infoToast('Restored');
+              infoToast(tI18nComplete.raw('text5d561a1e3f17'));
             }
           }}
         >
@@ -738,7 +758,7 @@ export function ReviewCenter({
         return;
       }
       if (e.key === '1' || e.key === '2' || e.key === '3') {
-        setSegment(SEGMENTS[Number(e.key) - 1].value);
+        setSegment(segments[Number(e.key) - 1].value);
         return;
       }
       if (visible.length === 0) return;
@@ -858,7 +878,7 @@ export function ReviewCenter({
               className="min-w-0"
             >
               <TabsList className="flex w-full items-center justify-start">
-                {SEGMENTS.map((s) => (
+                {segments.map((s) => (
                   <TabsTrigger key={s.value} value={s.value} size="sm">
                     {s.label}
                   </TabsTrigger>
@@ -871,8 +891,8 @@ export function ReviewCenter({
                 <DropdownMenuTrigger asChild>
                   <Button type="button" variant={kindFilter === 'all' ? 'outline' : 'secondary'}>
                     {kindFilter === 'all'
-                      ? 'All types'
-                      : KIND_FILTERS.find((f) => f.value === kindFilter)?.label}
+                      ? tI18nComplete.raw('textf10988e79e8d')
+                      : kindFilters.find((f) => f.value === kindFilter)?.label}
                     <ChevronDown className="text-muted-foreground size-3.5 shrink-0" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -882,7 +902,7 @@ export function ReviewCenter({
                     value={kindFilter}
                     onValueChange={(v) => setKindFilter(v as ReviewKind | 'all')}
                   >
-                    {KIND_FILTERS.map((f) => (
+                    {kindFilters.map((f) => (
                       <DropdownMenuRadioItem key={f.value} value={f.value} side="left">
                         {f.label}
                         {(kindCounts[f.value] ?? 0) > 0 && (
@@ -909,7 +929,7 @@ export function ReviewCenter({
                     >
                       <span className="truncate">
                         {sessionFilter === 'all'
-                          ? 'All sessions'
+                          ? tI18nComplete.raw('text78648d4d6649')
                           : (sessionOpts.find((s) => s.sessionId === sessionFilter)?.label ??
                             'Session')}
                       </span>
@@ -964,7 +984,7 @@ export function ReviewCenter({
                     setQuery(e.target.value);
                     setFocusedIdx(0);
                   }}
-                  placeholder="Search"
+                  placeholder={tI18nComplete.raw('text49c266baaaa7')}
                   variant="popover"
                   size="sm"
                 />
@@ -994,19 +1014,19 @@ export function ReviewCenter({
               size="sm"
               title={
                 query
-                  ? 'No matches'
+                  ? tI18nComplete.raw('text2df01a03ff43')
                   : segment === 'needs_you'
-                    ? "You're all caught up"
-                    : 'Nothing here'
+                    ? tI18nComplete.raw('text2f485b9971df')
+                    : tI18nComplete.raw('textf4c7f41c12d6')
               }
               description={
                 query
-                  ? 'Try a different search.'
+                  ? tI18nComplete.raw('text2e6d79de50dc')
                   : segment === 'needs_you'
-                    ? 'When an agent needs a decision, an approval, or eyes on something it finished, it shows up here.'
+                    ? tI18nComplete.raw('text67735374cc20')
                     : segment === 'waiting'
-                      ? 'Items you’ve acted on that the agent is still working through will appear here.'
-                      : 'Approved, rejected and finished items land here.'
+                      ? tI18nComplete.raw('text2c192433a710')
+                      : tI18nComplete.raw('text6a00736dae3c')
               }
             />
           ) : grouped ? (

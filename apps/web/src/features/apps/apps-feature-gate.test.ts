@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync } from '@/i18n/test-source';
 import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dir, '../..');
@@ -266,7 +266,7 @@ test("the header separates the App's actions from the window's Close", () => {
   // App" and "shut this panel" read as peers. It sits outside now, and it is
   // ghost rather than outline because it is chrome, not an action.
   const groupEndsAt = header.indexOf('</ButtonGroup>');
-  const closeAt = header.indexOf('aria-label="Close"');
+  const closeAt = header.indexOf('text7d9eb7acb13e');
   expect(groupEndsAt).toBeGreaterThan(-1);
   expect(closeAt).toBeGreaterThan(groupEndsAt);
   expect(header.slice(groupEndsAt)).toContain('variant="ghost"');

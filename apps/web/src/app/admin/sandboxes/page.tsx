@@ -7,6 +7,7 @@ import {
   ArrowClockwiseIcon as RefreshCw,
 } from '@phosphor-icons/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from '@/i18n/use-translations';
 import { useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
@@ -38,6 +39,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { IconInbox } from '@/components/ui/kortix-icons';
+import Loading from '@/components/ui/loading';
 import { PageSearchBar } from '@/components/ui/page-search-bar';
 import {
   Select,
@@ -57,8 +59,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import Loading from '@/components/ui/loading';
 import { EmptyState } from '@/features/layout/section/empty-state';
+import { toast } from '@/lib/toast';
+import { cn } from '@/lib/utils';
 import {
   getAdminProviderAnalytics,
   getAdminProviderDistribution,
@@ -68,8 +71,6 @@ import {
   setAdminProviderDistribution,
   setAdminProviderFallback,
 } from '@kortix/sdk';
-import { toast } from '@/lib/toast';
-import { cn } from '@/lib/utils';
 
 import { SectionContainer, SectionHeader } from '../_components/section-header';
 
@@ -129,20 +130,20 @@ interface Analytics {
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 const PALETTE = [
-  'hsl(217 91% 60%)',
-  'hsl(160 84% 39%)',
-  'hsl(38 92% 50%)',
-  'hsl(280 75% 62%)',
-  'hsl(0 84% 60%)',
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
 ];
 const colorFor = (i: number) => PALETTE[i % PALETTE.length];
 const PHASES = ['row+tokens', 'image', 'provider-create', 'before-active-hook', 'row-active'];
 const PHASE_COLORS: Record<string, string> = {
-  'row+tokens': 'hsl(217 60% 55%)',
-  image: 'hsl(160 60% 42%)',
-  'provider-create': 'hsl(38 80% 52%)',
-  'before-active-hook': 'hsl(280 55% 60%)',
-  'row-active': 'hsl(220 9% 55%)',
+  'row+tokens': 'var(--chart-1)',
+  image: 'var(--chart-2)',
+  'provider-create': 'var(--chart-3)',
+  'before-active-hook': 'var(--chart-4)',
+  'row-active': 'var(--muted-foreground)',
 };
 const statusBadge = (s: string): 'default' | 'secondary' | 'destructive' | 'outline' =>
   s === 'active'
@@ -178,17 +179,15 @@ function StatStrip({
 }) {
   const tone = {
     default: '',
-    success: 'text-emerald-500',
-    danger: 'text-red-500',
-    warning: 'text-amber-500',
+    success: 'text-kortix-green',
+    danger: 'text-destructive',
+    warning: 'text-kortix-orange',
   };
   return (
-    <div className="border-border/60 divide-border grid grid-cols-2 divide-x divide-y overflow-hidden rounded-2xl border lg:grid-cols-4 lg:divide-y-0">
+    <div className="border-border/60 divide-border grid grid-cols-2 divide-x divide-y overflow-hidden rounded-md border lg:grid-cols-4 lg:divide-y-0">
       {items.map((it) => (
         <div key={it.label} className="min-w-0 p-4">
-          <div className="text-muted-foreground/70 truncate text-xs font-medium tracking-wider uppercase">
-            {it.label}
-          </div>
+          <div className="text-muted-foreground/70 truncate text-xs font-medium">{it.label}</div>
           <div
             className={cn(
               'mt-1 truncate text-2xl font-semibold tracking-tight tabular-nums',
@@ -207,6 +206,7 @@ function StatStrip({
 }
 
 export default function ProvidersPage() {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const qc = useQueryClient();
   const [tab, setTab] = useState('overview');
   const [days, setDays] = useState(7);
@@ -349,8 +349,8 @@ export default function ProvidersPage() {
     <SectionContainer>
       <SectionHeader
         icon={Boxes}
-        title={'Sandbox Providers'}
-        description={'Balance new sandboxes across providers by weight.'}
+        title={tI18nComplete.raw('textb12c7d46c0e8')}
+        description={tI18nComplete.raw('textbd3b56d2b2da')}
         actions={
           <Button
             variant="outline"
@@ -362,18 +362,20 @@ export default function ProvidersPage() {
             }}
             className="gap-1.5"
           >
-            <RefreshCw
-              className={cn('h-3.5 w-3.5', (listQ.isFetching || anQ.isFetching) && 'animate-spin')}
-            />
-            Refresh
+            {listQ.isFetching || anQ.isFetching ? (
+              <Loading className="h-3.5 w-3.5" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            {tI18nComplete.raw('text0e9161011702')}
           </Button>
         }
       />
 
       <Tabs value={tab} onValueChange={setTab} className="space-y-6">
         <TabsList className="grid w-full max-w-xs grid-cols-2">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="overview">{tI18nComplete.raw('textd4b1ea5708dd')}</TabsTrigger>
+          <TabsTrigger value="analytics">{tI18nComplete.raw('text94c116ee118a')}</TabsTrigger>
         </TabsList>
 
         {/* ── OVERVIEW ─────────────────────────────────────────────────────── */}
@@ -381,9 +383,9 @@ export default function ProvidersPage() {
           <StatStrip
             items={[
               {
-                label: 'Total sandboxes',
+                label: tI18nComplete.raw('text1eaee08882eb'),
                 value: totalSandboxes.toLocaleString(),
-                hint: 'Across all providers',
+                hint: tI18nComplete.raw('text4beeedd0d757'),
               },
               ...allowed.map((p) => {
                 const pct = totalW > 0 ? Math.round(((Number(weights[p]) || 0) / totalW) * 100) : 0;
@@ -396,19 +398,19 @@ export default function ProvidersPage() {
             ]}
           />
 
-          <div className="border-border/60 bg-card space-y-4 rounded-2xl border p-5">
+          <div className="border-border/60 bg-card space-y-4 rounded-md border p-5">
             <div className="space-y-1">
               <h2 className="text-sm font-semibold tracking-tight">
-                {'Split distribution'}
+                {tI18nComplete.raw('text43a857886565')}
               </h2>
               <p className="text-muted-foreground max-w-2xl text-xs leading-relaxed">
-                {'Weighted-random selection for new sandboxes across the available providers. All-zero falls back to the default'}
+                {tI18nComplete.raw('text9de115cbebbf')}
                 {dist ? ` (${dist.default})` : ''}
-                {'. An explicit per-request provider always wins.'}
+                {tI18nComplete.raw('text4764560a0013')}
               </p>
             </div>
             {distQ.isLoading ? (
-              <Skeleton className="h-24 w-full rounded-2xl" />
+              <Skeleton className="h-24 w-full rounded-md" />
             ) : (
               <>
                 <div className="flex flex-wrap gap-4">
@@ -420,8 +422,8 @@ export default function ProvidersPage() {
                         <label className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium capitalize">
                           {p}
                           {p === dist?.default && (
-                            <Badge variant="outline" size="sm" className="text-[10px]">
-                              default
+                            <Badge variant="outline" size="sm" className="text-xs">
+                              {tI18nComplete.raw('text37a8eec1ce19')}
                             </Badge>
                           )}
                         </label>
@@ -430,17 +432,14 @@ export default function ProvidersPage() {
                           min={0}
                           value={weights[p] ?? ''}
                           onChange={(e) => setWeights({ ...weights, [p]: e.target.value })}
-                          className="rounded-2xl"
+                          className="rounded-md"
                         />
                         <div className="bg-muted h-1.5 overflow-hidden rounded-full">
-                          <div
-                            className="bg-primary h-full transition-all"
-                            style={{ width: `${pct}%` }}
-                          />
+                          <div className="bg-primary h-full" style={{ width: `${pct}%` }} />
                         </div>
                         <div className="text-muted-foreground text-xs tabular-nums">
                           {pct}
-                          {'% of traffic'}
+                          {tI18nComplete.raw('text499977bddecf')}
                         </div>
                       </div>
                     );
@@ -453,21 +452,21 @@ export default function ProvidersPage() {
                   className="gap-1.5"
                 >
                   {saveWeights.isPending && <Loading className="h-3.5 w-3.5" />}
-                  {'Save distribution'}
+                  {tI18nComplete.raw('text85457bd27cfc')}
                 </Button>
               </>
             )}
           </div>
 
           {/* ── Provider failover ──────────────────────────────────────────── */}
-          <div className="border-border/60 bg-card space-y-4 rounded-2xl border p-5">
+          <div className="border-border/60 bg-card space-y-4 rounded-md border p-5">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-1">
                 <h2 className="text-sm font-semibold tracking-tight">
-                  {'Provider failover'}
+                  {tI18nComplete.raw('text2953b4f72d16')}
                 </h2>
                 <p className="text-muted-foreground max-w-2xl text-xs leading-relaxed">
-                  {'Off by default. When enabled, a failed session init retries once'}
+                  {tI18nComplete.raw('text5301d96a21d8')}
                 </p>
               </div>
               {fbQ.isLoading ? (
@@ -476,7 +475,7 @@ export default function ProvidersPage() {
                 <Switch
                   checked={fbEnabled}
                   onCheckedChange={setFbEnabled}
-                  aria-label={'Enable provider failover'}
+                  aria-label={tI18nComplete.raw('text158c8bdea1b0')}
                 />
               )}
             </div>
@@ -487,36 +486,40 @@ export default function ProvidersPage() {
               className="gap-1.5"
             >
               {saveFb.isPending && <Loading className="h-3.5 w-3.5" />}
-              {'Save failover'}
+              {tI18nComplete.raw('text08cfb2899839')}
             </Button>
           </div>
 
           <PageSearchBar
             value={search}
             onChange={setSearch}
-            placeholder={'Search by provider, status, session, account, or external ID…'}
+            placeholder={tI18nComplete.raw('text403764ddcb39')}
           />
 
           {listQ.isLoading ? (
             <div className="space-y-2">
               {[...Array(6)].map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full rounded-2xl" />
+                <Skeleton key={i} className="h-12 w-full rounded-md" />
               ))}
             </div>
           ) : rows.length === 0 ? (
-            <div className="border-border/60 bg-card rounded-2xl border">
+            <div className="border-border/60 bg-card rounded-md border">
               <EmptyState
                 icon={IconInbox}
-                title={search ? 'No sandboxes match your search' : 'No sandboxes yet'}
+                title={
+                  search
+                    ? tI18nComplete.raw('text72b420082a37')
+                    : tI18nComplete.raw('texta670596d72fd')
+                }
                 description={
                   search
-                    ? 'Try a different search term.'
-                    : 'New sandboxes appear here as sessions spin up.'
+                    ? tI18nComplete.raw('text36b89662c2f6')
+                    : tI18nComplete.raw('textd4c2dd15aae0')
                 }
                 action={
                   search ? (
                     <Button variant="outline" size="sm" onClick={() => setSearch('')}>
-                      {'Clear search'}
+                      {tI18nComplete.raw('text3b7ea51793e9')}
                     </Button>
                   ) : undefined
                 }
@@ -525,20 +528,18 @@ export default function ProvidersPage() {
           ) : (
             <div
               className={cn(
-                'border-border/60 overflow-hidden rounded-2xl border transition-opacity',
+                'border-border/60 overflow-hidden rounded-md border transition-opacity',
                 listQ.isFetching && 'opacity-70',
               )}
             >
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead>Provider</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Session</TableHead>
-                    <TableHead>Account</TableHead>
-                    <TableHead>
-                      {'Last used'}
-                    </TableHead>
+                    <TableHead>{tI18nComplete.raw('text472590ae974d')}</TableHead>
+                    <TableHead>{tI18nComplete.raw('text920e413c7d41')}</TableHead>
+                    <TableHead>{tI18nComplete.raw('text6959b4159575')}</TableHead>
+                    <TableHead>{tI18nComplete.raw('text7e1b0d5641f2')}</TableHead>
+                    <TableHead>{tI18nComplete.raw('text830ec7f812f9')}</TableHead>
                     <TableHead className="w-10" />
                   </TableRow>
                 </TableHeader>
@@ -583,7 +584,9 @@ export default function ProvidersPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                              <DropdownMenuLabel>
+                                {tI18nComplete.raw('textff8059dc6752')}
+                              </DropdownMenuLabel>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 disabled={!canMigrate}
@@ -593,7 +596,7 @@ export default function ProvidersPage() {
                                 }}
                               >
                                 <ArrowRightLeft className="mr-2 h-4 w-4" />
-                                {'Migrate to another provider…'}
+                                {tI18nComplete.raw('text969a25894852')}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -610,41 +613,31 @@ export default function ProvidersPage() {
         {/* ── ANALYTICS ────────────────────────────────────────────────────── */}
         <TabsContent value="analytics" className="space-y-6">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-muted-foreground text-sm">
-              {'How each provider performs — provisioning latency, success rate, and where the time goes.'}
-            </p>
+            <p className="text-muted-foreground text-sm">{tI18nComplete.raw('text27342581678a')}</p>
             <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
-              <SelectTrigger className="h-9 w-[130px] rounded-2xl">
+              <SelectTrigger className="h-9 w-[130px] rounded-md">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="1">
-                  {'Last 24h'}
-                </SelectItem>
-                <SelectItem value="7">
-                  {'Last 7 days'}
-                </SelectItem>
-                <SelectItem value="30">
-                  {'Last 30 days'}
-                </SelectItem>
-                <SelectItem value="90">
-                  {'Last 90 days'}
-                </SelectItem>
+                <SelectItem value="1">{tI18nComplete.raw('text3033b37ea234')}</SelectItem>
+                <SelectItem value="7">{tI18nComplete.raw('text0603deca4fcb')}</SelectItem>
+                <SelectItem value="30">{tI18nComplete.raw('textf8f03fb441b8')}</SelectItem>
+                <SelectItem value="90">{tI18nComplete.raw('text9902d7ae89e2')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           {anQ.isLoading ? (
             <div className="space-y-4">
-              <Skeleton className="h-24 w-full rounded-2xl" />
-              <Skeleton className="h-72 w-full rounded-2xl" />
+              <Skeleton className="h-24 w-full rounded-md" />
+              <Skeleton className="h-72 w-full rounded-md" />
             </div>
           ) : !an || an.totals.provisions === 0 ? (
-            <div className="border-border/60 bg-card rounded-2xl border">
+            <div className="border-border/60 bg-card rounded-md border">
               <EmptyState
                 icon={IconInbox}
-                title={'No provisioning data yet'}
-                description={'Provision a few sandboxes and their timing + outcome will show up here.'}
+                title={tI18nComplete.raw('text9c41daf68e2e')}
+                description={tI18nComplete.raw('textb9819d569c9a')}
               />
             </div>
           ) : (
@@ -652,12 +645,12 @@ export default function ProvidersPage() {
               <StatStrip
                 items={[
                   {
-                    label: 'Provisions',
+                    label: tI18nComplete.raw('text7982ad72bd36'),
                     value: an.totals.provisions.toLocaleString(),
                     hint: `${an.totals.migrations} migrations`,
                   },
                   {
-                    label: 'Success rate',
+                    label: tI18nComplete.raw('text49da60f8a292'),
                     value: an.totals.successRate == null ? '—' : `${an.totals.successRate}%`,
                     tone:
                       an.totals.successRate != null && an.totals.successRate < 90
@@ -666,13 +659,15 @@ export default function ProvidersPage() {
                     hint: `${an.totals.ok} ok · ${an.totals.error} err`,
                   },
                   {
-                    label: 'Errors',
+                    label: tI18nComplete.raw('textcb702378f315'),
                     value: an.totals.error.toLocaleString(),
                     tone: an.totals.error > 0 ? 'danger' : 'default',
-                    hint: an.totals.stopped ? `${an.totals.stopped} stopped` : 'none stopped',
+                    hint: an.totals.stopped
+                      ? `${an.totals.stopped} stopped`
+                      : tI18nComplete.raw('text83d5007187d2'),
                   },
                   {
-                    label: 'Providers',
+                    label: tI18nComplete.raw('text996c32b35f21'),
                     value: an.providers.length,
                     hint: anProviders.join(' · ') || '—',
                   },
@@ -680,16 +675,26 @@ export default function ProvidersPage() {
               />
 
               {/* per-provider summary table */}
-              <div className="border-border/60 overflow-hidden rounded-2xl border">
+              <div className="border-border/60 overflow-hidden rounded-md border">
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
-                      <TableHead>Provider</TableHead>
-                      <TableHead className="text-right">Provisions</TableHead>
-                      <TableHead className="text-right">Success</TableHead>
-                      <TableHead className="text-right">p50</TableHead>
-                      <TableHead className="text-right">p95</TableHead>
-                      <TableHead className="text-right">Errors</TableHead>
+                      <TableHead>{tI18nComplete.raw('text472590ae974d')}</TableHead>
+                      <TableHead className="text-right">
+                        {tI18nComplete.raw('text7982ad72bd36')}
+                      </TableHead>
+                      <TableHead className="text-right">
+                        {tI18nComplete.raw('textc88a0b907419')}
+                      </TableHead>
+                      <TableHead className="text-right">
+                        {tI18nComplete.raw('text875636a511da')}
+                      </TableHead>
+                      <TableHead className="text-right">
+                        {tI18nComplete.raw('textf771f4d32eee')}
+                      </TableHead>
+                      <TableHead className="text-right">
+                        {tI18nComplete.raw('textcb702378f315')}
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -708,7 +713,7 @@ export default function ProvidersPage() {
                         <TableCell
                           className={cn(
                             'text-right tabular-nums',
-                            p.successRate != null && p.successRate < 90 && 'text-amber-500',
+                            p.successRate != null && p.successRate < 90 && 'text-kortix-orange',
                           )}
                         >
                           {p.successRate == null ? '—' : `${p.successRate}%`}
@@ -718,7 +723,10 @@ export default function ProvidersPage() {
                           {fmtMs(p.p95Ms)}
                         </TableCell>
                         <TableCell
-                          className={cn('text-right tabular-nums', p.error > 0 && 'text-red-500')}
+                          className={cn(
+                            'text-right tabular-nums',
+                            p.error > 0 && 'text-destructive',
+                          )}
                         >
                           {p.error}
                         </TableCell>
@@ -730,13 +738,13 @@ export default function ProvidersPage() {
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 {/* latency over time */}
-                <div className="border-border/60 bg-card space-y-3 rounded-2xl border p-5">
+                <div className="border-border/60 bg-card space-y-3 rounded-md border p-5">
                   <div>
                     <h3 className="text-sm font-semibold tracking-tight">
-                      {'Provisioning latency (p50)'}
+                      {tI18nComplete.raw('textbdc837a7b2e4')}
                     </h3>
                     <p className="text-muted-foreground text-xs">
-                      {'Median time to a ready sandbox, per provider per day.'}
+                      {tI18nComplete.raw('textf1ef9e0be888')}
                     </p>
                   </div>
                   <ChartContainer config={chartConfig} className="h-[260px] w-full">
@@ -782,13 +790,13 @@ export default function ProvidersPage() {
                 </div>
 
                 {/* volume per day */}
-                <div className="border-border/60 bg-card space-y-3 rounded-2xl border p-5">
+                <div className="border-border/60 bg-card space-y-3 rounded-md border p-5">
                   <div>
                     <h3 className="text-sm font-semibold tracking-tight">
-                      {'Provision volume'}
+                      {tI18nComplete.raw('text34842398fd2d')}
                     </h3>
                     <p className="text-muted-foreground text-xs">
-                      {'Sandboxes provisioned per provider per day.'}
+                      {tI18nComplete.raw('textfd7e911ee733')}
                     </p>
                   </div>
                   <ChartContainer config={chartConfig} className="h-[260px] w-full">
@@ -826,13 +834,13 @@ export default function ProvidersPage() {
               </div>
 
               {/* phase breakdown — where the time goes */}
-              <div className="border-border/60 bg-card space-y-3 rounded-2xl border p-5">
+              <div className="border-border/60 bg-card space-y-3 rounded-md border p-5">
                 <div>
                   <h3 className="text-sm font-semibold tracking-tight">
-                    {'Where the time goes'}
+                    {tI18nComplete.raw('text1499fcd195a5')}
                   </h3>
                   <p className="text-muted-foreground text-xs">
-                    {'Average duration of each provisioning phase (successful provisions), per provider.'}
+                    {tI18nComplete.raw('textfa320c3be26f')}
                   </p>
                 </div>
                 <ChartContainer config={phaseConfig} className="h-[220px] w-full">
@@ -872,19 +880,19 @@ export default function ProvidersPage() {
               </div>
 
               {an.recentErrors.length > 0 && (
-                <div className="border-border/60 overflow-hidden rounded-2xl border">
+                <div className="border-border/60 overflow-hidden rounded-md border">
                   <div className="border-border/60 border-b px-4 py-3">
                     <h3 className="text-sm font-semibold tracking-tight">
-                      {'Recent errors'}
+                      {tI18nComplete.raw('text799b25b8c943')}
                     </h3>
                   </div>
                   <Table>
                     <TableHeader>
                       <TableRow className="hover:bg-transparent">
-                        <TableHead>Provider</TableHead>
-                        <TableHead>Class</TableHead>
-                        <TableHead>Error</TableHead>
-                        <TableHead>When</TableHead>
+                        <TableHead>{tI18nComplete.raw('text472590ae974d')}</TableHead>
+                        <TableHead>{tI18nComplete.raw('text4f3a9bd00397')}</TableHead>
+                        <TableHead>{tI18nComplete.raw('text54a0e8c17ebb')}</TableHead>
+                        <TableHead>{tI18nComplete.raw('textcf9c7aa24a26')}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -898,7 +906,7 @@ export default function ProvidersPage() {
                           <TableCell>
                             {e.errorClass === 'capacity' ? (
                               <Badge variant="secondary" size="sm">
-                                capacity
+                                {tI18nComplete.raw('textec21b3b973a3')}
                               </Badge>
                             ) : (
                               <span className="text-muted-foreground text-xs">
@@ -935,27 +943,21 @@ export default function ProvidersPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {'Migrate sandbox'}
-            </DialogTitle>
+            <DialogTitle>{tI18nComplete.raw('text5150c9d9bb20')}</DialogTitle>
             <DialogDescription>
-              {'Move session'}
+              {tI18nComplete.raw('text998c22f68978')}
               <span className="font-mono">{migrating?.sessionId?.slice(0, 8)}</span> off
               <Badge variant="outline" size="sm" className="mx-1 capitalize">
                 {migrating?.provider}
               </Badge>
-              {'on another provider. The session keeps its id; the sandbox is rebuilt.'}
+              {tI18nComplete.raw('text2dd5b5ed10be')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-1">
-            <label className="text-sm font-medium">
-              {'Target provider'}
-            </label>
+            <label className="text-sm font-medium">{tI18nComplete.raw('text86ecd94bbb17')}</label>
             <Select value={target} onValueChange={setTarget}>
               <SelectTrigger>
-                <SelectValue
-                  placeholder={'Choose a provider'}
-                />
+                <SelectValue placeholder={tI18nComplete.raw('texte1d36c3adeeb')} />
               </SelectTrigger>
               <SelectContent>
                 {targets.map((p) => (
@@ -968,14 +970,15 @@ export default function ProvidersPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setMigrating(null)}>
-              Cancel
+              {tI18nComplete.raw('text19766ed6ccb2')}
             </Button>
             <Button
               onClick={() => migrate.mutate()}
               disabled={!target || migrate.isPending}
               className="gap-1.5"
             >
-              {migrate.isPending && <Loading className="h-4 w-4" />}Migrate
+              {migrate.isPending && <Loading className="h-4 w-4" />}
+              {tI18nComplete.raw('textf988ed29d81b')}
             </Button>
           </DialogFooter>
         </DialogContent>

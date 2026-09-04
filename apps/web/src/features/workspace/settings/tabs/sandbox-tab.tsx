@@ -174,6 +174,7 @@ import { errorToast, successToast } from '@/components/ui/toast';
 import { EmptyState } from '@/features/layout/section/empty-state';
 import { ErrorState } from '@/features/layout/section/error-state';
 import { useProjectManifestVersion } from '@/features/workspace/customize/migrate-to-v2/manifest-version';
+import type { UiTranslator } from '@/i18n/translator';
 import { PROJECT_ACTIONS } from '@/lib/project-actions';
 import { useProjectCans } from '@/lib/use-project-can';
 import { cn } from '@/lib/utils';
@@ -209,7 +210,7 @@ import {
   XCircleIcon,
 } from '@phosphor-icons/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from '@/i18n/use-translations';
 import {
   type SandboxProvider,
   SandboxProviderBadge,
@@ -336,13 +337,14 @@ export function describeBase(
 export function describeRouting(
   providerMode: SandboxProviderMode,
   selectedProvider: SandboxProvider | null,
+  tI18nComplete: UiTranslator,
   labels: {
     automatic?: string;
     pinned?: string;
     pinnedWithProvider?: (provider: string) => string;
   } = {},
 ): { label: string; icon: PhosphorIcon } {
-  const mode = describeProviderMode(providerMode, selectedProvider);
+  const mode = describeProviderMode(providerMode, selectedProvider, tI18nComplete);
   if (providerMode === 'automatic')
     return { label: labels.automatic ?? 'Automatic', icon: ShuffleIcon };
   return {
@@ -509,6 +511,7 @@ function TemplateCard({
   providerMode: SandboxProviderMode;
   selectedProvider: SandboxProvider | null;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('settings.sandbox');
   const locale = useLocale();
   const queryClient = useQueryClient();
@@ -522,20 +525,20 @@ function TemplateCard({
   const buildMut = useMutation({
     mutationFn: () => buildSandboxTemplate(projectId, requireTemplateId()),
     onSuccess: () => {
-      successToast(t('toasts.rebuildStarted', { name: template.name }));
+      successToast(tI18nComplete('texte3f97a8573b6', { name: template.name }));
       queryClient.invalidateQueries({ queryKey: qk.project.snapshots(projectId) });
     },
-    onError: (err: Error) => errorToast(err.message || t('toasts.buildFailed')),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete('text527ee9c936d3')),
   });
   const deleteMut = useMutation({
     mutationFn: () => deleteSandboxTemplate(projectId, requireTemplateId()),
     onSuccess: () => {
-      successToast(t('toasts.deleted', { name: template.name }));
+      successToast(tI18nComplete('texta963ed79b37d', { name: template.name }));
       queryClient.invalidateQueries({ queryKey: qk.project.snapshots(projectId) });
       queryClient.invalidateQueries({ queryKey: qk.project.sandboxes(projectId) });
       setConfirmDelete(false);
     },
-    onError: (err: Error) => errorToast(err.message || t('toasts.deleteFailed')),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete('texta422c2e168e4')),
   });
 
   const stateInfo = describeState(template.provider_state || template.daytona_state, {
@@ -557,7 +560,7 @@ function TemplateCard({
     builtFrom: t('facts.builtFrom'),
     kortixDefault: t('facts.kortixDefault'),
   });
-  const routing = describeRouting(providerMode, selectedProvider, {
+  const routing = describeRouting(providerMode, selectedProvider, tI18nComplete, {
     automatic: t('routing.automatic'),
     pinned: t('routing.pinned'),
     pinnedWithProvider: (provider) => t('routing.pinnedWithProvider', { provider }),
@@ -756,6 +759,7 @@ function SandboxProviderRow({
   project: KortixProject;
   canManage: boolean;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('settings.sandbox');
   const queryClient = useQueryClient();
   const available = project.available_sandbox_providers ?? [];
@@ -774,7 +778,9 @@ function SandboxProviderRow({
       const kind = applySandboxProviderResult(queryClient, project.project_id, result);
       if (kind === 'preparation') {
         successToast(
-          t('provider.preparing', { provider: next ? label(next) : t('provider.fallback') }),
+          tI18nComplete('text32f14aa9ea33', {
+            provider: next ? label(next) : tI18nComplete('text22412aa281cb'),
+          }),
         );
         // Poll the durable transition (bounded, backoff, terminal-stop, 404 = done)
         // and refresh the project once it settles so the now-active provider shows.
@@ -793,16 +799,19 @@ function SandboxProviderRow({
             const status = state?.latest?.status;
             if (status === 'activated') {
               successToast(
-                t('provider.switched', { provider: label(state?.latest?.target_provider ?? '') }),
+                tI18nComplete('text1c145081eddd', {
+                  provider: label(state?.latest?.target_provider ?? ''),
+                }),
               );
             } else if (status === 'failed') {
-              errorToast(state?.latest?.label || t('provider.switchFailed'));
+              errorToast(state?.latest?.label || tI18nComplete('texte9ca8360a34d'));
             }
           },
         });
       }
     },
-    onError: (error: Error) => errorToast(error.message || t('provider.updateFailed')),
+    onError: (error: Error) =>
+      errorToast(error.message || tI18nComplete('text914be6d9bb89')),
   });
 
   if (available.length === 0) return null;
@@ -926,6 +935,7 @@ export function SandboxTabView({
   templatesSlot,
   copy = DEFAULT_SANDBOX_VIEW_COPY,
 }: SandboxTabViewProps) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
     <div className="mx-auto w-full max-w-2xl space-y-8">
       <div className="space-y-8">
@@ -955,12 +965,14 @@ export function SandboxTabView({
               {copy.descriptionEnd}{' '}
               {manifestVersion === 2 ? (
                 <>
-                  <code className="font-mono">sandbox.templates</code> in{' '}
+                  <code className="font-mono">sandbox.templates</code>{' '}
+                  {tI18nComplete.raw('text582967534d0f')}{' '}
                   <code className="font-mono">kortix.yaml</code>
                 </>
               ) : (
                 <>
-                  <code className="font-mono">[[sandbox.templates]]</code> in{' '}
+                  <code className="font-mono">[[sandbox.templates]]</code>{' '}
+                  {tI18nComplete.raw('text582967534d0f')}{' '}
                   <code className="font-mono">kortix.toml</code>
                 </>
               )}

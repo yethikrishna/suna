@@ -34,7 +34,7 @@ export function CatalogCard({
       disabled={disabled}
       style={style}
       className={cn(
-        'bg-accent/50 group border-border/60  flex w-full items-start gap-3 rounded-md border px-4 py-3.5 text-left',
+        'bg-accent/50 group border-border/60 flex w-full items-start gap-3 rounded-md border px-4 py-3.5 text-left',
         'transition-[background-color,border-color] duration-150 ease-out',
         'hover:bg-accent hover:border-border',
         'focus-visible:ring-ring/50 focus-visible:ring-2 focus-visible:outline-none',

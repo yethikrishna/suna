@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 // Account-wide MFA enforcement toggle on the Settings tab. Off by default.
 // When ON, every browser/JWT request whose session is not aal2 is denied
 // at the IAM engine — super-admins are exempt (so the switch can't
@@ -92,9 +92,7 @@ export function MfaRequiredCard({ accountId, canManage }: MfaRequiredCardProps) 
     mutationFn: (enabled: boolean) => setMfaRequired(accountId, enabled),
     onSuccess: (res) => {
       successToast(
-        res.enabled
-          ? 'Two-factor authentication is now required'
-          : 'Two-factor authentication is no longer required',
+        res.enabled ? tI18nComplete.raw('text385ec5e81a2c') : tI18nComplete.raw('texteffc26c96de0'),
       );
       queryClient.invalidateQueries({ queryKey: ['iam-mfa-required', accountId] });
       // Permission probes cache verdicts and the MFA gate flips them
@@ -103,7 +101,7 @@ export function MfaRequiredCard({ accountId, canManage }: MfaRequiredCardProps) 
       queryClient.invalidateQueries({ queryKey: ['iam-permission-batch'] });
       setConfirmOpen(false);
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to update MFA requirement'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('textd46bb949f04b')),
   });
 
   const enabled = statusQuery.data?.enabled ?? false;
@@ -196,7 +194,10 @@ export function MfaRequiredCard({ accountId, canManage }: MfaRequiredCardProps) 
               <InfoBanner
                 tone="warning"
                 icon={AlertTriangle}
-                title={`${partitionedLosers.lockouts.length} ${partitionedLosers.lockouts.length === 1 ? 'member' : 'members'} will be locked out until they enrol MFA:`}
+                title={tI18nComplete('text2be1f843485e', {
+                  value0: partitionedLosers.lockouts.length,
+                  value1: partitionedLosers.lockouts.length === 1 ? 'member' : 'members',
+                })}
               >
                 <ul className="max-h-40 space-y-0.5 overflow-y-auto">
                   {partitionedLosers.lockouts.map((l) => (

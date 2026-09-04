@@ -1,5 +1,7 @@
 'use client';
 
+import type { UiTranslator } from '@/i18n/translator';
+import { useTranslations } from '@/i18n/use-translations';
 /**
  * The full agent editor — every field of one `agents.<name>` block in a
  * kortix_version 2 manifest (agent-first spec §2.2).
@@ -103,6 +105,7 @@ export function AgentEditorPanel({
   skillsOptions: { id: string; label: string }[];
   onClose: () => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const configQuery = useAgentConfig(projectId, agentName);
 
   if (configQuery.isLoading) {
@@ -122,10 +125,10 @@ export function AgentEditorPanel({
     return (
       <div className="space-y-3 p-5">
         <p className="text-muted-foreground text-sm text-pretty">
-          This agent's configuration can't be edited.
+          {tI18nComplete.raw('text383775b8e010')}
         </p>
         <Button variant="outline" size="sm" onClick={onClose}>
-          Back
+          {tI18nComplete.raw('text76900f1bfd16')}
         </Button>
       </div>
     );
@@ -175,6 +178,7 @@ function AgentEditorForm({
   skillsOptions: { id: string; label: string }[];
   onClose: () => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const [draft, setDraft] = useState<AgentConfigBlock>(initial);
   const [baseline] = useState<AgentConfigBlock>(initial);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -250,10 +254,10 @@ function AgentEditorForm({
   const onSave = async () => {
     try {
       await update.mutateAsync(draft);
-      successToast(`${agentName} configuration saved`);
+      successToast(tI18nComplete('text0a75f1bef205', { value0: agentName }));
       onClose();
     } catch (e) {
-      errorToast((e as Error)?.message ?? 'Failed to save configuration');
+      errorToast((e as Error)?.message ?? tI18nComplete.raw('text166442c65e8e'));
     }
   };
 
@@ -268,12 +272,19 @@ function AgentEditorForm({
     <div className="flex h-full min-h-0 flex-col">
       <div className="border-border/60 flex shrink-0 items-start justify-between gap-3 border-b py-3 pr-2 pl-5">
         <div className="min-w-0 space-y-0.5">
-          <p className="text-foreground text-sm font-medium">Configuration</p>
+          <p className="text-foreground text-sm font-medium">
+            {tI18nComplete.raw('textb332c3492d5e')}
+          </p>
           <p className="text-muted-foreground text-xs text-pretty">
-            Saving commits the change to your project repo.
+            {tI18nComplete.raw('text77959150750d')}
           </p>
         </div>
-        <Button variant="ghost" size="icon-sm" aria-label="Close editor" onClick={requestClose}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={tI18nComplete.raw('textbd0b7be215ce')}
+          onClick={requestClose}
+        >
           <XIcon className="size-4" />
         </Button>
       </div>
@@ -295,7 +306,7 @@ function AgentEditorForm({
       <div className="border-border/60 flex shrink-0 items-center justify-between gap-3 border-t px-5 py-3">
         <div className="flex items-center gap-2.5">
           <Button type="button" variant="outline-ghost" size="sm" onClick={requestClose}>
-            Cancel
+            {tI18nComplete.raw('text19766ed6ccb2')}
           </Button>
           <AnimatePresence initial={false}>
             {isDirty ? (
@@ -307,14 +318,14 @@ function AgentEditorForm({
                 transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
                 className="text-muted-foreground text-xs"
               >
-                Unsaved changes
+                {tI18nComplete.raw('texta710c2b90913')}
               </m.span>
             ) : null}
           </AnimatePresence>
         </div>
         <Button type="button" size="sm" onClick={onSave} disabled={update.isPending || !isDirty}>
           {update.isPending ? <Loading className="size-3.5 shrink-0" /> : null}
-          Save
+          {tI18nComplete.raw('text1509f561f241')}
         </Button>
       </div>
 
@@ -325,10 +336,10 @@ function AgentEditorForm({
       <ConfirmDialog
         open={confirmDiscard}
         onOpenChange={setConfirmDiscard}
-        title="Discard your changes?"
-        description={`${agentName} keeps its saved configuration. Anything you changed here is lost.`}
-        confirmLabel="Discard"
-        cancelLabel="Keep editing"
+        title={tI18nComplete.raw('text3b13192b9d88')}
+        description={tI18nComplete('text8a36cce34f68', { value0: agentName })}
+        confirmLabel={tI18nComplete.raw('texteb1a70e39274')}
+        cancelLabel={tI18nComplete.raw('texte76fd2add010')}
         confirmVariant="destructive"
         onConfirm={() => {
           setConfirmDiscard(false);
@@ -342,14 +353,20 @@ function AgentEditorForm({
 // ─── Public entry — mounted from the agent detail modal's aside ────────────
 
 /** Summarize a grant set for the compact card. */
-export function grantSummary(v: AgentGrantSetV2 | undefined): {
+export function grantSummary(
+  v: AgentGrantSetV2 | undefined,
+  tI18nComplete: UiTranslator,
+): {
   label: string;
   tone: 'muted' | 'outline';
 } {
-  if (v === 'all') return { label: 'All', tone: 'outline' };
+  if (v === 'all') return { label: tI18nComplete.raw('texta52ace420f21'), tone: 'outline' };
   if (v === undefined || v === 'none' || (Array.isArray(v) && v.length === 0))
-    return { label: 'None', tone: 'muted' };
-  return { label: `${(v as string[]).length} picked`, tone: 'outline' };
+    return { label: tI18nComplete.raw('textdc937b598926'), tone: 'muted' };
+  return {
+    label: tI18nComplete('text8b168cb79501', { value0: (v as string[]).length }),
+    tone: 'outline',
+  };
 }
 
 export function AgentConfigEditor({
@@ -370,6 +387,7 @@ export function AgentConfigEditor({
    *  stays one level deep. */
   onEditConfig: () => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const configQuery = useAgentConfig(projectId, agent.name);
 
   if (configQuery.isLoading) {
@@ -391,10 +409,10 @@ export function AgentConfigEditor({
     return (
       <div className="space-y-3">
         {fallback}
-        <InfoBanner tone="info" title="Upgrade for the full agent editor">
-          This project uses a v1 manifest. Migrate to <span className="font-mono">kortix.yaml</span>{' '}
-          (kortix_version 2) to edit this agent's availability, model, tool permissions and access
-          here.
+        <InfoBanner tone="info" title={tI18nComplete.raw('textdc7ab144ca89')}>
+          {tI18nComplete.raw('textf74efe18842d')}{' '}
+          <span className="font-mono">{tI18nComplete.raw('text1965f383021e')}</span>{' '}
+          {tI18nComplete.raw('texta757f937ab97')}
         </InfoBanner>
       </div>
     );
@@ -412,22 +430,67 @@ export function AgentConfigEditor({
   // "All" chips down the card: a chip says "this is a state worth noticing",
   // and when every row has one, none of them do.
   const rows: { key: string; label: string; value: string; mono?: boolean }[] = [
-    ...(oc.mode ? [{ key: 'mode', label: 'Availability', value: formatModeLabel(oc.mode) }] : []),
-    ...(oc.hidden ? [{ key: 'hidden', label: 'In pickers', value: 'Hidden' }] : []),
-    ...(oc.model ? [{ key: 'model', label: 'Model', value: oc.model, mono: true }] : []),
-    ...(oc.temperature !== undefined
-      ? [{ key: 'temperature', label: 'Temperature', value: String(oc.temperature) }]
+    ...(oc.mode
+      ? [
+          {
+            key: 'mode',
+            label: tI18nComplete.raw('text12f67f8539c4'),
+            value: formatModeLabel(oc.mode),
+          },
+        ]
       : []),
-    { key: 'skills', label: 'Skills', value: grantSummary(block.skills).label },
-    { key: 'connectors', label: 'Connectors', value: grantSummary(block.connectors).label },
-    { key: 'secrets', label: 'Secrets', value: grantSummary(block.secrets).label },
-    { key: 'kortix_cli', label: 'Project actions', value: grantSummary(block.kortix_cli).label },
-    { key: 'sandbox', label: 'Environment', value: block.sandbox ?? 'Project default' },
+    ...(oc.hidden
+      ? [{ key: 'hidden', label: tI18nComplete.raw('textfd50ba402659'), value: 'Hidden' }]
+      : []),
+    ...(oc.model
+      ? [
+          {
+            key: 'model',
+            label: tI18nComplete.raw('text5e2c614c23f0'),
+            value: oc.model,
+            mono: true,
+          },
+        ]
+      : []),
+    ...(oc.temperature !== undefined
+      ? [
+          {
+            key: 'temperature',
+            label: tI18nComplete.raw('textb958ce8b871a'),
+            value: String(oc.temperature),
+          },
+        ]
+      : []),
+    {
+      key: 'skills',
+      label: tI18nComplete.raw('text66d0f523a379'),
+      value: grantSummary(block.skills, tI18nComplete).label,
+    },
+    {
+      key: 'connectors',
+      label: tI18nComplete.raw('textc3d2e79ebdd0'),
+      value: grantSummary(block.connectors, tI18nComplete).label,
+    },
+    {
+      key: 'secrets',
+      label: tI18nComplete.raw('textd8707d411d99'),
+      value: grantSummary(block.secrets, tI18nComplete).label,
+    },
+    {
+      key: 'kortix_cli',
+      label: tI18nComplete.raw('text5d4ef7cc3bec'),
+      value: grantSummary(block.kortix_cli, tI18nComplete).label,
+    },
+    {
+      key: 'sandbox',
+      label: tI18nComplete.raw('text9e471951a1b4'),
+      value: block.sandbox ?? 'Project default',
+    },
   ];
 
   return (
     <div className="bg-popover space-y-3 rounded-md border px-4 py-4">
-      <Label>Configuration</Label>
+      <Label>{tI18nComplete.raw('textb332c3492d5e')}</Label>
 
       <dl className="space-y-2">
         {rows.map((row) => (
@@ -446,7 +509,7 @@ export function AgentConfigEditor({
       </dl>
 
       <Button size="sm" className="w-full" onClick={onEditConfig}>
-        Edit configuration
+        {tI18nComplete.raw('text3076810095c3')}
       </Button>
     </div>
   );

@@ -90,7 +90,7 @@ import {
 import { contract, qk } from '@kortix/sdk/react';
 import { KeyIcon, PlusIcon, ProhibitIcon } from '@phosphor-icons/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from '@/i18n/use-translations';
 import Link from 'next/link';
 
 import { SettingsTabHeader } from '../settings-tab-header';
@@ -180,6 +180,7 @@ function localizedRelativeTime(input: string | number, locale: string, now = Dat
 }
 
 export function TokensTab({ accountId }: { accountId: string | undefined }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('settings.tokens');
   const locale = useLocale();
   const [renderedAt] = useState(() => Date.now());
@@ -215,11 +216,11 @@ export function TokensTab({ accountId }: { accountId: string | undefined }) {
   const revokeMutation = useMutation({
     mutationFn: (row: ApiKeyRow) => revokeAccountToken(row.id, accountId),
     onSuccess: () => {
-      successToast(t('keyRevoked'));
+      successToast(tI18nComplete('text096e0be6bb57'));
       queryClient.invalidateQueries({ queryKey: MY_TOKENS_KEY(accountId ?? '') });
       setRevokeTarget(null);
     },
-    onError: (err: Error) => errorToast(err.message || t('revokeFailed')),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete('text4840dd3bd303')),
   });
 
   const rows = buildApiKeyRows({
@@ -415,6 +416,7 @@ function CreateApiKeyDialog({
   onOpenChange: (open: boolean) => void;
   onCreated: () => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('settings.tokens');
   const common = useTranslations('common');
   const [name, setName] = useState('');
@@ -442,7 +444,7 @@ function CreateApiKeyDialog({
     retry: false,
   });
   const policy = policyQuery.data ?? null;
-  const expiryChoices = expiryOptions(policy).map((choice) => ({
+  const expiryChoices = expiryOptions(policy, tI18nComplete).map((choice) => ({
     ...choice,
     label:
       choice.value === NEVER_EXPIRES
@@ -456,7 +458,7 @@ function CreateApiKeyDialog({
   // rather than submitting one the backend will reject.
   const selectedExpiry = expiryChoices.some((o) => o.value === expiry)
     ? expiry
-    : defaultExpiryOption(policy);
+    : defaultExpiryOption(policy, tI18nComplete);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -473,7 +475,7 @@ function CreateApiKeyDialog({
       onCreated();
       setCreated(result);
     },
-    onError: (err: Error) => errorToast(err.message || t('createFailed')),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete('textc8e60f01cd4e')),
   });
 
   function close() {

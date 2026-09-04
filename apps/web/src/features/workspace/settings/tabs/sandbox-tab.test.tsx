@@ -4,6 +4,7 @@ import { describe, expect, test } from 'bun:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
+import { testUiTranslator } from '@/i18n/test-translator';
 import {
   type ProviderCoverageEntry,
   describeProviderCoverage,
@@ -82,23 +83,38 @@ function renderProviderPresentation({
 
 describe('sandbox template provider coverage presentation', () => {
   test('uses explicit launch-readiness language for every provider state', () => {
-    expect(describeProviderCoverage('ready')).toEqual({ label: 'Ready', tone: 'ok' });
-    expect(describeProviderCoverage('building')).toEqual({ label: 'Building', tone: 'busy' });
-    expect(describeProviderCoverage('failed')).toEqual({ label: 'Failed', tone: 'fail' });
-    expect(describeProviderCoverage('not_built')).toEqual({
+    expect(describeProviderCoverage('ready', testUiTranslator)).toEqual({
+      label: 'Ready',
+      tone: 'ok',
+    });
+    expect(describeProviderCoverage('building', testUiTranslator)).toEqual({
+      label: 'Building',
+      tone: 'busy',
+    });
+    expect(describeProviderCoverage('failed', testUiTranslator)).toEqual({
+      label: 'Failed',
+      tone: 'fail',
+    });
+    expect(describeProviderCoverage('not_built', testUiTranslator)).toEqual({
       label: 'Not ready',
       tone: 'idle',
     });
-    expect(describeProviderCoverage('unavailable')).toEqual({ label: 'Unavailable', tone: 'idle' });
-    expect(describeProviderCoverage('unknown')).toEqual({ label: 'Unknown', tone: 'idle' });
+    expect(describeProviderCoverage('unavailable', testUiTranslator)).toEqual({
+      label: 'Unavailable',
+      tone: 'idle',
+    });
+    expect(describeProviderCoverage('unknown', testUiTranslator)).toEqual({
+      label: 'Unknown',
+      tone: 'idle',
+    });
   });
 
   test('keeps Automatic and Pinned badges neutral while preserving selected metadata', () => {
-    expect(describeProviderMode('automatic', 'daytona')).toEqual({
+    expect(describeProviderMode('automatic', 'daytona', testUiTranslator)).toEqual({
       label: 'Automatic',
       selectedProvider: null,
     });
-    expect(describeProviderMode('pinned', 'e2b')).toEqual({
+    expect(describeProviderMode('pinned', 'e2b', testUiTranslator)).toEqual({
       label: 'Pinned provider',
       selectedProvider: 'E2B',
     });
@@ -126,7 +142,7 @@ describe('sandbox template provider coverage presentation', () => {
     // "Automatic" is routing configuration, not live status — it is a labelled
     // grid fact now, so it must NOT reappear as a bare badge in this strip.
     expect(html).not.toContain('Automatic');
-    expect(describeRouting('automatic', 'daytona').label).toBe('Automatic');
+    expect(describeRouting('automatic', 'daytona', testUiTranslator).label).toBe('Automatic');
   });
 
   test('the footer keeps its stamp separable so it can be pushed to the far edge', () => {
@@ -212,16 +228,18 @@ describe('sandbox template provider coverage presentation', () => {
     // the strip with no label beside it. The card now ends at the spec grid,
     // and the routing fact carries the words — with the pinned provider named.
     expect(html).toBe('');
-    expect(describeRouting('pinned', 'e2b').label).toBe('Pinned · E2B');
-    expect(describeRouting('pinned', null).label).toBe('Pinned');
+    expect(describeRouting('pinned', 'e2b', testUiTranslator).label).toBe('Pinned · E2B');
+    expect(describeRouting('pinned', null, testUiTranslator).label).toBe('Pinned');
   });
 
   test('routing is stated as a labelled fact, never a bare unlabelled badge', () => {
-    expect(describeRouting('automatic', null).label).toBe('Automatic');
-    expect(describeRouting('automatic', 'daytona').label).toBe('Automatic');
-    expect(describeRouting('pinned', 'platinum').label).toBe('Pinned · Platinum');
+    expect(describeRouting('automatic', null, testUiTranslator).label).toBe('Automatic');
+    expect(describeRouting('automatic', 'daytona', testUiTranslator).label).toBe('Automatic');
+    expect(describeRouting('pinned', 'platinum', testUiTranslator).label).toBe('Pinned · Platinum');
     // Distinct glyph per mode so the two are separable at a glance.
-    expect(describeRouting('automatic', null).icon).not.toBe(describeRouting('pinned', null).icon);
+    expect(describeRouting('automatic', null, testUiTranslator).icon).not.toBe(
+      describeRouting('pinned', null, testUiTranslator).icon,
+    );
   });
 });
 

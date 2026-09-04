@@ -67,13 +67,9 @@ function isLegalPath(pathname: string): boolean {
  * `/legal/terms` path nor the legacy `/legal?tab=terms` query, in any locale),
  * so the caller can fall through to normal rendering.
  */
-export function legalTermsRedirectUrl(
-  pathname: string,
-  searchParams: URLSearchParams,
-): URL | null {
+export function legalTermsRedirectUrl(pathname: string, searchParams: URLSearchParams): URL | null {
   const isTermsPath = isLegalTermsPath(pathname);
-  const isLegacyTerms =
-    isLegalPath(pathname) && searchParams.get('tab') === 'terms';
+  const isLegacyTerms = isLegalPath(pathname) && searchParams.get('tab') === 'terms';
 
   if (!isTermsPath && !isLegacyTerms) return null;
 

@@ -33,7 +33,7 @@ import {
   listGitHubRepositoryBranches,
 } from '@kortix/sdk';
 import { useQuery } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
@@ -120,6 +120,7 @@ function GitHubSourceFields({
   accountId: string | null;
   onChange: (next: NewWorkspaceFormState) => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('newWorkspace');
   const [repoSearch, setRepoSearch] = useState('');
   // The repositories route takes `search` as a server-side filter, so every
@@ -256,7 +257,7 @@ function GitHubSourceFields({
 
       {state.source === 'github-import' ? (
         <div className="flex flex-col space-y-3">
-          <Label htmlFor="workspace-repository">Repository</Label>
+          <Label htmlFor="workspace-repository">{tI18nComplete.raw('text13d6ff07b8a5')}</Label>
           <RepositoryPicker
             value={state.repoFullName ?? ''}
             repos={repos}

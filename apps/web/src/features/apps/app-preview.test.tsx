@@ -8,6 +8,7 @@ import enMessages from '../../../translations/en.json';
 import { stripTags } from '@/test-utils/strip-tags';
 import type { App } from '@kortix/sdk';
 
+import { testUiTranslator } from '@/i18n/test-translator';
 import {
   APP_GRID_COLUMN_OPTIONS,
   APP_GRID_COLUMN_ORDER,
@@ -358,10 +359,10 @@ describe('deployNotice — the header speaks only when there is news', () => {
   test('silent for the state almost every App is in almost always', () => {
     // A finished deployment is the resting state. A "Live" badge there would be
     // permanent chrome restating the green dot next to it.
-    expect(deployNotice(at('ready'))).toBeNull();
-    expect(deployNotice(undefined)).toBeNull();
+    expect(deployNotice(at('ready'), testUiTranslator)).toBeNull();
+    expect(deployNotice(undefined, testUiTranslator)).toBeNull();
     // Nothing is happening and nothing is broken.
-    expect(deployNotice(at('cancelled'))).toBeNull();
+    expect(deployNotice(at('cancelled'), testUiTranslator)).toBeNull();
   });
 
   test('one plain word for every in-flight stage, not five different ones', () => {
@@ -375,12 +376,18 @@ describe('deployNotice — the header speaks only when there is news', () => {
       'provisioning',
       'checking',
     ] as const) {
-      expect(deployNotice(at(status))).toEqual({ label: 'Updating', tone: 'warning' });
+      expect(deployNotice(at(status), testUiTranslator)).toEqual({
+        label: 'Updating',
+        tone: 'warning',
+      });
     }
   });
 
   test('a failure says what failed, in the reader’s terms', () => {
-    expect(deployNotice(at('failed'))).toEqual({ label: 'Update failed', tone: 'destructive' });
+    expect(deployNotice(at('failed'), testUiTranslator)).toEqual({
+      label: 'Update failed',
+      tone: 'destructive',
+    });
   });
 });
 

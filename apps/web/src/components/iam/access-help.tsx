@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 // AccessHelp — the "how access works" reference, mounted as a real pane
 // (`/accounts/[id]?tab=help`) instead of the old `PermissionsHelpPopover`.
 //
@@ -19,10 +19,9 @@ import Link from 'next/link';
 
 import {
   ACCOUNT_ROLES_ASCENDING,
-  ACCOUNT_ROLE_DESCRIPTORS,
+  builtinRoleDescriptor,
   type OfferedProjectRole,
   PROJECT_ROLES_ASCENDING,
-  PROJECT_ROLE_DESCRIPTORS,
 } from '@/features/workspace/shared/access';
 import type { AccountRole } from '@kortix/sdk';
 
@@ -119,8 +118,8 @@ export function AccessHelp({ accountId }: AccessHelpProps) {
         <RoleList
           rows={ACCOUNT_ROLES_DESCENDING.map((role) => ({
             key: role,
-            label: ACCOUNT_ROLE_DESCRIPTORS[role].label,
-            summary: ACCOUNT_ROLE_DESCRIPTORS[role].summary,
+            label: builtinRoleDescriptor('account', role, tI18nComplete)!.label,
+            summary: builtinRoleDescriptor('account', role, tI18nComplete)!.summary,
           }))}
         />
       </Section>
@@ -132,8 +131,8 @@ export function AccessHelp({ accountId }: AccessHelpProps) {
         <RoleList
           rows={PROJECT_ROLES_DESCENDING.map((role) => ({
             key: role,
-            label: PROJECT_ROLE_DESCRIPTORS[role].label,
-            summary: PROJECT_ROLE_DESCRIPTORS[role].summary,
+            label: builtinRoleDescriptor('project', role, tI18nComplete)!.label,
+            summary: builtinRoleDescriptor('project', role, tI18nComplete)!.summary,
           }))}
         />
       </Section>
@@ -155,7 +154,7 @@ export function AccessHelp({ accountId }: AccessHelpProps) {
         </div>
       </Section>
 
-      <Section title="Groups">
+      <Section title={tI18nComplete.raw('text39bbb719fa2b')}>
         <div className={`${PANEL} space-y-2 px-4 py-3`}>
           <p className="text-muted-foreground text-xs leading-relaxed">
             {tI18nComplete.raw('texte82c81f0607b')}
@@ -166,7 +165,7 @@ export function AccessHelp({ accountId }: AccessHelpProps) {
         </div>
       </Section>
 
-      <Section title="Agents">
+      <Section title={tI18nComplete.raw('text279b44d2ab4b')}>
         <div className={`${PANEL} space-y-2 px-4 py-3`}>
           <p className="text-muted-foreground text-xs leading-relaxed">
             {tI18nComplete.raw('textc2dfb2c0eb28')}

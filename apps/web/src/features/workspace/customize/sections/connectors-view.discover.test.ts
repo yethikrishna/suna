@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from '@/i18n/test-source';
 import { join } from 'node:path';
 
 const connectorsSource = readFileSync(join(import.meta.dir, 'connectors-view.tsx'), 'utf8');
@@ -56,9 +56,9 @@ describe('feature-flagged Discover connector marketplace', () => {
   });
 
   test('does not mislabel a domain card as only its feed-provided MCP surface', () => {
-    expect(discoverSource).toContain(
-      "const subtitle = isOAuth ? 'Pipedream OAuth' : 'Direct surfaces';",
-    );
+    expect(discoverSource).toContain('const subtitle = isOAuth');
+    expect(discoverSource).toContain("? tI18nComplete.raw('text87a46ec2620a')");
+    expect(discoverSource).toContain(": tI18nComplete.raw('text678094dc2f3f')");
     expect(discoverSource).not.toContain(
       "const subtitle = isOAuth ? 'Pipedream OAuth' : connectorKindLabel(card.item.kind);",
     );

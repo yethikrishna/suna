@@ -76,7 +76,7 @@ import {
   PlusIcon,
 } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import Link from 'next/link';
 import * as React from 'react';
 import { useState } from 'react';

@@ -199,6 +199,7 @@ async function chooseLocale(page: Page, locale: Locale): Promise<void> {
   await combobox.click();
   await page
     .getByRole("option", { name: nativeLocaleNames[locale], exact: true })
+    .last()
     .click();
 
   const response = await responsePromise;
@@ -751,6 +752,7 @@ test.describe("26 — Settings localization", () => {
               name: copy.projectOnboarding.company.continue,
               exact: true,
             })
+            .first()
             .click();
 
           await expect(
@@ -769,6 +771,7 @@ test.describe("26 — Settings localization", () => {
               name: copy.projectOnboarding.tools.continue,
               exact: true,
             })
+            .first()
             .click();
 
           await expect(
@@ -782,6 +785,7 @@ test.describe("26 — Settings localization", () => {
               name: copy.projectOnboarding.slack.notNow,
               exact: true,
             })
+            .first()
             .click();
 
           await expect(
@@ -795,6 +799,7 @@ test.describe("26 — Settings localization", () => {
               name: copy.projectOnboarding.plan.continue,
               exact: true,
             })
+            .first()
             .click();
 
           await expect(
@@ -808,21 +813,17 @@ test.describe("26 — Settings localization", () => {
               exact: true,
             }),
           ).toBeVisible();
-          await expect(
-            wizard.getByRole("button", {
+          const openProjectButton = wizard
+            .getByRole("button", {
               name: copy.projectOnboarding.done.openProject,
               exact: true,
-            }),
-          ).toBeVisible();
+            })
+            .first();
+          await expect(openProjectButton).toBeVisible();
+          await openProjectButton.click();
+          await expect(wizard).toBeHidden();
 
           await page.goto(`/projects/${projectId}/settings/preferences`);
-
-          await page
-            .getByRole("tab", {
-              name: copy.settings.rail.items.preferences.label,
-              exact: true,
-            })
-            .click();
           await expect(page.getByRole("combobox").first()).toBeVisible();
         });
       }

@@ -9,9 +9,9 @@
  * where the catalogue call itself returns one.
  */
 
+import { useTranslations } from '@/i18n/use-translations';
 import { MagnifyingGlassIcon, PlusIcon } from '@phosphor-icons/react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
 import Image from 'next/image';
 import { useState } from 'react';
 

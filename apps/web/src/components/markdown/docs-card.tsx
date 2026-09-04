@@ -70,7 +70,7 @@ export function Card({ icon, title, description, href, external, ...props }: Car
             `shrink-0` and `[&_svg]:size-4`: the words wrap, the mark never
             does, whatever component drew it. */}
         {icon && (
-          <span className="text-fd-muted-foreground mt-0.5 flex shrink-0 items-center [&_svg]:size-4 border rounded-md bg-inherti p-2">
+          <span className="text-fd-muted-foreground bg-inherti mt-0.5 flex shrink-0 items-center rounded-md border p-2 [&_svg]:size-4">
             {icon}
           </span>
         )}

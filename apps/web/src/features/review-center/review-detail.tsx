@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 /**
  * Review Center — the per-item review page. It replaces the inbox in place
  * (no modal): a status + title header, the branch/diff facts for a change,
@@ -42,6 +42,9 @@ import {
   RISK_META,
   STATUS_META,
   VERIFICATION_BADGE,
+  reviewKindLabel,
+  reviewRiskLabel,
+  reviewStatusLabel,
 } from './review-meta';
 import { type ApprovalAction, type ReviewItem, type ReviewStatus, isSafeRisk } from './types';
 
@@ -183,7 +186,7 @@ function ChangeBody({
                 if (actions.recoverChange) {
                   actions.recoverChange(item, conflicts);
                 } else {
-                  actions.resolve(item.id, 'waiting', 'Solving the merge conflicts with an agent…');
+                  actions.resolve(item.id, 'waiting', tI18nComplete.raw('text92bb0a437a39'));
                   onClose();
                 }
               }}
@@ -239,7 +242,7 @@ function ApprovalActionRow({
           <div className="flex items-center gap-2">
             <span className="text-foreground text-sm font-medium">{action.title}</span>
             <Badge variant={RISK_META[action.risk].badge} size="sm">
-              {RISK_META[action.risk].label}
+              {reviewRiskLabel(action.risk, tI18nComplete)}
             </Badge>
           </div>
           <div className="text-muted-foreground mt-0.5 text-sm text-pretty">
@@ -346,7 +349,7 @@ function ApprovalBody({
           actions.resolve(
             item.id,
             decision === 'approve' ? 'approved' : 'rejected',
-            decision === 'approve' ? 'Approved — the agent will continue' : 'Denied',
+            decision === 'approve' ? tI18nComplete.raw('text24234d557d8d') : 'Denied',
           )
         }
         busyDecision={busyDecision}
@@ -383,7 +386,7 @@ function ApprovalBody({
                       return;
                     }
                     actions.decideAction(item.id, a.id, 'approved');
-                    successToast(`Approved · ${a.title}`);
+                    successToast(tI18nComplete('text6ef671b81187', { value0: a.title }));
                   }}
                   onDeny={() => {
                     if (actions.connected) {
@@ -391,7 +394,7 @@ function ApprovalBody({
                       return;
                     }
                     actions.decideAction(item.id, a.id, 'denied');
-                    infoToast(`Denied · ${a.title}`);
+                    infoToast(tI18nComplete('text6ef671b81187', { value0: a.title }));
                   }}
                 />
               ))}
@@ -652,7 +655,7 @@ function ActionBar({
   if (item.status !== 'needs_you') {
     return (
       <span className="text-muted-foreground text-xs">
-        {STATUS_META[item.status].label} · {formatItemAgeLong(item.createdAt)}
+        {reviewStatusLabel(item.status, tI18nComplete)} · {formatItemAgeLong(item.createdAt)}
       </span>
     );
   }
@@ -678,7 +681,7 @@ function ActionBar({
             if (actions.recoverChange) {
               actions.recoverChange(item, conflicts);
             } else {
-              actions.resolve(item.id, 'waiting', 'Solving the merge conflicts with an agent…');
+              actions.resolve(item.id, 'waiting', tI18nComplete.raw('text92bb0a437a39'));
               onBack();
             }
           }}
@@ -702,7 +705,7 @@ function ActionBar({
           }}
         >
           {checkingConflicts ? <Loading className="size-3.5 shrink-0" /> : null}
-          {checkingConflicts ? 'Checking…' : item.primaryAction}
+          {checkingConflicts ? tI18nComplete.raw('textec963ffc911b') : item.primaryAction}
         </Button>
       )}
     </div>
@@ -711,6 +714,7 @@ function ActionBar({
 
 /** `main ← feat/branch · 1 file · +38 −2` — the facts a reviewer scans first. */
 function ChangeFacts({ item }: { item: Extract<ReviewItem, { kind: 'change' }> }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const adv = item.detail.advanced;
   const crId = item.detail.crId ?? null;
   // The live diff query is shared with `ChangeFiles` below (same key), so this
@@ -729,7 +733,10 @@ function ChangeFacts({ item }: { item: Extract<ReviewItem, { kind: 'change' }> }
           <Badge variant="secondary" className="border-0 align-middle font-mono ring-0" size="sm">
             {adv.baseRef || '—'}
           </Badge>
-          <ArrowLeft className="text-muted-foreground size-3.5 shrink-0" aria-label="from" />
+          <ArrowLeft
+            className="text-muted-foreground size-3.5 shrink-0"
+            aria-label={tI18nComplete.raw('text75857a458999')}
+          />
           <Badge
             variant="secondary"
             size="sm"
@@ -779,7 +786,9 @@ export function ReviewDetail({
   // A change waiting on you is "Open", the way a pull request is; every other
   // state keeps the inbox's own label.
   const open = item.status === 'needs_you' && item.kind === 'change';
-  const statusLabel = open ? 'Open' : STATUS_META[item.status].label;
+  const statusLabel = open
+    ? tI18nComplete.raw('texted077f3d8125')
+    : reviewStatusLabel(item.status, tI18nComplete);
   const statusBadge = open ? 'success' : STATUS_META[item.status].badge;
   const secondaryLabel = item.secondaryAction;
 
@@ -793,12 +802,12 @@ export function ReviewDetail({
             </Badge>
             {item.kind !== 'change' && (
               <Badge variant="outline" size="sm">
-                {kind.label}
+                {reviewKindLabel(item.kind, tI18nComplete)}
               </Badge>
             )}
             {item.risk === 'medium' || item.risk === 'high' ? (
               <Badge variant={RISK_META[item.risk].badge} size="sm">
-                {RISK_META[item.risk].label}
+                {reviewRiskLabel(item.risk, tI18nComplete)}
               </Badge>
             ) : null}
           </div>

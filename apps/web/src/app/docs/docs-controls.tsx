@@ -13,6 +13,7 @@ import {
 import type * as PageTree from 'fumadocs-core/page-tree';
 import { SidebarSeparator, useSidebar } from 'fumadocs-ui/components/sidebar/base';
 import { useSearchContext } from 'fumadocs-ui/contexts/search';
+import { useTranslations } from '@/i18n/use-translations';
 
 // App-Button replacements for fumadocs' built-in sidebar chrome (search
 // toggles, collapse trigger, collapsed floating control) so the docs share
@@ -32,13 +33,14 @@ export function DocsSidebarSeparator({ item }: { item: PageTree.Separator }) {
 
 // Sidebar search row — same shape as the app sidebar's Search entry.
 export function DocsSearchButton() {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const { enabled, hotKey, setOpenSearch } = useSearchContext();
   if (!enabled) return null;
 
   return (
     <Button variant="secondary" onClick={() => setOpenSearch(true)} className="group/row w-full">
       <Search className="text-sidebar-foreground shrink-0" />
-      <span className="flex-1 text-left">Search</span>
+      <span className="flex-1 text-left">{tI18nComplete.raw('text49c266baaaa7')}</span>
       <KbdGroup className="ml-auto opacity-0 transition-opacity duration-150 group-hover/row:opacity-100">
         {hotKey.map((k) => (
           <Kbd key={String(k.display)}>{k.display}</Kbd>
@@ -50,6 +52,7 @@ export function DocsSearchButton() {
 
 // Mobile navbar search — icon-only.
 export function DocsSearchIconButton() {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const { enabled, setOpenSearch } = useSearchContext();
   if (!enabled) return null;
 
@@ -57,7 +60,7 @@ export function DocsSearchIconButton() {
     <Button
       variant="ghost"
       size="icon-sm"
-      aria-label="Open search"
+      aria-label={tI18nComplete.raw('text50ce48b9c623')}
       onClick={() => setOpenSearch(true)}
     >
       <Search />
@@ -68,13 +71,14 @@ export function DocsSearchIconButton() {
 // Sidebar-header collapse trigger (desktop only) — replaces the stock
 // SidebarCollapseTrigger that `sidebar.collapsible: false` removes.
 export function DocsSidebarCollapseButton() {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const { collapsed, setCollapsed } = useSidebar();
 
   return (
     <Button
       variant="ghost"
       size="icon-sm"
-      aria-label="Collapse sidebar"
+      aria-label={tI18nComplete.raw('textaab31cde23ba')}
       className="text-muted-foreground mb-auto max-md:hidden"
       onClick={() => setCollapsed(!collapsed)}
     >
@@ -87,6 +91,7 @@ export function DocsSidebarCollapseButton() {
 // fumadocs' CollapsibleControl (a shadowed pill that jumps to the right edge
 // below xl); this one is a flat bordered ButtonGroup pinned to the far left.
 export function DocsCollapsedControls() {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const { collapsed, setCollapsed } = useSidebar();
   const { enabled, setOpenSearch } = useSearchContext();
 
@@ -97,14 +102,14 @@ export function DocsCollapsedControls() {
         !collapsed && 'pointer-events-none opacity-0',
       )}
       style={{
-        top: 'calc(var(--fd-banner-height) + var(--fd-tocnav-height) + var(--spacing) * 4)',
+        top: "calc(var(--fd-banner-height) + var(--fd-tocnav-height) + var(--spacing) * 4)",
       }}
     >
       <ButtonGroup className="bg-secondary rounded-md">
         <Button
           variant="outline"
           size="icon"
-          aria-label="Open sidebar"
+          aria-label={tI18nComplete.raw('text45609089ee73')}
           onClick={() => setCollapsed(false)}
         >
           <PanelLeftIcon />
@@ -113,7 +118,7 @@ export function DocsCollapsedControls() {
           <Button
             variant="outline"
             size="icon"
-            aria-label="Open search"
+            aria-label={tI18nComplete.raw('text50ce48b9c623')}
             onClick={() => setOpenSearch(true)}
           >
             <Search />
@@ -145,13 +150,14 @@ export function DocsCollapsedControls() {
  * call into it.
  */
 export function DocsSidebarFooter() {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
     <div className="text-muted-foreground flex w-full items-center justify-between">
       <a
         href="https://github.com/kortix-ai/suna"
         target="_blank"
         rel="noreferrer"
-        aria-label="Kortix on GitHub"
+        aria-label={tI18nComplete.raw('text8585b95f4600')}
         // Sized and toned exactly like a theme segment, so the row reads as
         // one strip of icons rather than a link beside a control.
         className="hover:text-foreground inline-flex size-7 items-center justify-center rounded-md transition-colors duration-150 ease-out"

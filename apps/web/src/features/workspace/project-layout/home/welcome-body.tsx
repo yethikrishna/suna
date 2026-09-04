@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { useState, type ReactNode } from 'react';
 
 import { IdentityConfetti } from '@/components/ui/identity-confetti';

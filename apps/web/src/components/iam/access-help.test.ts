@@ -5,7 +5,7 @@
 // every section present, linkable, and sourced from the shared role
 // descriptors instead of a second copy of the copy.
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync } from '@/i18n/test-source';
 import { join } from 'node:path';
 
 const source = readFileSync(join(import.meta.dir, 'access-help.tsx'), 'utf8');
@@ -22,8 +22,8 @@ describe('access help page', () => {
     ]) {
       expect(flat).toContain(`raw('${key}')`);
     }
-    expect(flat).toContain('title="Groups"');
-    expect(flat).toContain('title="Agents"');
+    expect(flat).toContain("raw('text39bbb719fa2b')");
+    expect(flat).toContain("raw('text279b44d2ab4b')");
   });
 
   test('role copy comes from the shared descriptors, not a local copy', () => {

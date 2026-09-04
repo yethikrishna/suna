@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import type { ReactNode } from 'react';
 
 import { useProjectCans } from '@/lib/use-project-can';

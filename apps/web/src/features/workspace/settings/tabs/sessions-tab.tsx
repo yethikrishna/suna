@@ -28,7 +28,7 @@ import {
   SpeakerHighIcon as Volume2,
   type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { useEffect } from 'react';
 
 import { Button } from '@/components/ui/button';

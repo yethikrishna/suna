@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/select';
 import { useLanguage } from '@/hooks/use-language';
 import { localeNames, type Locale } from '@/i18n/config';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 
 export function LanguageSwitcher() {
   const { locale, setLanguage, availableLanguages } = useLanguage();

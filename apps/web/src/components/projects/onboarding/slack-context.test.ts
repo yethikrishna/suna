@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync } from '@/i18n/test-source';
 import { join } from 'node:path';
 
 const onboardingDir = import.meta.dir;
@@ -19,7 +19,7 @@ describe('Slack onboarding context', () => {
     expect(slackStep).not.toContain('StepContext');
     expect(slackStep).toContain('customOpen &&');
     expect(connectorsView).toContain(
-      "!customOnly && 'border-border/60 bg-card rounded-2xl border p-4'",
+      "!customOnly && 'border-border/60 bg-card rounded-md border p-4'",
     );
     expect(connectorsView).toContain(
       "!customOnly && 'sm:flex-row sm:items-end sm:justify-between'",

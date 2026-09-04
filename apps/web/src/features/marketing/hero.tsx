@@ -9,6 +9,7 @@ import { hero, heroEyebrow } from '@/features/marketing/landing/content';
 import { useAuth } from '@/features/providers/auth-provider';
 import { trackCtaSignup } from '@/lib/analytics/gtm';
 import { latestProjectPath } from '@/lib/onboarding/last-project-cookie';
+import { useTranslations } from '@/i18n/use-translations';
 import { type ReactNode, useCallback } from 'react';
 
 /** `heroEyebrow.rivals[].icon` selects a logo by name at runtime, so it can't be
@@ -19,6 +20,7 @@ const RIVAL_ICONS = { Claude, OpenAI } as const;
 /** Anchors the product against the two things a reader already knows, with
  *  their marks, so "AI Management System" lands without a paragraph first. */
 function RivalEyebrow() {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
     /* `justify-center` centres the wrapped rows as a unit; each rival stays its
        own inline `flex items-center` span, so the logo and its label never
@@ -29,7 +31,11 @@ function RivalEyebrow() {
         const Glyph = RIVAL_ICONS[r.icon] as ((p: { className?: string }) => ReactNode) | undefined;
         return (
           <span key={r.id} className="flex items-center gap-1.5">
-            {i > 0 && <span className="text-muted-foreground/50 mr-1">and</span>}
+            {i > 0 && (
+              <span className="text-muted-foreground/50 mr-1">
+                {tI18nComplete.raw('text6201111b83a0')}
+              </span>
+            )}
             {Glyph ? <Glyph className="size-4" /> : null}
             <span className="text-foreground font-medium">{r.label}</span>
           </span>

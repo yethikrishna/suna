@@ -1,6 +1,7 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import type { UiTranslator } from '@/i18n/translator';
+import { useTranslations } from '@/i18n/use-translations';
 // AccessDialog — THE modal for every "give / edit access" interaction.
 //
 // Five modes (grant, edit, attach, bulk-role, bulk-group) over three scopes
@@ -243,15 +244,16 @@ export interface AccessDialogCopy {
 export function accessDialogCopy(
   scope: AccessDialogScope,
   mode: AccessDialogMode,
-  opts: { accountName?: string; selectedCount?: number } = {},
+  opts: { accountName?: string; selectedCount?: number } | undefined,
+  tI18nComplete: UiTranslator,
 ): AccessDialogCopy {
   const scopeName =
     scope.kind === 'project'
       ? scope.projectName
       : scope.kind === 'group'
         ? scope.groupName
-        : (opts.accountName ?? 'this account');
-  const count = opts.selectedCount ?? 0;
+        : (opts?.accountName ?? 'this account');
+  const count = opts?.selectedCount ?? 0;
 
   if (mode.kind === 'grant') {
     const description =
@@ -261,39 +263,44 @@ export function accessDialogCopy(
           ? 'Pick people or groups, or type an email to invite someone new — everyone selected gets the same role on this project.'
           : 'Pick account members to add to this group.';
     return {
-      title: 'Grant access',
+      title: tI18nComplete.raw('text8693768c7e08'),
       description,
       submitLabel: count > 0 ? `Grant access (${count})` : 'Grant access',
     };
   }
   if (mode.kind === 'attach') {
     return {
-      title: 'Grant access',
-      description: `Attach ${mode.principal.label} to a project — every member inherits the role.`,
+      title: tI18nComplete.raw('text8693768c7e08'),
+      description: tI18nComplete('text9f65b66d4940', { value0: mode.principal.label }),
       submitLabel: 'Attach',
     };
   }
   if (mode.kind === 'edit') {
     return {
-      title: 'Edit access',
-      description: `Change what ${mode.principal.label} can do in ${scopeName}.`,
+      title: tI18nComplete.raw('texta514a684676a'),
+      description: tI18nComplete('text180041804cd1', {
+        value0: mode.principal.label,
+        value1: scopeName,
+      }),
       submitLabel: 'Save',
     };
   }
   if (mode.kind === 'bulk-group') {
     const n = mode.principals.length;
     return {
-      title: 'Add to group',
+      title: tI18nComplete.raw('textea849eb70c26'),
       description:
         n === 1 ? 'Pick the group this person joins.' : `Pick the group these ${n} people join.`,
       submitLabel: 'Add to group',
     };
   }
   return {
-    title: 'Edit access',
-    description: `Change what ${mode.principals.length} ${
-      mode.principals.length === 1 ? 'person' : 'people'
-    } can do in ${scopeName}.`,
+    title: tI18nComplete.raw('texta514a684676a'),
+    description: tI18nComplete('text065f04fd94d6', {
+      value0: mode.principals.length,
+      value1: mode.principals.length === 1 ? 'person' : 'people',
+      value2: scopeName,
+    }),
     submitLabel: 'Save',
   };
 }
@@ -423,7 +430,7 @@ export function AccessDialog({
         : 1;
   // The one group the bulk-group mode adds everyone to.
   const bulkGroupId = mode.kind === 'bulk-group' ? (principals.groupIds[0] ?? '') : '';
-  const copy = accessDialogCopy(scope, mode, { accountName, selectedCount });
+  const copy = accessDialogCopy(scope, mode, { accountName, selectedCount }, tI18nComplete);
 
   const isCustom = role.kind === 'custom';
   const builtin = baselineBuiltinRole(roleScope ?? 'project', role);
@@ -844,30 +851,40 @@ export function AccessDialog({
 
       if (undeliveredInvite && undeliveredInvite.status === 'fulfilled') {
         const url = (undeliveredInvite.value as { invite_url?: string }).invite_url ?? '';
-        warningToast('Some invites were created without email delivery — share links manually.', {
+        warningToast(tI18nComplete.raw('text235b7345c9a4'), {
           duration: 10_000,
           button: (
             <Button size="sm" onClick={() => void navigator.clipboard.writeText(url)}>
-              {tI18nComplete.raw('text6aaa89b8157c')}
+              {tI18nComplete.raw('text4dd4a88d39fe')}
             </Button>
           ),
         });
       } else if (failedIndexes.length > 0 && ok > 0) {
-        errorToast(`Granted ${ok} of ${total} — some failed.`);
+        errorToast(tI18nComplete('textb0cdf63b8387', { value0: ok, value1: total }));
       } else if (failedIndexes.length > 0) {
         const first = settled.find((r) => r.status === 'rejected') as
           PromiseRejectedResult | undefined;
-        errorToast(first?.reason instanceof Error ? first.reason.message : 'Failed to save access');
+        errorToast(
+          first?.reason instanceof Error
+            ? first.reason.message
+            : tI18nComplete.raw('text2dd1d32020bf'),
+        );
       } else if (mode.kind === 'grant') {
-        successToast(total === 1 ? 'Access granted' : `Access granted to ${total}`);
+        successToast(
+          total === 1
+            ? tI18nComplete.raw('text3a6a2dbef581')
+            : tI18nComplete('text272f6dbe5a44', { value0: total }),
+        );
       } else if (mode.kind === 'attach') {
-        successToast('Attached to project');
+        successToast(tI18nComplete.raw('text9fc6a9fcbab2'));
       } else if (mode.kind === 'bulk-group') {
         successToast(
-          selectedCount === 1 ? 'Added to group' : `Added ${selectedCount} people to the group`,
+          selectedCount === 1
+            ? tI18nComplete.raw('text1a65c2fe47d3')
+            : tI18nComplete('textfd1a3ff157f3', { value0: selectedCount }),
         );
       } else {
-        successToast('Access updated');
+        successToast(tI18nComplete.raw('textec9036582701'));
       }
 
       const touched = [
@@ -879,7 +896,7 @@ export function AccessDialog({
       onDone?.({ failedPrincipalIds });
       if (failedIndexes.length === 0) onOpenChange(false);
     },
-    onError: (error: Error) => errorToast(error.message || 'Failed to save access'),
+    onError: (error: Error) => errorToast(error.message || tI18nComplete.raw('text2dd1d32020bf')),
   });
 
   const removeMutation = useMutation({
@@ -894,13 +911,13 @@ export function AccessDialog({
       }
     },
     onSuccess: () => {
-      successToast('Access removed');
+      successToast(tI18nComplete.raw('textabb84f9edc9e'));
       invalidate(projectId ? [projectId] : []);
       setRemoveOpen(false);
       onOpenChange(false);
       onDone?.({ failedPrincipalIds: [] });
     },
-    onError: (error: Error) => errorToast(error.message || 'Failed to remove access'),
+    onError: (error: Error) => errorToast(error.message || tI18nComplete.raw('textd3237eaf77bb')),
   });
 
   const pending = saveMutation.isPending || removeMutation.isPending;
@@ -947,7 +964,9 @@ export function AccessDialog({
             {/* 1. Who */}
             {mode.kind === 'grant' ? (
               <Field className="gap-1.5">
-                <FieldLabel>{scope.kind === 'group' ? 'Add' : 'Grant to'}</FieldLabel>
+                <FieldLabel>
+                  {scope.kind === 'group' ? 'Add' : tI18nComplete.raw('texte5455bdd5b85')}
+                </FieldLabel>
                 <PrincipalPicker
                   scope={
                     scope.kind === 'project'
@@ -963,13 +982,13 @@ export function AccessDialog({
                   disabled={pending}
                   emptyLabel={
                     scope.kind === 'group'
-                      ? 'No other members in this account yet.'
-                      : 'No members or groups here yet.'
+                      ? tI18nComplete.raw('text92a2b9bf13be')
+                      : tI18nComplete.raw('textd2600c68a9ff')
                   }
                   allExcludedLabel={
                     scope.kind === 'group'
-                      ? 'Every account member is already in this group.'
-                      : 'Everyone is already added.'
+                      ? tI18nComplete.raw('text10c837fe427c')
+                      : tI18nComplete.raw('textf68d7561db3d')
                   }
                 />
               </Field>
@@ -1010,8 +1029,8 @@ export function AccessDialog({
                   disabled={pending}
                   enabled={open}
                   emptyText={{
-                    allExcluded: 'This group is already attached to every project you can manage.',
-                    noneEligible: 'You need Manager access on a project to attach a group to it.',
+                    allExcluded: tI18nComplete.raw('text697668368ee0'),
+                    noneEligible: tI18nComplete.raw('text8ab0c5b1563c'),
                   }}
                 />
               </Field>
@@ -1186,21 +1205,24 @@ export function AccessDialog({
           confirmVariant="destructive"
           confirmLabel={
             scope.kind === 'project' && mode.principal.type === 'group'
-              ? 'Detach group'
-              : 'Remove access'
+              ? tI18nComplete.raw('text623b0cedf094')
+              : tI18nComplete.raw('textbb349bfe6750')
           }
           isPending={removeMutation.isPending}
           onConfirm={() => removeMutation.mutate()}
-          {...removeAccessCopy({
-            principal: mode.principal.label,
-            scopeName:
-              scope.kind === 'project'
-                ? scope.projectName
-                : scope.kind === 'group'
-                  ? scope.groupName
-                  : (accountName ?? 'this account'),
-            inherited: inheritedFrom,
-          })}
+          {...removeAccessCopy(
+            {
+              principal: mode.principal.label,
+              scopeName:
+                scope.kind === 'project'
+                  ? scope.projectName
+                  : scope.kind === 'group'
+                    ? scope.groupName
+                    : (accountName ?? 'this account'),
+              inherited: inheritedFrom,
+            },
+            tI18nComplete,
+          )}
         />
       ) : null}
     </>
@@ -1294,10 +1316,18 @@ export function BlastRadiusPreview({
         <>
           <div className="space-y-1.5">
             {secrets.length > 0 ? (
-              <ScopeLine icon={KeyIcon} label="Secrets" items={secrets} />
+              <ScopeLine
+                icon={KeyIcon}
+                label={tI18nComplete.raw('textd8707d411d99')}
+                items={secrets}
+              />
             ) : null}
             {connectors.length > 0 ? (
-              <ScopeLine icon={PlugIcon} label="Connectors" items={connectors} />
+              <ScopeLine
+                icon={PlugIcon}
+                label={tI18nComplete.raw('textc3d2e79ebdd0')}
+                items={connectors}
+              />
             ) : null}
           </div>
           <p className="text-muted-foreground text-xs leading-relaxed">

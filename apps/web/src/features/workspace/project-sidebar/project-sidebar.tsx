@@ -32,7 +32,7 @@ import {
   NavigationArrowIcon,
   SidebarSimpleIcon as PanelLeft,
 } from '@phosphor-icons/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef } from 'react';
 import { SidebarBalanceWarning } from './footer/project-balance-warning';
@@ -43,6 +43,7 @@ const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(na
 const modSymbol = isMac ? '⌘' : 'Ctrl';
 
 export function ProjectSidebar({ projectId }: { projectId: string }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('sidebar');
   const { state, setOpenMobile, toggleSidebar } = useSidebar();
   const isExpanded = state === 'expanded';
@@ -115,7 +116,7 @@ export function ProjectSidebar({ projectId }: { projectId: string }) {
     >
       <SidebarHeader
         className="space-y-2"
-        style={{ paddingTop: 'max(calc(var(--spacing) * 2), env(safe-area-inset-top, 0px))' }}
+        style={{ paddingTop: "max(calc(var(--spacing) * 2), env(safe-area-inset-top, 0px))" }}
       >
         {/* Offcanvas everywhere: the whole panel slides, so the header keeps a
             single layout. Three controls on one 240px row, all 32px tall: the

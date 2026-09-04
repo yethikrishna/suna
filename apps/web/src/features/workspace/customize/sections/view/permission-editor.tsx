@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from '@/i18n/use-translations';
 /** The tool-permission editor — a default action plus per-tool rules (a bare
  *  action, or a map of path/command patterns to actions). */
 
@@ -14,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useLocalizedUiCatalog } from '@/i18n/use-localized-ui-catalog';
 import type { PermissionAction, PermissionConfig, PermissionRule } from '@kortix/sdk';
 import { PlusIcon as Plus, TrashIcon as Trash2 } from '@phosphor-icons/react';
 import { AnimatePresence, m } from 'motion/react';
@@ -54,19 +56,21 @@ function ActionSelect({
   inheritLabel?: string;
   label?: string;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const actionLabel = useLocalizedUiCatalog(PERMISSION_ACTION_LABEL);
   return (
     <Select
       value={value ?? (inheritLabel ? INHERIT : undefined)}
       onValueChange={(next) => onChange(next === INHERIT ? undefined : (next as PermissionAction))}
     >
       <SelectTrigger variant="outline" aria-label={label} className="h-8 w-[112px] text-xs">
-        <SelectValue placeholder="Set…" />
+        <SelectValue placeholder={tI18nComplete.raw('text1ad7a1e28408')} />
       </SelectTrigger>
       <SelectContent>
         {inheritLabel ? <SelectItem value={INHERIT}>{inheritLabel}</SelectItem> : null}
         {PERMISSION_ACTIONS.map((action) => (
           <SelectItem key={action} value={action}>
-            {PERMISSION_ACTION_LABEL[action]}
+            {actionLabel[action]}
           </SelectItem>
         ))}
       </SelectContent>
@@ -88,12 +92,12 @@ function asPermObject(permission: PermissionConfig | undefined): PermObject {
  * leads; the token stays because people grep for it and hand-edit the YAML.
  */
 function PermissionKeyName({ permKey }: { permKey: string }) {
+  const keyHelp = useLocalizedUiCatalog(PERMISSION_KEY_HELP);
+  const keyLabel = useLocalizedUiCatalog(PERMISSION_KEY_LABEL);
   return (
-    <Hint label={PERMISSION_KEY_HELP[permKey] ?? permKey} side="top">
+    <Hint label={keyHelp[permKey] ?? permKey} side="top">
       <span className="flex min-w-0 cursor-default items-baseline gap-2">
-        <span className="text-foreground truncate text-sm">
-          {PERMISSION_KEY_LABEL[permKey] ?? permKey}
-        </span>
+        <span className="text-foreground truncate text-sm">{keyLabel[permKey] ?? permKey}</span>
         <span className="text-muted-foreground/70 shrink-0 font-mono text-xs">{permKey}</span>
       </span>
     </Hint>
@@ -111,6 +115,8 @@ function PermissionRuleRow({
   rule: PermissionRule | PermissionAction | undefined;
   onChange: (next: PermissionRule | undefined) => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const keyLabel = useLocalizedUiCatalog(PERMISSION_KEY_LABEL);
   const isMap = rule !== undefined && typeof rule === 'object';
   const bare = typeof rule === 'string' ? (rule as PermissionAction) : undefined;
   const map = isMap ? (rule as Record<string, PermissionAction>) : {};
@@ -141,8 +147,8 @@ function PermissionRuleRow({
           <ActionSelect
             value={isMap ? undefined : bare}
             onChange={setBare}
-            inheritLabel="Inherit"
-            label={`${PERMISSION_KEY_LABEL[label] ?? label} — default`}
+            inheritLabel={tI18nComplete.raw('text3f72f0385768')}
+            label={tI18nComplete('text1ab9754d3882', { label: keyLabel[label] ?? label })}
           />
           {/* A word, not a slider glyph. The old icon button said nothing
               about what it opened, its pressed state was the only place the
@@ -157,7 +163,7 @@ function PermissionRuleRow({
             aria-expanded={showRules}
             onClick={() => setShowRules((s) => !s)}
           >
-            Rules
+            {tI18nComplete.raw('text4228aeb07c41')}
             {ruleCount > 0 ? <span className="tabular-nums">{ruleCount}</span> : null}
           </Button>
         </div>
@@ -175,31 +181,32 @@ function PermissionRuleRow({
             <div className="bg-muted/40 space-y-1.5 rounded-md p-2">
               {ruleCount === 0 ? (
                 <p className="text-muted-foreground px-1 pt-0.5 text-xs text-pretty">
-                  Name a path or command to give it its own answer — everything else keeps the
-                  setting above.
+                  {tI18nComplete.raw('text8d1833ac5f65')}
                 </p>
               ) : null}
               {Object.entries(map).map(([pattern, action]) => (
                 <div key={pattern} className="flex items-center gap-1.5">
                   <Input
                     value={pattern}
-                    aria-label="Pattern"
-                    placeholder="Pattern, e.g. git push"
+                    aria-label={tI18nComplete.raw('text4288ade73ff9')}
+                    placeholder={tI18nComplete.raw('textcf134a1de504')}
                     variant="popover"
                     className="h-8 flex-1 font-mono text-xs"
                     onChange={(e) => renameRule(pattern, e.target.value)}
                   />
                   <ActionSelect
                     value={action}
-                    label={`${pattern || 'New pattern'} — action`}
+                    label={tI18nComplete('text18d39efa2461', {
+                      pattern: pattern || tI18nComplete.raw('textc6fbcde46fa9'),
+                    })}
                     onChange={(v) => v && setRuleEntry(pattern, v)}
                   />
-                  <Hint label="Remove rule">
+                  <Hint label={tI18nComplete.raw('text3fab7379af90')}>
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
-                      aria-label="Remove rule"
+                      aria-label={tI18nComplete.raw('text3fab7379af90')}
                       className="size-8"
                       onClick={() => removeRuleEntry(pattern)}
                     >
@@ -215,7 +222,7 @@ function PermissionRuleRow({
                 className="h-7 gap-1 px-2 text-xs"
                 onClick={addRule}
               >
-                <Plus className="size-3 shrink-0" /> Add a pattern
+                <Plus className="size-3 shrink-0" /> {tI18nComplete.raw('textcb23e849693a')}
               </Button>
             </div>
           </m.div>
@@ -240,20 +247,24 @@ export function ToolsSection({
   permission: PermissionConfig | undefined;
   onChange: (next: PermissionConfig | undefined) => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const actionLabel = useLocalizedUiCatalog(PERMISSION_ACTION_LABEL);
   // A bare string is one action applied to EVERY tool, not one customized
   // tool — the old count printed "1" for it, which read as "one tool changed"
   // when it is the widest setting available.
   const summary =
     typeof permission === 'string'
-      ? `Every tool set to ${PERMISSION_ACTION_LABEL[permission as PermissionAction] ?? permission}`
+      ? tI18nComplete('textc233da98c824', {
+          action: actionLabel[permission as PermissionAction] ?? permission,
+        })
       : permission && Object.keys(permission).length > 0
-        ? `${Object.keys(permission).length} tool${Object.keys(permission).length === 1 ? '' : 's'} customized`
-        : 'Every tool follows the runtime default';
+        ? tI18nComplete('text2a8f24e937b7', { count: Object.keys(permission).length })
+        : tI18nComplete.raw('texta479b6664a5a');
 
   return (
     <EditorSection
-      title="Tools"
-      description="Which tools this agent may call. Allow runs it straight away, Ask pauses for your approval, Deny blocks it."
+      title={tI18nComplete.raw('textea93d6a262ec')}
+      description={tI18nComplete.raw('text765f388e2ce6')}
     >
       <div className="py-3.5">
         <Disclosure variant="outline" className="overflow-hidden rounded-md">
@@ -263,7 +274,9 @@ export function ToolsSection({
               className="flex w-full items-center justify-between gap-3 rounded-none text-sm font-normal"
             >
               <span className="truncate">{summary}</span>
-              <span className="text-muted-foreground shrink-0 text-xs">Open</span>
+              <span className="text-muted-foreground shrink-0 text-xs">
+                {tI18nComplete.raw('texted077f3d8125')}
+              </span>
             </Button>
           </DisclosureTrigger>
           <DisclosureContent variant="outline" contentClassName="border-border border-t">
@@ -284,6 +297,10 @@ function PermissionEditor({
   permission: PermissionConfig | undefined;
   onChange: (next: PermissionConfig | undefined) => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const groups = useLocalizedUiCatalog(PERMISSION_RULE_GROUPS);
+  const actionOnlyGroupLabel = useLocalizedUiCatalog(PERMISSION_ACTION_ONLY_GROUP_LABEL);
+  const keyLabel = useLocalizedUiCatalog(PERMISSION_KEY_LABEL);
   const obj = asPermObject(permission);
   const bareDefault = typeof permission === 'string' ? (permission as PermissionAction) : undefined;
   const allKeys = [...PERMISSION_RULE_KEYS, ...PERMISSION_ACTION_ONLY_KEYS];
@@ -303,22 +320,22 @@ function PermissionEditor({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-3 py-2.5">
         <div className="min-w-0">
-          <p className="text-foreground text-sm">Default for every tool</p>
+          <p className="text-foreground text-sm">{tI18nComplete.raw('text9b99443d24c5')}</p>
           <p className="text-muted-foreground text-xs">
             {bareDefault
-              ? 'Applies to every tool below until you override one.'
-              : 'Unset — each tool follows the runtime default.'}
+              ? tI18nComplete.raw('textabba11786cee')
+              : tI18nComplete.raw('texte640da5d14fd')}
           </p>
         </div>
         <ActionSelect
           value={bareDefault}
           onChange={setDefault}
-          inheritLabel="Unset"
-          label="Default for every tool"
+          inheritLabel={tI18nComplete.raw('text8d2dd4e8c7ca')}
+          label={tI18nComplete.raw('text9b99443d24c5')}
         />
       </div>
 
-      {PERMISSION_RULE_GROUPS.map((group) => (
+      {groups.map((group) => (
         <div key={group.label} className="space-y-1.5">
           <p className="text-muted-foreground text-xs font-medium">{group.label}</p>
           <div className="divide-border/60 divide-y rounded-md border">
@@ -335,9 +352,7 @@ function PermissionEditor({
       ))}
 
       <div className="space-y-1.5">
-        <p className="text-muted-foreground text-xs font-medium">
-          {PERMISSION_ACTION_ONLY_GROUP_LABEL}
-        </p>
+        <p className="text-muted-foreground text-xs font-medium">{actionOnlyGroupLabel}</p>
         <div className="divide-border/60 divide-y rounded-md border">
           {PERMISSION_ACTION_ONLY_KEYS.map((key) => (
             <div key={key} className="flex items-center justify-between gap-3 px-3 py-2.5">
@@ -345,8 +360,8 @@ function PermissionEditor({
               <ActionSelect
                 value={typeof obj[key] === 'string' ? (obj[key] as PermissionAction) : undefined}
                 onChange={(v) => setKey(key, v)}
-                inheritLabel="Inherit"
-                label={PERMISSION_KEY_LABEL[key] ?? key}
+                inheritLabel={tI18nComplete.raw('text3f72f0385768')}
+                label={keyLabel[key] ?? key}
               />
             </div>
           ))}

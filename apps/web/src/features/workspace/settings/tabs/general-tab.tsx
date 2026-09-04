@@ -162,7 +162,7 @@ import {
 } from '@kortix/sdk';
 import { contract, invalidateProjectIdentity, qk } from '@kortix/sdk/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { SettingsTabHeader } from '../settings-tab-header';
 
 /** Asked for in ONE batched probe. `project.delete` and `project.write` are
@@ -466,6 +466,7 @@ function GeneralWorkspaceCard({
   project: KortixProject;
   canManage: boolean;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('settings.workspace');
   const queryClient = useQueryClient();
   const [name, setName] = useState(project.name);
@@ -483,7 +484,7 @@ function GeneralWorkspaceCard({
     },
     onError: (error: Error, _nextName, context) => {
       renameOnError(queryClient, project.project_id, context);
-      errorToast(error.message || t('updateFailed'));
+      errorToast(error.message || tI18nComplete('textdd2d120a9ea9'));
     },
     onSettled: () => renameOnSettled(queryClient, project.project_id),
   });
@@ -504,7 +505,8 @@ function GeneralWorkspaceCard({
     onSuccess: (updated) => {
       queryClient.setQueryData(qk.project.summary(project.project_id), updated);
     },
-    onError: (error: Error) => errorToast(error.message || t('iconUpdateFailed')),
+    onError: (error: Error) =>
+      errorToast(error.message || tI18nComplete('texta563730f828d')),
     // The icon is read from THREE caches and this mutation used to write back
     // to one. `setQueryData` above repaints the sidebar switcher, which reads
     // `qk.project.summary`; the projects grid and ⌘K read a
@@ -588,6 +590,7 @@ function GeneralWorkspaceCard({
  *  while this tab is active (`SettingsTabPane` in `settings-panel.tsx`
  *  returns `null` otherwise), so nothing here fetches on panel open. */
 export function GeneralTab({ projectId }: { projectId: string }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('settings.workspace');
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -633,7 +636,7 @@ export function GeneralTab({ projectId }: { projectId: string }) {
         () => forgetLastProjectId(user?.id, projectId),
       ),
     onSuccess: () => {
-      successToast(t('archived'));
+      successToast(tI18nComplete('textdd9e881230eb'));
       // qk.projects.scope(): for a single-account user the archived
       // project's account IS the primary account qk.projects.list() (no
       // args) resolves to, so a precise invalidation would leave the
@@ -642,7 +645,8 @@ export function GeneralTab({ projectId }: { projectId: string }) {
       queryClient.invalidateQueries({ queryKey: qk.projects.scope() });
       setArchiveOpen(false);
     },
-    onError: (error: Error) => errorToast(error.message || t('archiveFailed')),
+    onError: (error: Error) =>
+      errorToast(error.message || tI18nComplete('textf4a10da7a820')),
   });
 
   return (

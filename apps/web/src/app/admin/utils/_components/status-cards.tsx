@@ -1,10 +1,11 @@
-"use client";
+'use client';
 
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import type { MaintenanceLevel } from '@/lib/maintenance-store';
 import { cn } from '@/lib/utils';
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { MAINTENANCE_LEVELS } from "./constants";
-import type { MaintenanceLevel } from "@/lib/maintenance-store";
+import { useTranslations } from '@/i18n/use-translations';
+import { localizedMaintenanceLevels } from './constants';
 
 interface MaintenanceLevelCardProps {
   level: MaintenanceLevel;
@@ -13,16 +14,17 @@ interface MaintenanceLevelCardProps {
 }
 
 export function MaintenanceLevelCard({ level, isSelected, onClick }: MaintenanceLevelCardProps) {
-  const config = MAINTENANCE_LEVELS.find((l) => l.value === level)!;
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const config = localizedMaintenanceLevels(tI18nComplete).find((l) => l.value === level)!;
   const Icon = config.icon;
 
   return (
     <Card
       className={cn(
-        'cursor-pointer transition-all p-4',
+        'cursor-pointer p-4 transition-all',
         isSelected
           ? `border-2 ${config.borderColor} ${config.bgColor}`
-          : 'border hover:border-primary/50',
+          : 'hover:border-primary/50 border',
       )}
       onClick={onClick}
     >
@@ -30,22 +32,29 @@ export function MaintenanceLevelCard({ level, isSelected, onClick }: Maintenance
         <div className="flex items-center gap-3">
           <div
             className={cn(
-              'flex items-center justify-center w-10 h-10 rounded-2xl border',
+              'flex h-10 w-10 items-center justify-center rounded-2xl border',
               isSelected ? `${config.bgColor} ${config.borderColor}` : 'bg-muted border-border',
             )}
           >
-            <Icon className={cn('w-5 h-5', isSelected ? config.color : 'text-muted-foreground')} />
+            <Icon className={cn('h-5 w-5', isSelected ? config.color : 'text-muted-foreground')} />
           </div>
-          <div className="flex-1 min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">{config.label}</span>
               {isSelected && (
-                <Badge className={cn('text-xs px-1.5 py-0', config.bgColor, config.color, config.borderColor)}>
-                  Active
+                <Badge
+                  className={cn(
+                    'px-1.5 py-0 text-xs',
+                    config.bgColor,
+                    config.color,
+                    config.borderColor,
+                  )}
+                >
+                  {tI18nComplete.raw('text92340695899b')}
                 </Badge>
               )}
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">{config.description}</p>
+            <p className="text-muted-foreground mt-0.5 text-xs">{config.description}</p>
           </div>
         </div>
       </CardContent>

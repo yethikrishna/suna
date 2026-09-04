@@ -4,7 +4,7 @@ import { EntityAvatar } from '@/components/ui/entity-avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import type { KortixAccount } from '@kortix/sdk';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 
 /**
  * What `AccountPicker` paints below two creatable accounts: the caller's own

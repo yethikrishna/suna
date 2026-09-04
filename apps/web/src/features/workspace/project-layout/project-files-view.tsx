@@ -19,7 +19,7 @@ import {
 import { getProject } from '@kortix/sdk';
 import { contract, qk } from '@kortix/sdk/react';
 import { useQuery } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 
 import { ProjectFilesSkeleton } from './project-files-skeleton';
 import { resolveFilesRef } from './resolve-files-ref';

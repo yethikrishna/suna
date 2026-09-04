@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 /**
  * The add-a-custom-provider form, as rows on the API-keys list's own axis.
  *
@@ -198,7 +198,7 @@ export function CustomProviderForm({
             onChange={(e) =>
               setField('providerId', e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))
             }
-            placeholder="my-llm"
+            placeholder={tI18nComplete.raw('texta39b6c664e82')}
             className="font-mono text-xs"
             autoFocus
           />
@@ -260,7 +260,11 @@ export function CustomProviderForm({
                   size="icon-xs"
                   onClick={() => setRevealKey((current) => !current)}
                   title={revealKey ? 'Hide' : 'Show'}
-                  aria-label={revealKey ? 'Hide the API key' : 'Show the API key'}
+                  aria-label={
+                    revealKey
+                      ? tI18nComplete.raw('text3d0d8c59beb7')
+                      : tI18nComplete.raw('textcb0b50a0d111')
+                  }
                   aria-pressed={revealKey}
                   className="text-muted-foreground hover:text-foreground"
                 >
@@ -282,7 +286,7 @@ export function CustomProviderForm({
             type="text"
             value={form.modelId}
             onChange={(e) => setField('modelId', e.target.value)}
-            placeholder="my-llm/foo-7b"
+            placeholder={tI18nComplete.raw('text34d316295094')}
             className="font-mono text-xs"
           />
         </FormRow>
@@ -316,7 +320,7 @@ export function CustomProviderForm({
               {tI18nComplete.raw('textd20a4476a0a8')}
             </>
           ) : (
-            'Generate snippet'
+            tI18nComplete.raw('text3dc8d68addcd')
           )}
         </Button>
       </div>
@@ -340,10 +344,10 @@ function CustomProviderSnippetView({
     try {
       await navigator.clipboard.writeText(snippet);
       setCopied(true);
-      successToast('Snippet copied');
+      successToast(tI18nComplete.raw('texte957fd04449d'));
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      errorToast('Copy failed — select and copy manually');
+      errorToast(tI18nComplete.raw('text94f69e8f103e'));
     }
   }
 
@@ -352,7 +356,9 @@ function CustomProviderSnippetView({
       <InfoBanner
         tone="success"
         icon={Check}
-        title={secretName ? 'API key saved' : 'Snippet ready'}
+        title={
+          secretName ? tI18nComplete.raw('text934b6af41253') : tI18nComplete.raw('textcbddb15211ca')
+        }
       >
         {secretName ? (
           <>
@@ -361,7 +367,7 @@ function CustomProviderSnippetView({
             {tI18nComplete.raw('textdf1db3412b9d')}
           </>
         ) : (
-          'No API key was provided — the snippet below omits the apiKey field.'
+          tI18nComplete.raw('text4c99583a807e')
         )}
       </InfoBanner>
 
@@ -378,7 +384,7 @@ function CustomProviderSnippetView({
           <button
             type="button"
             onClick={handleCopy}
-            aria-label={copied ? 'Copied' : 'Copy snippet'}
+            aria-label={copied ? 'Copied' : tI18nComplete.raw('text968d0a9d24a6')}
             className="text-muted-foreground hover:text-foreground hover:bg-muted-foreground/10 inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors active:scale-[0.97]"
           >
             <span className="relative inline-flex size-3.5 items-center justify-center">

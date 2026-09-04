@@ -14,6 +14,7 @@ import { Cursor } from '@/features/icon/icons/cursor';
 import { Github } from '@/features/icon/icons/github';
 import { Kortix } from '@/features/icon/icons/kortix';
 import { cn } from '@/lib/utils';
+import { useTranslations } from '@/i18n/use-translations';
 // `docs-page-actions.tsx` is 'use client', so — unlike page.tsx/layout.tsx —
 // it is the one place in the docs surface allowed to dot into the client
 // `Icon` namespace directly. That is also why `CheckIcon` comes from the main
@@ -55,33 +56,39 @@ export function DocsPageActions({
   /** Spacing is the caller's business — this component owns the row, not its margins. */
   className?: string;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const prompt = `Read ${pageUrl} so I can ask questions about it.`;
   const encodedPrompt = encodeURIComponent(prompt);
 
   const openActions: OpenAction[] = [
-    { key: 'github', label: 'Open in GitHub', href: githubUrl, icon: Github },
-    { key: 'markdown', label: 'View as Markdown', href: markdownPath, icon: MarkdownLogoIcon },
+    { key: 'github', label: tI18nComplete.raw('text4fb78818bd18'), href: githubUrl, icon: Github },
+    {
+      key: 'markdown',
+      label: tI18nComplete.raw('text17d36a505f97'),
+      href: markdownPath,
+      icon: MarkdownLogoIcon,
+    },
     {
       key: 'kortix',
-      label: 'Open in Kortix',
+      label: tI18nComplete.raw('text9df141eadb06'),
       href: `/projects/start?q=${encodedPrompt}`,
       icon: Kortix,
     },
     {
       key: 'chatgpt',
-      label: 'Open in ChatGPT',
+      label: tI18nComplete.raw('textc27a47a5c24f'),
       href: `https://chatgpt.com/?q=${encodedPrompt}`,
       icon: ChatGPT,
     },
     {
       key: 'claude',
-      label: 'Open in Claude',
+      label: tI18nComplete.raw('text9512e37d4a15'),
       href: `https://claude.ai/new?q=${encodedPrompt}`,
       icon: Claude,
     },
     {
       key: 'cursor',
-      label: 'Open in Cursor',
+      label: tI18nComplete.raw('textaf29fb46ae90'),
       href: `cursor://anysphere.cursor-deeplink/prompt?text=${encodedPrompt}`,
       icon: Cursor,
     },
@@ -99,7 +106,7 @@ export function DocsPageActions({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="shrink-0 gap-1.5">
-              Open
+              {tI18nComplete.raw('texted077f3d8125')}
               <CaretDownIcon className="size-3" />
             </Button>
           </DropdownMenuTrigger>
@@ -121,8 +128,8 @@ export function DocsPageActions({
       <Button asChild variant="outline" size="sm" className="shrink-0 gap-1.5">
         <Link href={githubUrl} target="_blank" rel="noreferrer noopener">
           <Github className="size-3.5" />
-          <span className="sm:hidden">Edit</span>
-          <span className="hidden sm:inline">Edit on GitHub</span>
+          <span className="sm:hidden">{tI18nComplete.raw('text464c4ffd019e')}</span>
+          <span className="hidden sm:inline">{tI18nComplete.raw('text8dbf35488c3f')}</span>
         </Link>
       </Button>
     </div>
@@ -160,6 +167,7 @@ export function DocsPageActions({
  * control rather than two.
  */
 function CopyMarkdownButton({ markdownPath }: { markdownPath: string }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const [state, setState] = useState<CopyState>('idle');
   const resetTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Keyed on the path, so a client-side move to another docs page cannot copy
@@ -218,7 +226,9 @@ function CopyMarkdownButton({ markdownPath }: { markdownPath: string }) {
     <Button
       variant="outline"
       size="sm"
-      aria-label={copied ? 'Markdown copied' : 'Copy markdown'}
+      aria-label={
+        copied ? tI18nComplete.raw('text5f7a2a7a529c') : tI18nComplete.raw('text7a99a7125c7c')
+      }
       // `px-2.5` is set by hand because the icon is no longer a direct `<svg>`
       // child, so `size="sm"`'s own `has-[>svg]:px-2.5` stops matching. Without
       // it this button would sit at `px-3` while "Open" and "Edit on GitHub"
@@ -249,8 +259,8 @@ function CopyMarkdownButton({ markdownPath }: { markdownPath: string }) {
           </m.span>
         </AnimatePresence>
       </span>
-      <span className="sm:hidden">Copy</span>
-      <span className="hidden sm:inline">Copy Markdown</span>
+      <span className="sm:hidden">{tI18nComplete.raw('texte21f935f11d7')}</span>
+      <span className="hidden sm:inline">{tI18nComplete.raw('text47ffe39e7556')}</span>
     </Button>
   );
 }

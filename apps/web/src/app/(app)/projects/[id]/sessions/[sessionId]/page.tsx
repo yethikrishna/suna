@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 
 import { ArrowCounterClockwiseIcon as RotateCcw } from '@phosphor-icons/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -152,6 +152,7 @@ export default function ProjectSessionPage() {
  * unrepresentable: switching sessions remounts, and a remount cannot half-apply.
  */
 function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessionId: string }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   // Stable route-level owner. Runtime identity handoffs remount the chat, so a
   // poll timer inside chat produces overlapping audit schedules.
   useSessionAudit(projectId, sessionId, { poll: true, silent: true, limit: 100 });
@@ -287,21 +288,25 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
           }).catch(() => undefined);
         })
         .catch((error) => {
-          errorToast(error instanceof Error ? error.message : tSessionPage('prompt.queueFailed'));
+          errorToast(
+            error instanceof Error
+              ? error.message
+              : tI18nHardcoded.raw('i18nComplete.text4778a1377329'),
+          );
         });
     }
     handleRestart();
   };
   const copyPendingPrompt = async () => {
     if (!pendingPrompt) {
-      errorToast(tSessionPage('prompt.unavailable'));
+      errorToast(tI18nHardcoded.raw('i18nComplete.text7ea05ee375a0'));
       return;
     }
     try {
       await navigator.clipboard.writeText(pendingPrompt.text);
-      successToast(tSessionPage('prompt.copied'));
+      successToast(tI18nHardcoded.raw('i18nComplete.text42cc4740d3d5'));
     } catch {
-      errorToast(tSessionPage('prompt.copyFailed'));
+      errorToast(tI18nHardcoded.raw('i18nComplete.text231082dfe1a4'));
     }
   };
   // ── The wake escalation ladder ────────────────────────────────────────────
@@ -432,8 +437,17 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
   useEffect(() => {
     if (!billingBlocked || billingGatedRef.current) return;
     billingGatedRef.current = true;
-    openUpgradeDialog(billingDialogArgs(billingState, accountState, projectAccountId));
-  }, [billingBlocked, billingState, accountState, openUpgradeDialog, projectAccountId]);
+    openUpgradeDialog(
+      billingDialogArgs(billingState, accountState, projectAccountId, tI18nComplete),
+    );
+  }, [
+    billingBlocked,
+    billingState,
+    accountState,
+    openUpgradeDialog,
+    projectAccountId,
+    tI18nComplete,
+  ]);
 
   // ── Crossfade: the overlay fades out as the real chat fades in ────────────
   // The overlay (a fully-interactive new-session shell, or the boot loader for a
@@ -697,13 +711,14 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
           errorMessage: session.failure.message,
         },
         sandboxLabel ?? 'session',
+        tI18nComplete,
       );
     }
     if (sandbox?.status === 'error') {
-      return provisioningFailurePresentation(metadata, sandboxLabel ?? 'session');
+      return provisioningFailurePresentation(metadata, sandboxLabel ?? 'session', tI18nComplete);
     }
     if (unmaterializedFailure) {
-      return provisioningFailurePresentation({}, sandboxLabel ?? 'session');
+      return provisioningFailurePresentation({}, sandboxLabel ?? 'session', tI18nComplete);
     }
     if (session.startError) {
       return provisioningFailurePresentation(
@@ -712,6 +727,7 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
           errorMessage: session.startError.message,
         },
         sandboxLabel ?? 'session',
+        tI18nComplete,
       );
     }
     return null;
@@ -732,7 +748,7 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
     if (gated) {
       const blockedState =
         billingState && billingState !== 'active' ? billingState : 'no_subscription';
-      const copy = billingGateCopy(blockedState);
+      const copy = billingGateCopy(blockedState, tI18nComplete);
       // The genuinely-no-plan copy keeps its translated strings; the states this
       // surface used to mislabel get their copy from the shared resolver.
       const isNoPlan = blockedState === 'no_subscription';
@@ -753,7 +769,9 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
           action={
             <Button
               onClick={() =>
-                openUpgradeDialog(billingDialogArgs(billingState, accountState, projectAccountId))
+                openUpgradeDialog(
+                  billingDialogArgs(billingState, accountState, projectAccountId, tI18nComplete),
+                )
               }
             >
               {isNoPlan
@@ -914,7 +932,7 @@ function ProjectSessionView({ projectId, sessionId }: { projectId: string; sessi
       // Restart instead of forcing a manual browser refresh.
       return (
         <InlineSessionError
-          title={`${sandboxLabel ?? 'session'} is stopped`}
+          title={tI18nComplete('textb13c564cdf28', { value0: sandboxLabel ?? 'session' })}
           message={tI18nHardcoded.raw(
             'appProjectsIdSessionsSessionidPage.line151JsxAttrMessageTheSandboxForThisSessionWasStoppedOpen',
           )}

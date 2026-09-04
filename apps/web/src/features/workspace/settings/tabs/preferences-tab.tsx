@@ -37,7 +37,7 @@ import { SettingsSubsectionHeader } from '@/components/ui/settings-subsection-he
 import { useLanguage } from '@/hooks/use-language';
 import { localeNames, locales, type Locale } from '@/i18n/config';
 import { useUserPreferencesStore, type TabSwitchModifier } from '@/stores/user-preferences-store';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { SETTINGS_SHORTCUT_KEY } from '../settings-shortcut';
 
 export interface PreferencesCopy {

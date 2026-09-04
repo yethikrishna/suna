@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 /**
  * The last two open sections of the agent editor: what the agent may reach
  * (Access) and where it runs (Workspace).
@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useLocalizedUiCatalog } from '@/i18n/use-localized-ui-catalog';
 import { cn } from '@/lib/utils';
 import type { AgentConfigBlock, AgentGrantSetV2 } from '@kortix/sdk';
 import { WORKSPACE_MODES, WORKSPACE_MODE_HELP, WORKSPACE_MODE_LABEL } from './agent-editor-catalog';
@@ -41,16 +42,14 @@ function RequiredConnectorToggle({ active, onToggle }: { active: boolean; onTogg
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
     <Hint
-      label={
-        active
-          ? 'Required before session start. The connector authorization strategy selects the valid connection.'
-          : 'Optional at session start. Click to require this connector.'
-      }
+      label={active ? tI18nComplete.raw('text49c8975f345b') : tI18nComplete.raw('texta54220c82b33')}
     >
       <button
         type="button"
         aria-pressed={active}
-        aria-label={active ? 'Required before session start' : 'Optional at session start'}
+        aria-label={
+          active ? tI18nComplete.raw('textd16c94c19673') : tI18nComplete.raw('text63336c8a8e83')
+        }
         onClick={onToggle}
         className={cn(
           'shrink-0 rounded px-1.5 py-1 text-xs transition-[color,background-color,transform] active:scale-[0.96]',
@@ -80,8 +79,14 @@ export function AccessSection({
 }) {
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
-    <EditorSection title="Access" description={tI18nComplete.raw('textf3498d99c1a1')}>
-      <SettingBlock label="Skills" help={tI18nComplete.raw('texte39f8d23c0a9')}>
+    <EditorSection
+      title={tI18nComplete.raw('textec5ba0abb717')}
+      description={tI18nComplete.raw('textf3498d99c1a1')}
+    >
+      <SettingBlock
+        label={tI18nComplete.raw('text66d0f523a379')}
+        help={tI18nComplete.raw('texte39f8d23c0a9')}
+      >
         <GrantSetField
           value={draft.skills}
           onChange={(v: AgentGrantSetV2) => set('skills', v)}
@@ -91,7 +96,10 @@ export function AccessSection({
         />
       </SettingBlock>
 
-      <SettingBlock label="Connectors" help={tI18nComplete.raw('text4b5bf8bae40d')}>
+      <SettingBlock
+        label={tI18nComplete.raw('textc3d2e79ebdd0')}
+        help={tI18nComplete.raw('text4b5bf8bae40d')}
+      >
         <GrantSetField
           value={draft.connectors}
           onChange={(v: AgentGrantSetV2) => {
@@ -128,7 +136,10 @@ export function AccessSection({
         ) : null}
       </SettingBlock>
 
-      <SettingBlock label="Secrets" help={tI18nComplete.raw('textec82b000fd57')}>
+      <SettingBlock
+        label={tI18nComplete.raw('textd8707d411d99')}
+        help={tI18nComplete.raw('textec82b000fd57')}
+      >
         <GrantSetField
           value={draft.secrets}
           onChange={(v: AgentGrantSetV2) => set('secrets', v)}
@@ -164,14 +175,26 @@ export function WorkspaceSection({
   sandboxOptions: { id: string; label: string }[];
 }) {
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const workspaceModeHelp = useLocalizedUiCatalog(WORKSPACE_MODE_HELP);
+  const workspaceModeLabel = useLocalizedUiCatalog(WORKSPACE_MODE_LABEL);
   return (
-    <EditorSection title="Workspace" description={tI18nComplete.raw('text76a5e5a39b4a')}>
-      <SettingRow label="Environment" help={tI18nComplete.raw('texta4e2cf626cd3')}>
+    <EditorSection
+      title={tI18nComplete.raw('text87bb59ba2f92')}
+      description={tI18nComplete.raw('text76a5e5a39b4a')}
+    >
+      <SettingRow
+        label={tI18nComplete.raw('text9e471951a1b4')}
+        help={tI18nComplete.raw('texta4e2cf626cd3')}
+      >
         <Select
           value={draft.sandbox ?? INHERIT}
           onValueChange={(value) => set('sandbox', value === INHERIT ? undefined : value)}
         >
-          <SelectTrigger aria-label="Environment" className="w-full" size="sm">
+          <SelectTrigger
+            aria-label={tI18nComplete.raw('text9e471951a1b4')}
+            className="w-full"
+            size="sm"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -188,7 +211,9 @@ export function WorkspaceSection({
       <SettingRow
         label={tI18nComplete.raw('text4f503dc583f3')}
         help={
-          draft.workspace ? WORKSPACE_MODE_HELP[draft.workspace] : 'Follows the project default.'
+          draft.workspace
+            ? workspaceModeHelp[draft.workspace]
+            : tI18nComplete.raw('text64f405e80a8d')
         }
       >
         <Select
@@ -208,7 +233,7 @@ export function WorkspaceSection({
             <SelectItem value={INHERIT}>{tI18nComplete.raw('texte8cb80e5c5cb')}</SelectItem>
             {WORKSPACE_MODES.map((mode) => (
               <SelectItem key={mode} value={mode}>
-                {WORKSPACE_MODE_LABEL[mode]}
+                {workspaceModeLabel[mode]}
               </SelectItem>
             ))}
           </SelectContent>

@@ -1,3 +1,4 @@
+import type { UiTranslator } from '@/i18n/translator';
 /**
  * Pure mapping + list logic behind every connector-approval surface.
  *
@@ -127,16 +128,19 @@ export function approvalNoticeRows(
 }
 
 /** Headline for the notice. `hint` is null once nothing is left to decide. */
-export function approvalNoticeHeadline(pendingCount: number): {
+export function approvalNoticeHeadline(
+  pendingCount: number,
+  tI18nComplete: UiTranslator,
+): {
   title: string;
   hint: string | null;
 } {
-  if (pendingCount === 0) return { title: 'Decision recorded', hint: null };
+  if (pendingCount === 0) return { title: tI18nComplete.raw('text6f1de8b7c3e5'), hint: null };
   if (pendingCount === 1) {
-    return { title: 'The agent needs your approval', hint: 'waiting for one decision' };
+    return { title: tI18nComplete.raw('textd24f71ceadfb'), hint: 'waiting for one decision' };
   }
   return {
-    title: `${pendingCount} actions need your approval`,
+    title: tI18nComplete('text54d14f0b67f3', { value0: pendingCount }),
     hint: `waiting for ${pendingCount} decisions`,
   };
 }

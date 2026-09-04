@@ -5,7 +5,7 @@ import {
   ArrowSquareOutIcon as ExternalLink,
   ReceiptIcon as ReceiptText,
 } from '@phosphor-icons/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import Link from 'next/link';
 
 import { Badge } from '@/components/ui/badge';
@@ -152,7 +152,10 @@ export function SessionCostDetailContent({
           ['Compute', formatSessionCostUsd(detail.compute_cost)],
           ['Requests', detail.request_count.toLocaleString('en-US')],
           ['Tokens', tokenTotal.toLocaleString('en-US')],
-          ['Compute time', formatSessionCostDuration(detail.compute_seconds)],
+          [
+            tI18nComplete.raw('texte4fa25e6edd6'),
+            formatSessionCostDuration(detail.compute_seconds),
+          ],
         ].map(([label, value]) => (
           <div key={label} className="bg-popover px-3 py-2.5">
             <p className="text-muted-foreground text-xs">{label}</p>

@@ -21,8 +21,8 @@
  *     `/settings` route.
  */
 
-import { useEffect } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useEffect } from 'react';
 
 import { CustomizeIndexPage } from '@/features/workspace/capabilities/index/customize-index-page';
 import { useLegacySectionRedirect } from '@/features/workspace/settings/use-account-section-redirect';

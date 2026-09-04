@@ -25,7 +25,7 @@ import {
 } from '@kortix/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, m } from 'motion/react';
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from '@/i18n/use-translations';
 
 /**
  * Parse + clamp the raw string field values to the same integers the server
@@ -91,6 +91,7 @@ export function AutoTopupCard({
   onChange,
   configRef,
 }: AutoTopupCardProps) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('billing.autoTopup');
   const locale = useLocale();
   const queryClient = useQueryClient();
@@ -168,7 +169,7 @@ export function AutoTopupCard({
     // default told customers with a working, already-charged payment method
     // that they had none — and auto top-up then never fired for them.
     if (enabled && setupStatus && !setupStatus.has_payment_method) {
-      errorToast(t('addPaymentFirst'));
+      errorToast(tI18nComplete('textb51caac9816a'));
       return;
     }
 
@@ -184,14 +185,24 @@ export function AutoTopupCard({
       queryClient.invalidateQueries({ queryKey: ['accountState'] });
       queryClient.invalidateQueries({ queryKey: ['auto-topup-setup-status'] });
       setDirty(false);
-      successToast(t('saved'));
+      successToast(tI18nComplete('textd81c55f49c5b'));
     } catch (err: unknown) {
       const error = err as { message?: string; error?: string };
-      errorToast(error?.message || error?.error || t('updateFailed'));
+      errorToast(error?.message || error?.error || tI18nComplete('textdd2d120a9ea9'));
     } finally {
       setSaving(false);
     }
-  }, [enabled, threshold, amount, bufferError, setupStatus, queryClient, accountId, t]);
+  }, [
+    bufferError,
+    threshold,
+    amount,
+    enabled,
+    setupStatus,
+    t,
+    tI18nComplete,
+    accountId,
+    queryClient,
+  ]);
 
   const showMissingCardWarning = enabled && setupStatus && !setupStatus.has_payment_method;
 

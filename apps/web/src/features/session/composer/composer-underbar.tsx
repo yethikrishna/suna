@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 
 import type { Agent, MessageWithParts } from '@kortix/sdk/react';
 import { PaperclipIcon as Paperclip } from '@phosphor-icons/react';

@@ -8,7 +8,7 @@ import {
   XIcon as X,
 } from '@phosphor-icons/react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { type Dispatch, type ReactNode, type SetStateAction, useMemo, useState } from 'react';
 
 import { CopyOverlay, HighlightedCode } from '@/components/markdown/code';
@@ -53,6 +53,8 @@ import {
   formatRelative,
   singlePrincipal,
 } from '@/features/workspace/shared/access';
+import { localizeUiCatalog, translateUiCatalogText } from '@/i18n/localize-ui-catalog';
+import { PRODUCT_CATALOG_TRANSLATION_KEYS } from '@/i18n/product-catalog-translation-keys.generated';
 import { getSupabaseAccessTokenWithRetry } from '@/lib/auth-token';
 import { getEnv } from '@/lib/env-config';
 import { type IamAuditEvent, listAuditEvents } from '@/lib/iam-client';
@@ -202,6 +204,10 @@ function applyQuickFilter(
 
 export function AuditTab({ accountId }: { accountId: string }) {
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const quickFilters = useMemo(
+    () => localizeUiCatalog(QUICK_FILTERS, tI18nComplete, PRODUCT_CATALOG_TRANSLATION_KEYS),
+    [tI18nComplete],
+  );
   const [filter, setFilter] = useState<AuditFilterState>(EMPTY_FILTER);
   const [qInput, setQInput] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -289,7 +295,7 @@ export function AuditTab({ accountId }: { accountId: string }) {
     try {
       const token = await getSupabaseAccessTokenWithRetry();
       if (!token) {
-        errorToast('Not signed in');
+        errorToast(tI18nComplete.raw('textfd518bfaee70'));
         return;
       }
       const chunks: string[] = [];
@@ -342,9 +348,9 @@ export function AuditTab({ accountId }: { accountId: string }) {
       link.click();
       link.remove();
       URL.revokeObjectURL(downloadUrl);
-      successToast(`Exported ${rowCount} events`);
+      successToast(tI18nComplete('text7c994b5261dc', { value0: rowCount }));
     } catch (error) {
-      errorToast((error as Error).message || 'Export failed');
+      errorToast((error as Error).message || tI18nComplete.raw('texte94d3ee06ecf'));
     } finally {
       setExporting(false);
     }
@@ -392,7 +398,7 @@ export function AuditTab({ accountId }: { accountId: string }) {
         }}
       >
         <TabsList type="underline" className="h-auto w-full flex-wrap justify-start">
-          {QUICK_FILTERS.map((preset) => (
+          {quickFilters.map((preset) => (
             <TabsTrigger key={preset.label} value={preset.label} className="w-fit flex-none pb-3">
               {preset.label}
             </TabsTrigger>
@@ -423,7 +429,7 @@ export function AuditTab({ accountId }: { accountId: string }) {
           accountId={accountId}
           value={filter.projectId || PROJECT_SELECT_ALL}
           allOptionLabel={tI18nComplete.raw('text4b87271b6b81')}
-          placeholder="Project"
+          placeholder={tI18nComplete.raw('text985959785319')}
           className="h-9 w-[210px]"
           onChange={(value) =>
             setFilter((current) => ({
@@ -445,7 +451,13 @@ export function AuditTab({ accountId }: { accountId: string }) {
           }
         >
           <SelectTrigger size="sm" className="h-9 w-[220px]">
-            <SelectValue placeholder={filter.projectId ? 'All sessions' : 'Select project first'} />
+            <SelectValue
+              placeholder={
+                filter.projectId
+                  ? tI18nComplete.raw('text78648d4d6649')
+                  : tI18nComplete.raw('textf7b9225a1fdc')
+              }
+            />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{tI18nComplete.raw('text78648d4d6649')}</SelectItem>
@@ -600,7 +612,7 @@ function AdvancedFilters({
         {/* "Who" leads, full width: the picker is a searchable list, not a
             one-line Select, so it would blow out a grid row's height. */}
         <FilterField
-          label="Person"
+          label={tI18nComplete.raw('text6007db63e18e')}
           plain
           action={
             filter.actor ? (
@@ -658,7 +670,7 @@ function AdvancedFilters({
             </Select>
           </FilterField>
 
-          <FilterField label="Source">
+          <FilterField label={tI18nComplete.raw('text0e570ca6fabe')}>
             <Select
               value={filter.source || 'all'}
               onValueChange={(value) =>
@@ -672,16 +684,18 @@ function AdvancedFilters({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {SOURCES.map((source) => (
-                  <SelectItem key={source.value || 'all'} value={source.value || 'all'}>
-                    {source.label}
-                  </SelectItem>
-                ))}
+                {localizeUiCatalog(SOURCES, tI18nComplete, PRODUCT_CATALOG_TRANSLATION_KEYS).map(
+                  (source) => (
+                    <SelectItem key={source.value || 'all'} value={source.value || 'all'}>
+                      {source.label}
+                    </SelectItem>
+                  ),
+                )}
               </SelectContent>
             </Select>
           </FilterField>
 
-          <FilterField label="Outcome">
+          <FilterField label={tI18nComplete.raw('text4e80abb5b146')}>
             <Select
               value={filter.outcome || 'all'}
               onValueChange={(value) =>
@@ -704,7 +718,7 @@ function AdvancedFilters({
             </Select>
           </FilterField>
 
-          <FilterField label="Phase">
+          <FilterField label={tI18nComplete.raw('text46342ec1eec9')}>
             <Select
               value={filter.phase || 'all'}
               onValueChange={(value) =>
@@ -721,14 +735,18 @@ function AdvancedFilters({
                 <SelectItem value="all">{tI18nComplete.raw('text0154297a0f48')}</SelectItem>
                 {PHASES.map((phase) => (
                   <SelectItem key={phase} value={phase}>
-                    {phase.charAt(0).toUpperCase() + phase.slice(1)}
+                    {translateUiCatalogText(
+                      phase.charAt(0).toUpperCase() + phase.slice(1),
+                      tI18nComplete,
+                      PRODUCT_CATALOG_TRANSLATION_KEYS,
+                    )}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </FilterField>
 
-          <FilterField label="Resource">
+          <FilterField label={tI18nComplete.raw('texteb7a842ff958')}>
             <Select
               value={filter.resourceType || 'all'}
               onValueChange={(value) =>
@@ -742,7 +760,11 @@ function AdvancedFilters({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {RESOURCE_TYPES.map((resource) => (
+                {localizeUiCatalog(
+                  RESOURCE_TYPES,
+                  tI18nComplete,
+                  PRODUCT_CATALOG_TRANSLATION_KEYS,
+                ).map((resource) => (
                   <SelectItem key={resource.value || 'all'} value={resource.value || 'all'}>
                     {resource.label}
                   </SelectItem>
@@ -751,7 +773,7 @@ function AdvancedFilters({
             </Select>
           </FilterField>
 
-          <FilterField label="From">
+          <FilterField label={tI18nComplete.raw('text218197693424')}>
             <Input
               type="datetime-local"
               value={filter.since ? toLocalInput(filter.since) : ''}
@@ -765,7 +787,7 @@ function AdvancedFilters({
             />
           </FilterField>
 
-          <FilterField label="To">
+          <FilterField label={tI18nComplete.raw('textf4b06ef6d3c8')}>
             <Input
               type="datetime-local"
               value={filter.until ? toLocalInput(filter.until) : ''}
@@ -828,7 +850,7 @@ function AuditRow({
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const [expanded, setExpanded] = useState(false);
   const occurred = new Date(event.occurred_at);
-  const action = describeAuditAction(event.action);
+  const action = describeAuditAction(event.action, tI18nComplete);
   const resource = formatResourcePill(event.resource_type, event.resource_id);
   const actorLabel =
     actorEmail ?? event.actor_user_id ?? (event.actor_type === 'system' ? 'System' : 'Unknown');
@@ -878,7 +900,7 @@ function AuditRow({
                     </Badge>
                   ) : null}
                   <span className="text-muted-foreground truncate text-xs">
-                    {action.mapped ? action.area : 'Unmapped API route'}
+                    {action.mapped ? action.area : tI18nComplete.raw('text82a01c0069b6')}
                   </span>
                 </div>
               ) : null}
@@ -957,7 +979,7 @@ function AuditRow({
                   label={tI18nComplete.raw('textc831393117f0')}
                   value={event.session_sequence != null ? String(event.session_sequence) : null}
                 />
-                <Detail label="Phase" value={event.phase ?? null} />
+                <Detail label={tI18nComplete.raw('text46342ec1eec9')} value={event.phase ?? null} />
                 <Detail
                   label={tI18nComplete.raw('textdc8d7c5c602b')}
                   value={event.source_ledger ?? null}
@@ -995,7 +1017,7 @@ function AuditRow({
                   value={event.execution_id ?? null}
                 />
                 <Detail
-                  label="Duration"
+                  label={tI18nComplete.raw('text4fc52a3c4c55')}
                   value={event.duration_ms != null ? `${event.duration_ms} ms` : null}
                 />
                 <Detail
@@ -1006,8 +1028,8 @@ function AuditRow({
 
               {event.before !== null || event.after !== null ? (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <JsonPane label="Before" data={event.before} />
-                  <JsonPane label="After" data={event.after} />
+                  <JsonPane label={tI18nComplete.raw('text9bb725005055')} data={event.before} />
+                  <JsonPane label={tI18nComplete.raw('text7b68fe551085')} data={event.after} />
                 </div>
               ) : null}
               {event.input_summary || event.output_summary ? (
@@ -1039,7 +1061,7 @@ function AuditRow({
                 </div>
               ) : null}
               {event.metadata && Object.keys(event.metadata).length > 0 ? (
-                <JsonPane label="Metadata" data={event.metadata} />
+                <JsonPane label={tI18nComplete.raw('text9eddf573cb50')} data={event.metadata} />
               ) : null}
             </div>
           </TableCell>
@@ -1141,8 +1163,8 @@ function ResourcePanel({
         </p>
       </div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-3 p-3">
-        <SummaryValue label="Resource" value={resource} />
-        <SummaryValue label="Project" value={projectName} />
+        <SummaryValue label={tI18nComplete.raw('texteb7a842ff958')} value={resource} />
+        <SummaryValue label={tI18nComplete.raw('text985959785319')} value={projectName} />
         <SummaryValue label={tI18nComplete.raw('textdb5f2f038452')} value={resourceId} mono />
         <SummaryValue label={tI18nComplete.raw('textcb9ac5c561da')} value={sessionId} mono />
       </div>

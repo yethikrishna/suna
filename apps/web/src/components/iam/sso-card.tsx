@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 // SAML SSO config on the Settings tab. The Supabase auth.sso_providers
 // row is created out-of-band (Studio or auth admin API) — admins paste
 // the resulting UUID + primary email domain here, plus the JWT claim
@@ -156,22 +156,22 @@ export function SsoCard({ accountId, canManage }: SsoCardProps) {
   const deleteMutation = useMutation({
     mutationFn: () => deleteSsoProvider(accountId),
     onSuccess: () => {
-      successToast('SSO provider removed');
+      successToast(tI18nComplete.raw('textb7ce84ad7e7d'));
       queryClient.invalidateQueries({ queryKey: ['iam-sso-provider', accountId] });
       queryClient.invalidateQueries({ queryKey: ['iam-sso-mappings', accountId] });
       setDeleteOpen(false);
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to remove provider'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('textccbfd6f25c02')),
   });
 
   const deleteMappingMutation = useMutation({
     mutationFn: (mappingId: string) => deleteSsoGroupMapping(accountId, mappingId),
     onSuccess: () => {
-      successToast('Mapping removed');
+      successToast(tI18nComplete.raw('textdc613b61cff5'));
       queryClient.invalidateQueries({ queryKey: ['iam-sso-mappings', accountId] });
       setMapDeleteTarget(null);
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to remove mapping'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('text0d8104fca93b')),
   });
 
   const provider = providerQuery.data;
@@ -196,11 +196,13 @@ export function SsoCard({ accountId, canManage }: SsoCardProps) {
     },
     onSuccess: (updated) => {
       successToast(
-        updated.enforce_sso ? 'SSO is now enforced for this domain' : 'SSO enforcement turned off',
+        updated.enforce_sso
+          ? tI18nComplete.raw('textfb93c43856a8')
+          : tI18nComplete.raw('textb97d0d8acd14'),
       );
       queryClient.invalidateQueries({ queryKey: ['iam-sso-provider', accountId] });
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to update SSO enforcement'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('text6d0137714cf5')),
   });
 
   return (
@@ -217,8 +219,8 @@ export function SsoCard({ accountId, canManage }: SsoCardProps) {
           </p>
           <p className="text-muted-foreground text-xs">
             {provider
-              ? 'Connect your IdP. Users signing in via SAML are auto-provisioned and their IAM groups are kept in sync from a JWT claim.'
-              : 'Auto-provision members from your IdP. Group claims sync to IAM groups.'}
+              ? tI18nComplete.raw('textfa497ac79066')
+              : tI18nComplete.raw('textb769a269132c')}
           </p>
         </div>
         {canManage &&
@@ -324,7 +326,7 @@ export function SsoCard({ accountId, canManage }: SsoCardProps) {
                   >
                     {provider.auto_create_members ? <Check className="size-3.5 shrink-0" /> : null}
                     {tI18nComplete.raw('text33e17e895ebc')}
-                    {provider.auto_create_members ? '' : ': off'}
+                    {provider.auto_create_members ? '' : tI18nComplete.raw('text6e81eb627df1')}
                   </span>
                   <span
                     className={
@@ -337,7 +339,7 @@ export function SsoCard({ accountId, canManage }: SsoCardProps) {
                       <Check className="size-3.5 shrink-0" />
                     ) : null}
                     {tI18nComplete.raw('text459ff8f45278')}
-                    {provider.auto_provision_groups ? '' : ': off'}
+                    {provider.auto_provision_groups ? '' : tI18nComplete.raw('text6e81eb627df1')}
                   </span>
                 </dd>
               </div>
@@ -533,7 +535,10 @@ export function SsoCard({ accountId, canManage }: SsoCardProps) {
         title={tI18nComplete.raw('text45afe4152eb7')}
         description={
           mapDeleteTarget
-            ? `Users with the "${mapDeleteTarget.claim_value}" claim will no longer auto-join "${mapDeleteTarget.group_name}".`
+            ? tI18nComplete('text5a4c567b2373', {
+                value0: mapDeleteTarget.claim_value,
+                value1: mapDeleteTarget.group_name,
+              })
             : ''
         }
         confirmLabel={tI18nComplete.raw('textde5a4015009a')}
@@ -605,11 +610,11 @@ function EditProviderDialog({
         auto_provision_groups: autoProvision,
       }),
     onSuccess: () => {
-      successToast('SSO provider updated');
+      successToast(tI18nComplete.raw('text72db205c0097'));
       onSaved();
       onOpenChange(false);
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to save provider'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('texte21fa38b5758')),
   });
 
   const ready = name.trim().length > 0 && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain.trim());
@@ -645,7 +650,7 @@ function EditProviderDialog({
             <Input
               value={domain}
               onChange={(e) => setDomain(e.target.value)}
-              placeholder="acme.com"
+              placeholder={tI18nComplete.raw('text1194228da8fd')}
               disabled={mutation.isPending}
               variant="popover"
             />
@@ -660,7 +665,7 @@ function EditProviderDialog({
             <Input
               value={claim}
               onChange={(e) => setClaim(e.target.value)}
-              placeholder="groups"
+              placeholder={tI18nComplete.raw('text4ed379d418bb')}
               className="font-mono text-xs"
               disabled={mutation.isPending}
               variant="popover"
@@ -780,11 +785,11 @@ function AddMappingDialog({
         group_id: groupId,
       }),
     onSuccess: () => {
-      successToast('Mapping added');
+      successToast(tI18nComplete.raw('text2d782022e664'));
       onCreated();
       onOpenChange(false);
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to add mapping'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('textc7a1b38bba89')),
   });
 
   const ready = claimValue.trim().length > 0 && groupId.length > 0;
@@ -803,7 +808,7 @@ function AddMappingDialog({
             <Input
               value={claimValue}
               onChange={(e) => setClaimValue(e.target.value)}
-              placeholder="Engineers"
+              placeholder={tI18nComplete.raw('text373a7598b12d')}
               className="font-mono text-xs"
               disabled={mutation.isPending}
               variant="popover"

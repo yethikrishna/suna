@@ -4,7 +4,7 @@ import Loading from '@/components/ui/loading';
 import { getFileIcon } from '@/features/project-files';
 import type { Agent, Session } from '@kortix/sdk/react';
 import { ChatIcon, FolderIcon } from '@phosphor-icons/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { useEffect, useMemo } from 'react';
 
 import { useFileSearch } from '../hooks/use-file-search';
@@ -35,6 +35,7 @@ export function MentionMenu({
   onHover?: (row: MenuRow) => void;
 }) {
   const t = useTranslations('sessionUi.composerMenus');
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   // A query that matches nothing keeps the card, with one dead row saying so.
   // Returning `null` made the menu DISAPPEAR mid-word — indistinguishable from
   // the menu having closed, and one backspace brought it back from nowhere.
@@ -155,10 +156,20 @@ export function MentionMenuHost({
   onHover,
   onRowsChange,
 }: MentionMenuHostProps) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const { files, isLoading } = useFileSearch(query, true);
   const sections = useMemo(
-    () => buildMentionSections({ agents, sessions, files, query, currentSessionId, now }),
-    [agents, sessions, files, query, currentSessionId, now],
+    () =>
+      buildMentionSections({
+        agents,
+        sessions,
+        files,
+        query,
+        currentSessionId,
+        now,
+        tI18nComplete,
+      }),
+    [agents, sessions, files, query, currentSessionId, now, tI18nComplete],
   );
   const rows = useMemo(() => sections.flatMap((s) => s.items), [sections]);
 

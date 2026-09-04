@@ -12,7 +12,7 @@
  */
 
 import { GlobeIcon } from '@phosphor-icons/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { useState } from 'react';
 
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
@@ -33,6 +33,7 @@ export function CompanyStep({
   onContinue: () => void;
   onSkip: () => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('projectOnboarding.company');
   const [domainInvalid, setDomainInvalid] = useState(false);
 
@@ -82,7 +83,7 @@ export function CompanyStep({
                 triggerDomainError();
               }
             }}
-            placeholder="acme.com"
+            placeholder={tI18nComplete.raw('text1194228da8fd')}
             autoComplete="organization"
             spellCheck={false}
             aria-invalid={domainInvalid || undefined}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync } from '@/i18n/test-source';
 import { join } from 'node:path';
 
 import {
@@ -92,7 +92,7 @@ describe('gateway routing editor helpers', () => {
   test('renders an editable vision model override saved through the same routing policy', () => {
     expect(routingSource).toContain("raw('text0a15fd3848fa')");
     expect(routingSource).toContain('draft.visionModel');
-    expect(routingSource).toContain("unsetLabel={tI18nComplete.raw('text975aa2ab538e')}");
+    expect(routingSource).toContain("raw('text975aa2ab538e')");
     expect(routingSource).toContain(
       'onChange={(visionModel) => setDraft({ ...draft, visionModel })}',
     );
@@ -156,7 +156,7 @@ describe('gateway routing editor helpers', () => {
     expect(gatewayViewSource).not.toContain('useRuntimeProviders');
     expect(gatewayViewSource).not.toContain('modelDefaults.setAccountDefault');
     expect(gatewayViewSource).toContain('modelDefaults.isUpdating');
-    expect(gatewayViewSource).toContain("errorToast('Could not update the project default')");
+    expect(gatewayViewSource).toContain("raw('text5ed9bd98de1b')");
   });
 
   test('default changes refresh routing and the shared compact picker cache', () => {
@@ -224,10 +224,10 @@ describe('gateway routing editor helpers', () => {
     // Fallback and Per-model overrides carry the full-strength heading; Vision
     // model and Generation defaults keep the muted default inside Advanced.
     expect(routingSource).toContain(
-      '<Label className="text-foreground">{tI18nComplete.raw(\'text325e84939c64\')}</Label>',
+      "<Label className=\"text-foreground\">{tI18nComplete.raw('text325e84939c64')",
     );
     expect(routingSource).toContain(
-      '<Label className="text-foreground">{tI18nComplete.raw(\'text5c63c15261bb\')}</Label>',
+      "<Label className=\"text-foreground\">{tI18nComplete.raw('text5c63c15261bb')",
     );
   });
 

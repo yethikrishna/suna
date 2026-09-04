@@ -3,6 +3,7 @@ import { socialMetadata } from '@/lib/seo/metadata';
 import { CANONICAL_ORIGIN } from '@/lib/site-metadata';
 import { source } from '@/lib/source';
 import { cn } from '@/lib/utils';
+import { getTranslations } from '@/i18n/get-translations';
 // Server components import icons from '@/lib/icons/ssr': phosphor's
 // context-free SSR entry defaults to weight "regular" and silently ignores
 // DEFAULT_ICON_WEIGHT (see ssr.tsx's docblock). The client-only brand marks
@@ -25,6 +26,7 @@ import { Fragment } from 'react';
 import { DocsPageActions } from '../docs-page-actions';
 
 export default async function Page(props: { params: Promise<{ slug?: string[] }> }) {
+  const tI18nComplete = await getTranslations('hardcodedUi.i18nComplete');
   const params = await props.params;
   const page = source.getPage(params.slug);
   if (!page) notFound();
@@ -62,7 +64,7 @@ export default async function Page(props: { params: Promise<{ slug?: string[] }>
               {breadcrumbs.map((item, i) => {
                 const itemClassName = cn(
                   'truncate',
-                  i === breadcrumbs.length - 1 && 'text-fd-primary font-medium',
+                  i === breadcrumbs.length - 1 && tI18nComplete.raw('text154f05efd8cf'),
                 );
                 return (
                   <Fragment key={item.url ?? `${item.name}`}>
@@ -123,7 +125,7 @@ export default async function Page(props: { params: Promise<{ slug?: string[] }>
             >
               <span className="text-fd-muted-foreground inline-flex items-center gap-1 text-xs">
                 <ChevronLeft className="size-3.5" />
-                Previous
+                {tI18nComplete.raw('texta57b08a480b8')}
               </span>
               <span className="text-sm font-medium">{previous.name}</span>
             </Link>
@@ -134,7 +136,7 @@ export default async function Page(props: { params: Promise<{ slug?: string[] }>
               className="hover:bg-fd-accent flex flex-col items-end gap-1 rounded-lg border p-4 text-right transition-colors sm:col-start-2"
             >
               <span className="text-fd-muted-foreground inline-flex items-center gap-1 text-xs">
-                Next
+                {tI18nComplete.raw('text1ff57a29d7c9')}
                 <ChevronRight className="size-3.5" />
               </span>
               <span className="text-sm font-medium">{next.name}</span>

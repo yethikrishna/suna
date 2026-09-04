@@ -1,7 +1,7 @@
 'use client';
 
 import { HoverPrefetchLink } from '@/components/common/hover-prefetch-link';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { useParams, usePathname } from 'next/navigation';
 import { useCallback } from 'react';
 

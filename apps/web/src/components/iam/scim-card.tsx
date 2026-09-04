@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 // SCIM provisioning card on the Settings tab. Two things:
 //   1. Surface the per-account SCIM base URL the IdP needs to configure.
 //   2. Manage long-lived SCIM bearer tokens (create / list / revoke).
@@ -156,13 +156,13 @@ function ProvisioningHealthPanel({
             {tI18nComplete.raw('text97df9d6eae8f')}
           </span>
           <span className="text-foreground font-medium whitespace-nowrap">
-            {lastSyncAt ? formatRelative(lastSyncAt) : 'none yet'}
+            {lastSyncAt ? formatRelative(lastSyncAt) : tI18nComplete.raw('text98ca0d518997')}
           </span>
         </p>
         <p className="text-muted-foreground pl-3">
           {freshness === 'never'
-            ? 'Your IdP hasn’t connected — check provisioning is running there.'
-            : 'Your IdP pushes on its own schedule — Entra ~every 40 min; most others as changes happen.'}
+            ? tI18nComplete.raw('text60872f0408fe')
+            : tI18nComplete.raw('text8f619950b088')}
         </p>
       </div>
     </div>
@@ -196,11 +196,11 @@ export function ScimCard({ accountId, canManage }: ScimCardProps) {
   const revokeMutation = useMutation({
     mutationFn: (tokenId: string) => revokeScimToken(accountId, tokenId),
     onSuccess: () => {
-      successToast('SCIM token revoked');
+      successToast(tI18nComplete.raw('text692fef338a3d'));
       queryClient.invalidateQueries({ queryKey: ['scim-tokens', accountId] });
       setRevokeTarget(null);
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to revoke token'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('text7f8760fd80df')),
   });
 
   const tokens = tokensQuery.data ?? [];
@@ -523,9 +523,7 @@ export function ScimCard({ accountId, canManage }: ScimCardProps) {
         }}
         title={tI18nComplete.raw('texte57912d50189')}
         description={
-          revokeTarget
-            ? `Any IdP using "${revokeTarget.name}" will lose access immediately. This cannot be undone — you'll need to mint a new token to reconnect.`
-            : ''
+          revokeTarget ? tI18nComplete('texte47b85588c7c', { value0: revokeTarget.name }) : ''
         }
         confirmLabel={tI18nComplete.raw('text14683b379324')}
         confirmVariant="destructive"
@@ -567,7 +565,7 @@ function CreateScimTokenDialog({
       setCreated(token);
       queryClient.invalidateQueries({ queryKey: ['scim-tokens', accountId] });
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to create token'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('textf8a44ba9cc41')),
   });
 
   function handleClose(next: boolean) {
@@ -591,11 +589,15 @@ function CreateScimTokenDialog({
     <Modal open={open} onOpenChange={handleClose}>
       <ModalContent className="lg:max-w-lg">
         <ModalHeader>
-          <ModalTitle>{created ? 'SCIM token created' : 'Create SCIM token'}</ModalTitle>
+          <ModalTitle>
+            {created
+              ? tI18nComplete.raw('text6759c496ac63')
+              : tI18nComplete.raw('texte550c4aaeecf')}
+          </ModalTitle>
           <ModalDescription>
             {created
-              ? 'Copy the token now — it will not be shown again. Then configure it in your IdP.'
-              : 'Mint a bearer token for an IdP connection. Each connection should get its own token so revocation is targeted.'}
+              ? tI18nComplete.raw('textc187d313e143')
+              : tI18nComplete.raw('text9574f64a20a6')}
           </ModalDescription>
         </ModalHeader>
 
@@ -603,7 +605,7 @@ function CreateScimTokenDialog({
           <>
             <ModalBody className="min-w-0 space-y-4">
               <CopyRow
-                label="Token"
+                label={tI18nComplete.raw('textd2089be67295')}
                 value={created.secret}
                 successMessage={tI18nComplete.raw('textc9feac7acc32')}
               />

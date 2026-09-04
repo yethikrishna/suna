@@ -95,6 +95,8 @@ import {
   formatSandboxProvider,
   formatSandboxProviders,
 } from '@/features/workspace/project-sidebar/footer/sandbox-alert-state';
+import { APP_REGISTRY_TRANSLATION_KEYS } from '@/i18n/app-registry-translation-keys.generated';
+import { localizeUiCatalog } from '@/i18n/localize-ui-catalog';
 import { PROJECT_ACTIONS } from '@/lib/project-actions';
 import { useProjectCan } from '@/lib/use-project-can';
 import { cn } from '@/lib/utils';
@@ -121,7 +123,7 @@ import {
   XCircleIcon as XCircleSolid,
 } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from '@/i18n/use-translations';
 import type { SandboxProviderMode } from '../../customize/sections/view/sandbox-provider-coverage';
 
 /** Build-status tile icons render solid/fill — a filled status glyph inside
@@ -478,7 +480,10 @@ export function BuildRow({
   relevance?: FailedBuildRelevance | null;
   copy?: SnapshotsCopy;
 }) {
-  const status = BUILD_STATUS_TILE[build.status];
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const status = localizeUiCatalog(BUILD_STATUS_TILE, tI18nComplete, APP_REGISTRY_TRANSLATION_KEYS)[
+    build.status
+  ];
   const { Icon } = status;
   const outcome = describeBuildOutcome(build, relevance, copy);
   const stale = outcome.stale;
@@ -524,7 +529,9 @@ export function BuildRow({
                   nothing a reader recognises; the sentence does. */}
               <div className="text-muted-foreground mt-0.5 flex items-center gap-1.5 text-xs">
                 <span className="truncate">{outcome.summary}</span>
-                <span className="text-muted-foreground/40">&bull;</span>
+                <span className="text-muted-foreground/40">
+                  {tI18nComplete.raw('text3b9453dad42b')}
+                </span>
                 <span className="shrink-0 tabular-nums">{timestamp}</span>
               </div>
             </div>
@@ -567,7 +574,12 @@ function EnvironmentSummary({
   status: SandboxRuntimeStatus;
   copy?: SnapshotsCopy;
 }) {
-  const summary = ENVIRONMENT_SUMMARY[status.state];
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const summary = localizeUiCatalog(
+    ENVIRONMENT_SUMMARY,
+    tI18nComplete,
+    APP_REGISTRY_TRANSLATION_KEYS,
+  )[status.state];
   if (!summary) return null;
   const { Icon } = summary;
 

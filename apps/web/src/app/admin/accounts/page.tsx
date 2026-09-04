@@ -1,5 +1,9 @@
 'use client';
 
+import { ADMIN_ACCOUNTS_TRANSLATION_KEYS } from '@/i18n/admin-accounts-translation-keys.generated';
+import { localizeUiCatalog } from '@/i18n/localize-ui-catalog';
+import type { UiTranslator } from '@/i18n/translator';
+import { useTranslations } from '@/i18n/use-translations';
 import {
   ArrowDownIcon as ArrowDown,
   ArrowDownRightIcon as ArrowDownRight,
@@ -219,25 +223,25 @@ function ServiceFavicon({ domain, className }: { domain: string; className?: str
   );
 }
 
-function billingActionsFor(account: AdminAccount): BillingAction[] {
+function billingActionsFor(account: AdminAccount, tI18nComplete: UiTranslator): BillingAction[] {
   const actions: BillingAction[] = [];
   if (account.stripeSubscriptionId?.startsWith('sub_')) {
     actions.push({
-      label: 'Subscription in Stripe',
+      label: tI18nComplete.raw('textf4034f3d4b32'),
       href: stripeUrl('subscription', account.stripeSubscriptionId),
       domain: 'stripe.com',
     });
   }
   if (account.billingCustomerId?.startsWith('cus_')) {
     actions.push({
-      label: 'Customer in Stripe',
+      label: tI18nComplete.raw('text0def42d1eccc'),
       href: stripeUrl('customer', account.billingCustomerId),
       domain: 'stripe.com',
     });
   }
   if (account.provider?.toLowerCase() === 'revenuecat') {
     actions.push({
-      label: 'Search in RevenueCat',
+      label: tI18nComplete.raw('text834daa2914fb'),
       href: revenuecatSearchUrl(account.billingCustomerEmail || account.ownerEmail),
       domain: 'revenuecat.com',
     });
@@ -330,6 +334,7 @@ function PlanBadge({
  * no subscription on file — the badge alone is correct in that case.
  */
 function LiveSubscriptionLine({ accountId }: { accountId: string }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const { data, error } = useAdminAccountSubscription(accountId);
   const sub = data?.subscription;
   // A lookup that FAILS is itself the finding: the account row carries a
@@ -339,7 +344,9 @@ function LiveSubscriptionLine({ accountId }: { accountId: string }) {
     return (
       <span className="text-destructive flex items-center gap-1.5 text-xs">
         <CreditCard className="h-3 w-3 shrink-0" />
-        <span className="truncate">Stripe lookup failed: {error.message}</span>
+        <span className="truncate">
+          {tI18nComplete.raw('text3573c6a20ab0')} {error.message}
+        </span>
       </span>
     );
   }
@@ -353,7 +360,7 @@ function LiveSubscriptionLine({ accountId }: { accountId: string }) {
     <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
       <CreditCard className="h-3 w-3 shrink-0" />
       <span className="truncate">
-        Stripe charges {amount ?? 'an unknown amount'}
+        {tI18nComplete.raw('text3f197cd0d612')} {amount ?? tI18nComplete.raw('text4e445fd409fb')}
         {sub.quantity > 1 ? ` (${sub.quantity}×)` : ''}
         {label ? ` · ${label}` : ''}
         {sub.status !== 'active' ? ` · ${sub.status.replace(/_/g, ' ')}` : ''}
@@ -475,6 +482,7 @@ function activeFilterCount(f: AccountFilters): number {
 }
 
 export default function AdminAccountsPage() {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   // Seed from ?search= so cross-links (e.g. the Projects page's account cell)
   // land on a filtered list instead of the whole fleet.
   const urlSearchParams = useSearchParams();
@@ -540,10 +548,8 @@ export default function AdminAccountsPage() {
     <SectionContainer>
       <SectionHeader
         icon={Users}
-        title="Accounts"
-        description={
-          'Filter, sort, and inspect every account. Grant or debit credits, review ledger, and see billing state.'
-        }
+        title={tI18nComplete.raw('text8a7c8b67fe8b')}
+        description={tI18nComplete.raw('text29a3ff8f897b')}
         actions={
           <Button
             variant="outline"
@@ -552,34 +558,46 @@ export default function AdminAccountsPage() {
             disabled={isFetching}
             className="gap-1.5"
           >
-            <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} />
-            Refresh
+            {isFetching ? (
+              <Loading className="h-3.5 w-3.5" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            {tI18nComplete.raw('text0e9161011702')}
           </Button>
         }
       />
 
       <StatRow>
         <StatPill
-          label={'Total (filtered)'}
+          label={tI18nComplete.raw('text9dea85290e57')}
           value={total.toLocaleString()}
-          hint={filtersCount > 0 ? 'Matches current filters' : 'All accounts'}
+          hint={
+            filtersCount > 0
+              ? tI18nComplete.raw('text0350dc45fdbb')
+              : tI18nComplete.raw('textf4f6813aa30f')
+          }
         />
         <StatPill
-          label="Paid"
+          label={tI18nComplete.raw('textfb81b961af45')}
           value={(summary?.paidCount ?? 0).toLocaleString()}
           tone="success"
-          hint={'Non-free tiers'}
+          hint={tI18nComplete.raw('text38ba7f9cc345')}
         />
         <StatPill
-          label={'Credits in set'}
+          label={tI18nComplete.raw('text98d2f310af85')}
           value={formatCredits(summary?.totalCredits ?? 0)}
-          hint={'Sum of balances'}
+          hint={tI18nComplete.raw('text5bd8a81336da')}
         />
         <StatPill
-          label={'Past due'}
+          label={tI18nComplete.raw('text629c555fb7f8')}
           value={summary?.pastDueCount ?? 0}
           tone={(summary?.pastDueCount ?? 0) > 0 ? 'warning' : 'default'}
-          hint={(summary?.pastDueCount ?? 0) > 0 ? 'Needs review' : 'All clear'}
+          hint={
+            (summary?.pastDueCount ?? 0) > 0
+              ? tI18nComplete.raw('text07297fa94a99')
+              : tI18nComplete.raw('text96ed94a7e3ac')
+          }
         />
       </StatRow>
 
@@ -602,25 +620,25 @@ export default function AdminAccountsPage() {
       {isLoading ? (
         <div className="space-y-2">
           {[...Array(8)].map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full rounded-2xl" />
+            <Skeleton key={i} className="h-12 w-full rounded-md" />
           ))}
         </div>
       ) : accounts.length === 0 ? (
-        <div className="border-border/60 bg-card rounded-2xl border">
+        <div className="border-border/60 bg-card rounded-md border">
           <EmptyState
             icon={IconInbox}
             title={
-              search || filtersCount > 0 ? 'No accounts match your filters' : 'No accounts yet'
+              search || filtersCount > 0
+                ? tI18nComplete.raw('textb67d444ba208')
+                : tI18nComplete.raw('text84a7e27178d9')
             }
             description={
-              search || filtersCount > 0
-                ? 'Try adjusting filters or clearing the search.'
-                : undefined
+              search || filtersCount > 0 ? tI18nComplete.raw('textc62da8a2d904') : undefined
             }
             action={
               search || filtersCount > 0 ? (
                 <Button variant="outline" size="sm" onClick={resetFilters}>
-                  {'Clear filters'}
+                  {tI18nComplete.raw('text7179ea0035fc')}
                 </Button>
               ) : undefined
             }
@@ -629,7 +647,7 @@ export default function AdminAccountsPage() {
       ) : (
         <div
           className={cn(
-            'border-border/60 overflow-hidden rounded-2xl border transition-opacity',
+            'border-border/60 overflow-hidden rounded-md border transition-opacity',
             isFetching && 'opacity-70',
           )}
         >
@@ -637,15 +655,15 @@ export default function AdminAccountsPage() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <SortHeader
-                  label="Account"
+                  label={tI18nComplete.raw('text7e1b0d5641f2')}
                   column="name"
                   sortBy={filters.sortBy}
                   sortDir={filters.sortDir}
                   onSort={setSort}
                 />
-                <TableHead>Plan</TableHead>
+                <TableHead>{tI18nComplete.raw('textfa8ed0bdabdd')}</TableHead>
                 <SortHeader
-                  label="Balance"
+                  label={tI18nComplete.raw('textd05e07b7c14e')}
                   column="balance"
                   sortBy={filters.sortBy}
                   sortDir={filters.sortDir}
@@ -653,16 +671,16 @@ export default function AdminAccountsPage() {
                   align="right"
                 />
                 <SortHeader
-                  label="Members"
+                  label={tI18nComplete.raw('text1044a4c056d0')}
                   column="members"
                   sortBy={filters.sortBy}
                   sortDir={filters.sortDir}
                   onSort={setSort}
                   align="right"
                 />
-                <TableHead>Status</TableHead>
+                <TableHead>{tI18nComplete.raw('text920e413c7d41')}</TableHead>
                 <SortHeader
-                  label="Created"
+                  label={tI18nComplete.raw('textd70b9e24bca2')}
                   column="created"
                   sortBy={filters.sortBy}
                   sortDir={filters.sortDir}
@@ -681,7 +699,7 @@ export default function AdminAccountsPage() {
                     <div className="max-w-[320px] min-w-0">
                       <div className="truncate text-sm font-medium">{accountLabelFor(account)}</div>
                       <div className="text-muted-foreground truncate text-xs">
-                        {account.ownerEmail || 'No owner email'}
+                        {account.ownerEmail || tI18nComplete.raw('textaca82dbb8ef0')}
                         <span className="mx-1.5 opacity-50">·</span>
                         <span className="font-mono">{account.accountId.slice(0, 8)}</span>
                       </div>
@@ -694,7 +712,7 @@ export default function AdminAccountsPage() {
                     <span
                       className={cn(
                         'font-mono text-sm',
-                        Number(account.balance ?? 0) < 0 && 'text-red-600 dark:text-red-400',
+                        Number(account.balance ?? 0) < 0 && 'text-destructive',
                       )}
                     >
                       {formatCredits(account.balance)}
@@ -729,7 +747,8 @@ export default function AdminAccountsPage() {
       {pages > 1 && (
         <div className="text-muted-foreground flex items-center justify-between text-sm">
           <span>
-            Page {page} of {pages} · {total.toLocaleString()} accounts
+            {tI18nComplete.raw('text0a30a815d67d')} {page} {tI18nComplete.raw('text28391d3bc64e')}{' '}
+            {pages} · {total.toLocaleString()} {tI18nComplete.raw('textbc62a3c14fec')}
           </span>
           <div className="flex gap-1">
             <Button
@@ -740,7 +759,7 @@ export default function AdminAccountsPage() {
               disabled={page === 1}
             >
               <ChevronLeft className="h-3.5 w-3.5" />
-              Prev
+              {tI18nComplete.raw('text73912999faf4')}
             </Button>
             <Button
               variant="outline"
@@ -749,7 +768,7 @@ export default function AdminAccountsPage() {
               onClick={() => setPage((p) => Math.min(pages, p + 1))}
               disabled={page === pages}
             >
-              Next
+              {tI18nComplete.raw('text1ff57a29d7c9')}
               <ChevronRight className="h-3.5 w-3.5" />
             </Button>
           </div>
@@ -780,29 +799,31 @@ function FilterBar({
   onReset: () => void;
   filtersCount: number;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const { tiers, paymentStatuses } = localizedAdminAccountCatalog(tI18nComplete);
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
       <PageSearchBar
         value={searchInput}
         onChange={onSearchChange}
-        placeholder={'Search by account, owner email, or account ID…'}
+        placeholder={tI18nComplete.raw('text60e0fe98face')}
       />
 
       <div className="flex flex-wrap items-center gap-2">
-        <label className="border-input bg-card flex h-9 items-center gap-2 rounded-2xl border px-3 py-1.5 text-sm">
+        <label className="border-input bg-card flex h-9 items-center gap-2 rounded-md border px-3 py-1.5 text-sm">
           <Switch
             checked={filters.paidOnly}
             onCheckedChange={(v) => onFiltersChange({ ...filters, paidOnly: v })}
-            aria-label={'Paid accounts only'}
+            aria-label={tI18nComplete.raw('text7dcfbf6997e9')}
           />
-          <span className="text-sm">{'Paid only'}</span>
+          <span className="text-sm">{tI18nComplete.raw('text4eaea5edcdef')}</span>
         </label>
 
         <Popover>
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm" className="h-9 gap-1.5">
               <Filter className="h-3.5 w-3.5" />
-              Filters
+              {tI18nComplete.raw('text546ebb8eb993')}
               {filtersCount > 0 && (
                 <Badge variant="muted" size="sm" className="ml-1">
                   {filtersCount}
@@ -824,17 +845,17 @@ function FilterBar({
         >
           <SelectTrigger className="h-9 w-[170px] gap-1.5">
             <SlidersHorizontal className="text-muted-foreground h-3.5 w-3.5" />
-            <SelectValue placeholder="Sort" />
+            <SelectValue placeholder={tI18nComplete.raw('textbec69036aa27')} />
           </SelectTrigger>
           <SelectContent align="end">
-            <SelectItem value="created:desc">{'Newest first'}</SelectItem>
-            <SelectItem value="created:asc">{'Oldest first'}</SelectItem>
-            <SelectItem value="balance:desc">{'Balance — high'}</SelectItem>
-            <SelectItem value="balance:asc">{'Balance — low'}</SelectItem>
-            <SelectItem value="members:desc">{'Most members'}</SelectItem>
-            <SelectItem value="members:asc">{'Fewest members'}</SelectItem>
-            <SelectItem value="name:asc">{'Name A–Z'}</SelectItem>
-            <SelectItem value="name:desc">{'Name Z–A'}</SelectItem>
+            <SelectItem value="created:desc">{tI18nComplete.raw('textffb6f5764bdd')}</SelectItem>
+            <SelectItem value="created:asc">{tI18nComplete.raw('text6e2ebdab3c02')}</SelectItem>
+            <SelectItem value="balance:desc">{tI18nComplete.raw('text7a274281b669')}</SelectItem>
+            <SelectItem value="balance:asc">{tI18nComplete.raw('text6b1d152247c7')}</SelectItem>
+            <SelectItem value="members:desc">{tI18nComplete.raw('text3d586b1705e4')}</SelectItem>
+            <SelectItem value="members:asc">{tI18nComplete.raw('textf7da30470586')}</SelectItem>
+            <SelectItem value="name:asc">{tI18nComplete.raw('text7ed96629073e')}</SelectItem>
+            <SelectItem value="name:desc">{tI18nComplete.raw('texta5b2d1d78146')}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -851,6 +872,8 @@ function FiltersPanel({
   onChange: (f: AccountFilters) => void;
   onReset: () => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const { tiers, paymentStatuses } = localizedAdminAccountCatalog(tI18nComplete);
   const [minBalance, setMinBalance] = useState(
     filters.minBalance !== null ? String(filters.minBalance) : '',
   );
@@ -892,18 +915,18 @@ function FiltersPanel({
   return (
     <div className="max-h-[70vh] overflow-y-auto">
       <div className="border-border/60 flex items-center justify-between border-b px-4 py-3">
-        <span className="text-sm font-medium">Filters</span>
+        <span className="text-sm font-medium">{tI18nComplete.raw('text546ebb8eb993')}</span>
         <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onReset}>
-          {'Reset all'}
+          {tI18nComplete.raw('text645982c52b7c')}
         </Button>
       </div>
 
       <div className="border-border/60 space-y-2 border-b px-4 py-3">
-        <div className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
-          Subscription
+        <div className="text-muted-foreground text-xs font-medium">
+          {tI18nComplete.raw('text4999c6c6c7ba')}
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span>{'Has active subscription'}</span>
+          <span>{tI18nComplete.raw('textf8ac87bcf3ff')}</span>
           <Select
             value={
               filters.hasSubscription === true
@@ -923,9 +946,9 @@ function FiltersPanel({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="any">Any</SelectItem>
-              <SelectItem value="yes">Yes</SelectItem>
-              <SelectItem value="no">No</SelectItem>
+              <SelectItem value="any">{tI18nComplete.raw('text2b505597daa7')}</SelectItem>
+              <SelectItem value="yes">{tI18nComplete.raw('text85a39ab345d6')}</SelectItem>
+              <SelectItem value="no">{tI18nComplete.raw('text1ea442a134b2')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -933,8 +956,8 @@ function FiltersPanel({
 
       <div className="border-border/60 space-y-2 border-b px-4 py-3">
         <div className="flex items-center justify-between">
-          <div className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
-            Tier
+          <div className="text-muted-foreground text-xs font-medium">
+            {tI18nComplete.raw('textcb9e8664edea')}
           </div>
           {filters.tier.length > 0 && (
             <Button
@@ -943,18 +966,18 @@ function FiltersPanel({
               className="h-6 px-1.5 text-xs"
               onClick={() => onChange({ ...filters, tier: [] })}
             >
-              Clear
+              {tI18nComplete.raw('text83b12c2216ef')}
             </Button>
           )}
         </div>
         <div className="space-y-1">
-          {TIER_OPTIONS.map((t, i) => (
+          {tiers.map((t, i) => (
             <div key={t.value}>
               {/* One heading, before the first grandfathered key — these are
                   still-honored plans no account can be moved onto today. */}
-              {t.grandfathered && !TIER_OPTIONS[i - 1]?.grandfathered && (
-                <div className="text-muted-foreground/70 px-1.5 pt-2 pb-1 text-xs tracking-wider uppercase">
-                  Grandfathered
+              {t.grandfathered && !tiers[i - 1]?.grandfathered && (
+                <div className="text-muted-foreground/70 px-1.5 pt-2 pb-1 text-xs">
+                  {tI18nComplete.raw('text9d5adef979f7')}
                 </div>
               )}
               <label className="hover:bg-muted/40 flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-sm">
@@ -971,8 +994,8 @@ function FiltersPanel({
 
       <div className="border-border/60 space-y-2 border-b px-4 py-3">
         <div className="flex items-center justify-between">
-          <div className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
-            {'Payment status'}
+          <div className="text-muted-foreground text-xs font-medium">
+            {tI18nComplete.raw('text272b5704fa54')}
           </div>
           {filters.paymentStatus.length > 0 && (
             <Button
@@ -981,12 +1004,12 @@ function FiltersPanel({
               className="h-6 px-1.5 text-xs"
               onClick={() => onChange({ ...filters, paymentStatus: [] })}
             >
-              Clear
+              {tI18nComplete.raw('text83b12c2216ef')}
             </Button>
           )}
         </div>
         <div className="space-y-1">
-          {PAYMENT_STATUS_OPTIONS.map((p) => (
+          {paymentStatuses.map((p) => (
             <label
               key={p.value}
               className="hover:bg-muted/40 flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-sm"
@@ -1002,8 +1025,8 @@ function FiltersPanel({
       </div>
 
       <div className="space-y-2 px-4 py-3">
-        <div className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
-          Balance
+        <div className="text-muted-foreground text-xs font-medium">
+          {tI18nComplete.raw('textd05e07b7c14e')}
         </div>
         <div className="flex items-center gap-2">
           <Input
@@ -1011,16 +1034,18 @@ function FiltersPanel({
             value={minBalance}
             onChange={(e) => setMinBalance(e.target.value)}
             onBlur={commitBalances}
-            placeholder="Min"
+            placeholder={tI18nComplete.raw('textdea79332147f')}
             className="h-8 text-sm"
           />
-          <span className="text-muted-foreground text-xs">to</span>
+          <span className="text-muted-foreground text-xs">
+            {tI18nComplete.raw('text663ea1bfffe5')}
+          </span>
           <Input
             type="number"
             value={maxBalance}
             onChange={(e) => setMaxBalance(e.target.value)}
             onBlur={commitBalances}
-            placeholder="Max"
+            placeholder={tI18nComplete.raw('texta1a5936d3b0f')}
             className="h-8 text-sm"
           />
         </div>
@@ -1040,33 +1065,34 @@ function ActiveChips({
   searchInput: string;
   onSearchChange: (v: string) => void;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const chips: Array<{ key: string; label: string; onRemove: () => void }> = [];
 
   if (searchInput) {
     chips.push({
       key: 'search',
-      label: `Search: "${searchInput}"`,
+      label: tI18nComplete('text32599ff9efb7', { value0: searchInput }),
       onRemove: () => onSearchChange(''),
     });
   }
   if (filters.paidOnly) {
     chips.push({
       key: 'paid',
-      label: 'Paid only',
+      label: tI18nComplete.raw('text4eaea5edcdef'),
       onRemove: () => onChange({ ...filters, paidOnly: false }),
     });
   }
   for (const t of filters.tier) {
     chips.push({
       key: `tier:${t}`,
-      label: `Tier: ${tierKeyLabel(t)}`,
+      label: tI18nComplete('text3ac9d50c270e', { value0: tierKeyLabel(t) }),
       onRemove: () => onChange({ ...filters, tier: filters.tier.filter((x) => x !== t) }),
     });
   }
   for (const p of filters.paymentStatus) {
     chips.push({
       key: `payment:${p}`,
-      label: `Status: ${p.replace(/_/g, ' ')}`,
+      label: tI18nComplete('textdeb093603efa', { value0: p.replace(/_/g, ' ') }),
       onRemove: () =>
         onChange({ ...filters, paymentStatus: filters.paymentStatus.filter((x) => x !== p) }),
     });
@@ -1074,27 +1100,27 @@ function ActiveChips({
   if (filters.hasSubscription === true) {
     chips.push({
       key: 'sub',
-      label: 'Has subscription',
+      label: tI18nComplete.raw('textccdc59cf6178'),
       onRemove: () => onChange({ ...filters, hasSubscription: null }),
     });
   } else if (filters.hasSubscription === false) {
     chips.push({
       key: 'sub',
-      label: 'No subscription',
+      label: tI18nComplete.raw('textb9da7e34f203'),
       onRemove: () => onChange({ ...filters, hasSubscription: null }),
     });
   }
   if (filters.minBalance !== null) {
     chips.push({
       key: 'min',
-      label: `Balance ≥ ${filters.minBalance}`,
+      label: tI18nComplete('textd9ef50b79c75', { value0: filters.minBalance }),
       onRemove: () => onChange({ ...filters, minBalance: null }),
     });
   }
   if (filters.maxBalance !== null) {
     chips.push({
       key: 'max',
-      label: `Balance ≤ ${filters.maxBalance}`,
+      label: tI18nComplete('text5d4f8dc198f5', { value0: filters.maxBalance }),
       onRemove: () => onChange({ ...filters, maxBalance: null }),
     });
   }
@@ -1124,7 +1150,7 @@ function ActiveChips({
             onChange({ ...EMPTY_FILTERS, sortBy: filters.sortBy, sortDir: filters.sortDir });
           }}
         >
-          {'Clear all'}
+          {tI18nComplete.raw('text29a390f9237e')}
         </Button>
       )}
     </div>
@@ -1157,7 +1183,7 @@ function SortHeader({
         type="button"
         onClick={() => onSort(column)}
         className={cn(
-          'inline-flex items-center gap-1 text-xs font-medium tracking-wider uppercase transition-colors',
+          'inline-flex items-center gap-1 text-xs font-medium transition-colors',
           active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
         )}
       >
@@ -1218,6 +1244,7 @@ function AccountDetailSheet({
  * naming the customer.
  */
 function OpenAsAccountButton({ account }: { account: AdminAccount }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const impersonate = useAdminImpersonate();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState('');
@@ -1245,7 +1272,7 @@ function OpenAsAccountButton({ account }: { account: AdminAccount }) {
           // eslint-disable-next-line @next/next/no-location-assign-relative-destination
           window.location.assign(`/accounts/${account.accountId}`);
         },
-        onError: (error) => errorToast(error.message || 'Could not open the account'),
+        onError: (error) => errorToast(error.message || tI18nComplete.raw('text32d3603f57c7')),
       },
     );
   };
@@ -1254,27 +1281,24 @@ function OpenAsAccountButton({ account }: { account: AdminAccount }) {
     <>
       <Button variant="outline" size="sm" onClick={() => setOpen(true)} className="gap-1.5">
         <Eye className="h-3.5 w-3.5" />
-        Open as account
+        {tI18nComplete.raw('text2dbbf46b037e')}
       </Button>
       <ConfirmDialog
         open={open}
         onOpenChange={setOpen}
-        title={`Act as ${accountLabelFor(account)}?`}
+        title={tI18nComplete('texta859c6f35e58', { value0: accountLabelFor(account) })}
         description={
           <span className="space-y-3">
-            <span className="block">
-              For up to one hour, everything you do lands on this account. Every change you make is
-              written to the customer's own audit log with your identity attached.
-            </span>
+            <span className="block">{tI18nComplete.raw('text25d302d271e6')}</span>
             <Input
               value={reason}
               onChange={(event) => setReason(event.target.value)}
-              placeholder="Reason (e.g. ticket #1234)"
+              placeholder={tI18nComplete.raw('text21164ff9b63e')}
               maxLength={500}
             />
           </span>
         }
-        confirmLabel="Open as account"
+        confirmLabel={tI18nComplete.raw('text2dbbf46b037e')}
         onConfirm={start}
         isPending={impersonate.isPending}
       />
@@ -1283,10 +1307,11 @@ function OpenAsAccountButton({ account }: { account: AdminAccount }) {
 }
 
 function AccountDetail({ account }: { account: AdminAccount }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const usersQuery = useAdminAccountUsers(account.accountId);
   const projectsQuery = useAdminAccountProjects(account.accountId);
   const ledgerQuery = useAdminAccountLedger(account.accountId, 100);
-  const actions = billingActionsFor(account);
+  const actions = billingActionsFor(account, tI18nComplete);
 
   return (
     <div className="flex flex-col">
@@ -1307,7 +1332,7 @@ function AccountDetail({ account }: { account: AdminAccount }) {
         <SheetDescription className="flex flex-col gap-0.5 text-left">
           <span className="flex items-center gap-1.5 text-xs">
             <Mail className="h-3 w-3" />
-            {account.ownerEmail || 'No owner email'}
+            {account.ownerEmail || tI18nComplete.raw('textaca82dbb8ef0')}
           </span>
           <span className="font-mono text-xs">{account.accountId}</span>
           <LiveSubscriptionLine accountId={account.accountId} />
@@ -1336,30 +1361,42 @@ function AccountDetail({ account }: { account: AdminAccount }) {
 
       <div className="space-y-6 p-6">
         <StatRow className="!grid-cols-2 lg:!grid-cols-4">
-          <StatPill label="Total" value={formatCredits(account.balance)} />
-          <StatPill label="Expiring" value={formatCredits(account.expiringCredits)} />
-          <StatPill label="Permanent" value={formatCredits(account.nonExpiringCredits)} />
-          <StatPill label="Daily" value={formatCredits(account.dailyCreditsBalance)} />
+          <StatPill
+            label={tI18nComplete.raw('textc9b3c38247f7')}
+            value={formatCredits(account.balance)}
+          />
+          <StatPill
+            label={tI18nComplete.raw('textff44a401445c')}
+            value={formatCredits(account.expiringCredits)}
+          />
+          <StatPill
+            label={tI18nComplete.raw('text455a95491f40')}
+            value={formatCredits(account.nonExpiringCredits)}
+          />
+          <StatPill
+            label={tI18nComplete.raw('textb36c2611dcdf')}
+            value={formatCredits(account.dailyCreditsBalance)}
+          />
         </StatRow>
 
         <Tabs defaultValue="credits" className="w-full">
           <TabsList className="h-auto w-full flex-wrap">
             <TabsTrigger value="credits" className="gap-1.5">
               <CreditCard className="h-3.5 w-3.5" />
-              Credits
+              {tI18nComplete.raw('text2a6b24ad2872')}
             </TabsTrigger>
             <TabsTrigger value="entitlements" className="gap-1.5">
               <Key className="h-3.5 w-3.5" />
-              Entitlements
+              {tI18nComplete.raw('text2cc79c9e300d')}
               {trialIsActive(account.trial) && (
                 <Badge variant="success" size="sm">
-                  trial
+                  {tI18nComplete.raw('text79891e980747')}
                 </Badge>
               )}
             </TabsTrigger>
             <TabsTrigger value="users" className="gap-1.5">
               <Users className="h-3.5 w-3.5" />
-              Users
+              {tI18nComplete.raw('text6b0cc904d081')}
               {usersQuery.data?.users && (
                 <Badge variant="muted" size="sm">
                   {usersQuery.data.users.length}
@@ -1368,7 +1405,7 @@ function AccountDetail({ account }: { account: AdminAccount }) {
             </TabsTrigger>
             <TabsTrigger value="projects" className="gap-1.5">
               <FolderKanban className="h-3.5 w-3.5" />
-              Projects
+              {tI18nComplete.raw('text04e2a9728af7')}
               {projectsQuery.data?.projects && (
                 <Badge variant="muted" size="sm">
                   {projectsQuery.data.projects.length}
@@ -1377,11 +1414,11 @@ function AccountDetail({ account }: { account: AdminAccount }) {
             </TabsTrigger>
             <TabsTrigger value="ledger" className="gap-1.5">
               <History className="h-3.5 w-3.5" />
-              Ledger
+              {tI18nComplete.raw('textee69eb4afc76')}
             </TabsTrigger>
             <TabsTrigger value="billing" className="gap-1.5">
               <Shield className="h-3.5 w-3.5" />
-              Billing
+              {tI18nComplete.raw('text3ac8bbca9a74')}
             </TabsTrigger>
           </TabsList>
 
@@ -1410,6 +1447,7 @@ function AccountDetail({ account }: { account: AdminAccount }) {
 }
 
 function CreditsTab({ account }: { account: AdminAccount }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const grant = useAdminGrantCredits();
   const debit = useAdminDebitCredits();
   const setEnterpriseEntitled = useAdminSetEnterpriseEntitled();
@@ -1423,7 +1461,7 @@ function CreditsTab({ account }: { account: AdminAccount }) {
 
   async function handleGrant() {
     if (!isValid) {
-      errorToast('Enter a valid positive amount');
+      errorToast(tI18nComplete.raw('text56644b72a713'));
       return;
     }
     try {
@@ -1433,13 +1471,16 @@ function CreditsTab({ account }: { account: AdminAccount }) {
         description: description.trim() || 'Admin credit adjustment',
         isExpiring,
       });
-      successToast('Credits granted', {
-        description: `${money(parsed)} added to ${accountLabelFor(account)}`,
+      successToast(tI18nComplete.raw('text91c41abbc611'), {
+        description: tI18nComplete('text24dab51514a1', {
+          value0: money(parsed),
+          value1: accountLabelFor(account),
+        }),
       });
       setAmount('');
     } catch (error) {
-      errorToast('Failed to grant credits', {
-        description: error instanceof Error ? error.message : 'Unknown error',
+      errorToast(tI18nComplete.raw('textdaf8a3e28790'), {
+        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
       });
     }
   }
@@ -1452,13 +1493,16 @@ function CreditsTab({ account }: { account: AdminAccount }) {
         amount: parsed,
         description: description.trim() || 'Admin debit',
       });
-      successToast('Credits debited', {
-        description: `${money(parsed)} removed from ${accountLabelFor(account)}`,
+      successToast(tI18nComplete.raw('text27935fdead34'), {
+        description: tI18nComplete('text1836d8d61ae9', {
+          value0: money(parsed),
+          value1: accountLabelFor(account),
+        }),
       });
       setAmount('');
     } catch (error) {
-      errorToast('Failed to debit credits', {
-        description: error instanceof Error ? error.message : 'Unknown error',
+      errorToast(tI18nComplete.raw('text6641e2ca3556'), {
+        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
       });
     } finally {
       setConfirmDebit(false);
@@ -1468,12 +1512,20 @@ function CreditsTab({ account }: { account: AdminAccount }) {
   async function handleSetEnterprise(enabled: boolean) {
     try {
       await setEnterpriseEntitled.mutateAsync({ accountId: account.accountId, enabled });
-      successToast(enabled ? 'Enterprise activated' : 'Enterprise entitlement revoked', {
-        description: `${accountLabelFor(account)} ${enabled ? 'now has' : 'no longer has'} SSO, SCIM, RBAC and audit entitlements.`,
-      });
+      successToast(
+        enabled ? tI18nComplete.raw('text4046f33a6c82') : tI18nComplete.raw('text7c0adcef1126'),
+        {
+          description: tI18nComplete('textb18320256e28', {
+            value0: accountLabelFor(account),
+            value1: enabled
+              ? tI18nComplete.raw('textb615ea53d360')
+              : tI18nComplete.raw('textb8c6c60542bc'),
+          }),
+        },
+      );
     } catch (error) {
-      errorToast('Failed to update Enterprise entitlement', {
-        description: error instanceof Error ? error.message : 'Unknown error',
+      errorToast(tI18nComplete.raw('textad54697fed7c'), {
+        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
       });
     }
   }
@@ -1489,14 +1541,17 @@ function CreditsTab({ account }: { account: AdminAccount }) {
           plan shown is the RESOLVED one the API reports — an active trial and
           the per-seat self-heal overlay the stored tier, and the entitlement
           writes below act on the account, not on that plan. */}
-      <div className="border-border/60 bg-card mb-4 space-y-3 rounded-2xl border p-4">
+      <div className="border-border/60 bg-card mb-4 space-y-3 rounded-md border p-4">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
-            <div className="text-foreground text-sm font-medium">Plan</div>
+            <div className="text-foreground text-sm font-medium">
+              {tI18nComplete.raw('textfa8ed0bdabdd')}
+            </div>
             <div className="text-muted-foreground text-xs">
-              Current: <span className="text-foreground font-medium">{planLabel(account)}</span>
+              {tI18nComplete.raw('textc09f632874c2')}{' '}
+              <span className="text-foreground font-medium">{planLabel(account)}</span>
               {account.plan?.sublabel ? ` · ${account.plan.sublabel}` : ''}
-              {isEnterprise && ' · Enterprise entitlements active'}
+              {isEnterprise && tI18nComplete.raw('text70541b9b587b')}
             </div>
           </div>
           <PlanBadge account={account} size="default" />
@@ -1508,7 +1563,9 @@ function CreditsTab({ account }: { account: AdminAccount }) {
             className="gap-1.5"
           >
             {setEnterpriseEntitled.isPending && <Loading className="h-3.5 w-3.5" />}
-            {isEnterprise ? 'Enterprise active' : 'Activate Enterprise'}
+            {isEnterprise
+              ? tI18nComplete.raw('text2fe3e60fadc0')
+              : tI18nComplete.raw('text991aa74eea34')}
           </Button>
           {isEnterprise && (
             <Button
@@ -1516,18 +1573,14 @@ function CreditsTab({ account }: { account: AdminAccount }) {
               onClick={() => handleSetEnterprise(false)}
               disabled={setEnterpriseEntitled.isPending}
             >
-              {'Revoke Enterprise entitlement'}
+              {tI18nComplete.raw('textbe99d500e83c')}
             </Button>
           )}
         </div>
-        <p className="text-muted-foreground text-xs">
-          {
-            'Enterprise unlocks SAML SSO, SCIM directory sync, RBAC and audit access for this account. The billed plan and seat billing are unchanged.'
-          }
-        </p>
+        <p className="text-muted-foreground text-xs">{tI18nComplete.raw('texte65c84be34f9')}</p>
       </div>
 
-      <div className="border-border/60 bg-card space-y-4 rounded-2xl border p-4">
+      <div className="border-border/60 bg-card space-y-4 rounded-md border p-4">
         <div className="flex flex-wrap gap-1.5">
           {REIMBURSEMENT_PRESETS.map((n) => (
             <Button
@@ -1547,13 +1600,13 @@ function CreditsTab({ account }: { account: AdminAccount }) {
             type="number"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            placeholder={'Amount (e.g. 25)'}
+            placeholder={tI18nComplete.raw('text999d689b4739')}
             step="0.01"
           />
           <Input
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder={'Reason / note'}
+            placeholder={tI18nComplete.raw('text7477f5a7b656')}
           />
           <label className="text-muted-foreground flex items-center gap-2 text-sm">
             <input
@@ -1562,7 +1615,7 @@ function CreditsTab({ account }: { account: AdminAccount }) {
               onChange={(e) => setIsExpiring(e.target.checked)}
               className="size-4"
             />
-            {'Grant as expiring credits'}
+            {tI18nComplete.raw('texta9141e58e179')}
           </label>
         </div>
         <div className="flex gap-2">
@@ -1576,7 +1629,7 @@ function CreditsTab({ account }: { account: AdminAccount }) {
             ) : (
               <ArrowUpRight className="h-3.5 w-3.5" />
             )}
-            {'Grant credits'}
+            {tI18nComplete.raw('textfa31b7396679')}
           </Button>
           <Button
             variant="outline"
@@ -1585,7 +1638,7 @@ function CreditsTab({ account }: { account: AdminAccount }) {
             className="flex-1 gap-1.5"
           >
             <ArrowDownRight className="h-3.5 w-3.5" />
-            Debit
+            {tI18nComplete.raw('textae224acb87e2')}
           </Button>
         </div>
       </div>
@@ -1593,22 +1646,19 @@ function CreditsTab({ account }: { account: AdminAccount }) {
       <ConfirmDialog
         open={confirmDebit}
         onOpenChange={setConfirmDebit}
-        title={'Debit credits?'}
+        title={tI18nComplete.raw('text994cfce0cc98')}
         description={
           <div className="space-y-2 text-sm">
             <p>
-              Deduct{' '}
+              {tI18nComplete.raw('text5498f487a861')}{' '}
               <span className="text-foreground font-mono">{isValid ? money(parsed) : '—'}</span>{' '}
-              from <span className="font-medium">{accountLabelFor(account)}</span>.
+              {tI18nComplete.raw('text75857a458999')}{' '}
+              <span className="font-medium">{accountLabelFor(account)}</span>.
             </p>
-            <p className="text-muted-foreground text-xs">
-              {
-                'Will fail if the account has insufficient credits. Action is recorded in the ledger.'
-              }
-            </p>
+            <p className="text-muted-foreground text-xs">{tI18nComplete.raw('textfb9f1f579b54')}</p>
           </div>
         }
-        confirmLabel="Debit"
+        confirmLabel={tI18nComplete.raw('textae224acb87e2')}
         onConfirm={handleDebit}
         isPending={debit.isPending}
       />
@@ -1688,6 +1738,20 @@ const OVERRIDE_TRI_STATE_OPTIONS: { value: OverrideTriState; label: string }[] =
   { value: 'off', label: 'Force off' },
 ];
 
+function localizedAdminAccountCatalog(tI18nComplete: UiTranslator) {
+  return localizeUiCatalog(
+    {
+      tiers: TIER_OPTIONS,
+      paymentStatuses: PAYMENT_STATUS_OPTIONS,
+      trialTiers: TRIAL_TIER_OPTIONS,
+      overrideEntitlements: OVERRIDE_ENTITLEMENT_ROWS,
+      overrideStates: OVERRIDE_TRI_STATE_OPTIONS,
+    },
+    tI18nComplete,
+    ADMIN_ACCOUNTS_TRANSLATION_KEYS,
+  );
+}
+
 /** Short date for an expiry chip — the year matters, the minute does not. */
 function formatDay(value: string): string {
   return new Date(value).toLocaleDateString('en-US', {
@@ -1721,6 +1785,8 @@ function OverrideExpiryChip({ expiresAt }: { expiresAt: string | null }) {
  * above, and this card is where an operator inspects or clears one.
  */
 function OverridesCard({ account }: { account: AdminAccount }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const { overrideEntitlements, overrideStates } = localizedAdminAccountCatalog(tI18nComplete);
   const setOverrides = useAdminSetOverrides();
   const stored = account.entitlementOverrides ?? null;
 
@@ -1749,10 +1815,12 @@ function OverridesCard({ account }: { account: AdminAccount }) {
     if (!result.ok || isEmptyPatch(result.patch)) return;
     try {
       await setOverrides.mutateAsync({ accountId: account.accountId, patch: result.patch });
-      successToast('Overrides saved', { description: describeOverridePatch(result.patch) });
+      successToast(tI18nComplete.raw('text840911e55942'), {
+        description: describeOverridePatch(result.patch),
+      });
     } catch (error) {
-      errorToast('Failed to save overrides', {
-        description: error instanceof Error ? error.message : 'Unknown error',
+      errorToast(tI18nComplete.raw('text9ee1f41d408d'), {
+        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
       });
     }
   }
@@ -1760,24 +1828,25 @@ function OverridesCard({ account }: { account: AdminAccount }) {
   const effectiveMultiplier = account.computeRateMultiplier;
 
   return (
-    <div className="border-border/60 bg-card space-y-4 rounded-2xl border p-4">
+    <div className="border-border/60 bg-card space-y-4 rounded-md border p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-foreground text-sm font-medium">Overrides</div>
+          <div className="text-foreground text-sm font-medium">
+            {tI18nComplete.raw('text7f6e1f2662b4')}
+          </div>
           <p className="text-muted-foreground mt-0.5 max-w-prose text-xs">
-            Per-account values that beat the plan. Blank or Inherit means the plan decides. Saving a
-            row writes it permanently — a grant that should end belongs in a trial.
+            {tI18nComplete.raw('textbc575e0055ab')}
           </p>
         </div>
         {dirty && (
           <Badge variant="kortix" size="sm">
-            unsaved
+            {tI18nComplete.raw('text9c80e8331a86')}
           </Badge>
         )}
       </div>
 
       <div className="border-border/60 divide-border divide-y rounded-md border">
-        {OVERRIDE_ENTITLEMENT_ROWS.map(({ key, title, description }) => (
+        {overrideEntitlements.map(({ key, title, description }) => (
           <div key={key} className="px-4 py-3">
             <EntitlementRow
               title={title}
@@ -1793,7 +1862,7 @@ function OverridesCard({ account }: { account: AdminAccount }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {OVERRIDE_TRI_STATE_OPTIONS.map((option) => (
+                  {overrideStates.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>
@@ -1806,8 +1875,8 @@ function OverridesCard({ account }: { account: AdminAccount }) {
 
         <div className="px-4 py-3">
           <EntitlementRow
-            title="Max concurrent sessions"
-            description="Session cap for the whole account. Blank inherits the plan cap."
+            title={tI18nComplete.raw('textdae85d16887b')}
+            description={tI18nComplete.raw('textca41e8913ee7')}
             titleSuffix={
               <OverrideExpiryChip expiresAt={overrideExpiresAt(stored, 'maxConcurrentSessions')} />
             }
@@ -1818,9 +1887,9 @@ function OverridesCard({ account }: { account: AdminAccount }) {
               max={MAX_CONCURRENT_SESSIONS_OVERRIDE}
               step={1}
               inputMode="numeric"
-              placeholder="Plan cap"
+              placeholder={tI18nComplete.raw('text197f9370a831')}
               className="h-8 w-[140px] tabular-nums"
-              aria-label="Max concurrent sessions override"
+              aria-label={tI18nComplete.raw('text016e549e6831')}
               value={draft.maxConcurrentSessions}
               disabled={setOverrides.isPending}
               onChange={(e) => setRow('maxConcurrentSessions', e.target.value)}
@@ -1830,8 +1899,8 @@ function OverridesCard({ account }: { account: AdminAccount }) {
 
         <div className="px-4 py-3">
           <EntitlementRow
-            title="Compute rate multiplier"
-            description="0.5 = half-price compute, 0 = free, blank = plan default."
+            title={tI18nComplete.raw('text7349c7d2f496')}
+            description={tI18nComplete.raw('texte077517dd17a')}
             titleSuffix={
               <OverrideExpiryChip expiresAt={overrideExpiresAt(stored, 'computeRateMultiplier')} />
             }
@@ -1844,7 +1913,7 @@ function OverridesCard({ account }: { account: AdminAccount }) {
               inputMode="decimal"
               placeholder="1"
               className="h-8 w-[140px] tabular-nums"
-              aria-label="Compute rate multiplier override"
+              aria-label={tI18nComplete.raw('texta6b6d1454df0')}
               value={draft.computeRateMultiplier}
               disabled={setOverrides.isPending}
               onChange={(e) => setRow('computeRateMultiplier', e.target.value)}
@@ -1852,9 +1921,9 @@ function OverridesCard({ account }: { account: AdminAccount }) {
           </EntitlementRow>
           {effectiveMultiplier !== undefined && (
             <p className="text-muted-foreground mt-2 text-xs">
-              Sandbox compute currently bills at{' '}
-              <span className="text-foreground/80 tabular-nums">{effectiveMultiplier}×</span> list
-              price.
+              {tI18nComplete.raw('text888f1dba5133')}{' '}
+              <span className="text-muted-foreground tabular-nums">{effectiveMultiplier}×</span>{' '}
+              {tI18nComplete.raw('text01b8c5ddf23f')}
             </p>
           )}
         </div>
@@ -1869,7 +1938,7 @@ function OverridesCard({ account }: { account: AdminAccount }) {
           className="gap-1.5"
         >
           {setOverrides.isPending && <Loading className="h-3.5 w-3.5" />}
-          Save overrides
+          {tI18nComplete.raw('textc3238b71962f')}
         </Button>
         {dirty && (
           <Button
@@ -1877,7 +1946,7 @@ function OverridesCard({ account }: { account: AdminAccount }) {
             onClick={() => setDraft(draftFromOverrides(stored))}
             disabled={setOverrides.isPending}
           >
-            Reset
+            {tI18nComplete.raw('textdaee7606b339')}
           </Button>
         )}
       </div>
@@ -1886,6 +1955,8 @@ function OverridesCard({ account }: { account: AdminAccount }) {
 }
 
 function EntitlementsTab({ account }: { account: AdminAccount }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const { trialTiers } = localizedAdminAccountCatalog(tI18nComplete);
   const grantTrial = useAdminGrantTrial();
   const revokeTrial = useAdminRevokeTrial();
   const setManagedModels = useAdminSetManagedModels();
@@ -1929,13 +2000,20 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
         creditGrant: creditGrant.trim() === '' ? undefined : parsedCredit,
         note: note.trim() === '' ? undefined : note.trim(),
       });
-      successToast(isActive ? 'Trial replaced' : 'Trial granted', {
-        description: `${accountLabel} behaves as ${tierKeyLabel(tierKey)} for ${parsedDuration} days.`,
-      });
+      successToast(
+        isActive ? tI18nComplete.raw('textb4c65ea8ef96') : tI18nComplete.raw('text98b6c1f78029'),
+        {
+          description: tI18nComplete('text6db974c8b732', {
+            value0: accountLabel,
+            value1: tierKeyLabel(tierKey),
+            value2: parsedDuration,
+          }),
+        },
+      );
       setNote('');
     } catch (error) {
-      errorToast('Failed to grant trial', {
-        description: error instanceof Error ? error.message : 'Unknown error',
+      errorToast(tI18nComplete.raw('text3744409146e0'), {
+        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
       });
     }
   }
@@ -1943,10 +2021,12 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
   async function handleRevokeTrial() {
     try {
       await revokeTrial.mutateAsync({ accountId: account.accountId });
-      successToast('Trial revoked', { description: `${accountLabel} is back on its billed tier.` });
+      successToast(tI18nComplete.raw('text9e296f576cba'), {
+        description: tI18nComplete('text9e0449fd24b6', { value0: accountLabel }),
+      });
     } catch (error) {
-      errorToast('Failed to revoke trial', {
-        description: error instanceof Error ? error.message : 'Unknown error',
+      errorToast(tI18nComplete.raw('texte67be036c73b'), {
+        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
       });
     } finally {
       setConfirmRevoke(false);
@@ -1956,17 +2036,17 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
   async function handleManagedModels(override: boolean | null) {
     try {
       await setManagedModels.mutateAsync({ accountId: account.accountId, override });
-      successToast('Managed models updated', {
+      successToast(tI18nComplete.raw('textae8891825c78'), {
         description:
           override === null
-            ? 'The effective tier decides again.'
+            ? tI18nComplete.raw('textb8abec2b94c9')
             : override
-              ? 'Managed models forced on.'
-              : 'Restricted to BYOK keys.',
+              ? tI18nComplete.raw('textb97d1327b7b6')
+              : tI18nComplete.raw('textf4c2941f54da'),
       });
     } catch (error) {
-      errorToast('Failed to set managed models', {
-        description: error instanceof Error ? error.message : 'Unknown error',
+      errorToast(tI18nComplete.raw('text59af855b5950'), {
+        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
       });
     }
   }
@@ -1974,10 +2054,12 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
   async function handleEnterpriseDemo(enabled: boolean) {
     try {
       await setEnterpriseDemo.mutateAsync({ accountId: account.accountId, enabled });
-      successToast(enabled ? 'Enterprise demo enabled' : 'Enterprise demo disabled');
+      successToast(
+        enabled ? tI18nComplete.raw('texta2225f18a62a') : tI18nComplete.raw('texta4007c748290'),
+      );
     } catch (error) {
-      errorToast('Failed to set enterprise demo', {
-        description: error instanceof Error ? error.message : 'Unknown error',
+      errorToast(tI18nComplete.raw('textd67566f60104'), {
+        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
       });
     }
   }
@@ -1986,19 +2068,19 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
     try {
       await setEnterpriseEntitled.mutateAsync({ accountId: account.accountId, enabled });
       successToast(
-        enabled ? 'Enterprise contract entitlements on' : 'Enterprise contract entitlements off',
+        enabled ? tI18nComplete.raw('text9bfe30eaa67e') : tI18nComplete.raw('text0d26dc67cdfe'),
       );
     } catch (error) {
-      errorToast('Failed to set enterprise entitlements', {
-        description: error instanceof Error ? error.message : 'Unknown error',
+      errorToast(tI18nComplete.raw('texta1e4e5cf36fd'), {
+        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
       });
     }
   }
 
   const managedModelsChoices: { value: boolean | null; label: string }[] = [
-    { value: null, label: 'Default (tier)' },
-    { value: true, label: 'Force on' },
-    { value: false, label: 'BYOK only' },
+    { value: null, label: tI18nComplete.raw('textb885c730262c') },
+    { value: true, label: tI18nComplete.raw('textbde131e31c9e') },
+    { value: false, label: tI18nComplete.raw('textf4fcd871d62d') },
   ];
 
   return (
@@ -2006,13 +2088,15 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
       {/* Trial — an admin-issued overlay: the account BEHAVES as the trial tier
           until it ends, without touching credit_accounts.tier (Stripe owns
           that). Re-granting overwrites the window: extend = re-grant. */}
-      <div className="border-border/60 bg-card space-y-4 rounded-2xl border p-4">
+      <div className="border-border/60 bg-card space-y-4 rounded-md border p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-foreground text-sm font-medium">Trial</div>
+            <div className="text-foreground text-sm font-medium">
+              {tI18nComplete.raw('text98a66e9745c9')}
+            </div>
             <p className="text-muted-foreground mt-0.5 text-xs">
-              Emulates a paid tier for a fixed window. Billed tier stays{' '}
-              <span className="text-foreground/80">{tierKeyLabel(account.tier)}</span>.
+              {tI18nComplete.raw('text92a15b76467d')}{' '}
+              <span className="text-muted-foreground">{tierKeyLabel(account.tier)}</span>.
             </p>
           </div>
           <Badge variant={trialBadgeVariant(trial?.status ?? null)} size="sm">
@@ -2023,13 +2107,16 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
         {trial && trial.status !== 'none' ? (
           <div className="border-border/60 divide-border grid grid-cols-1 divide-y rounded-md border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
             <div className="px-3 py-2.5">
-              <div className="text-muted-foreground/70 text-xs tracking-wider uppercase">Tier</div>
+              <div className="text-muted-foreground/70 text-xs">
+                {tI18nComplete.raw('textcb9e8664edea')}
+              </div>
               <div className="mt-0.5 text-sm font-medium">
                 {trial.tier ? tierKeyLabel(trial.tier) : '—'}
                 {trial.seats != null && (
                   <span className="text-muted-foreground font-normal">
                     {' '}
-                    · {trial.seats} seat{trial.seats === 1 ? '' : 's'}
+                    · {trial.seats} {tI18nComplete.raw('text5d2c13d6f9fa')}
+                    {trial.seats === 1 ? '' : 's'}
                   </span>
                 )}
               </div>
@@ -2038,8 +2125,8 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
                 and that window can still be in the future — so the countdown is
                 only meaningful while the trial is active. */}
             <div className="px-3 py-2.5">
-              <div className="text-muted-foreground/70 text-xs tracking-wider uppercase">
-                {isActive ? 'Ends' : 'Window ended'}
+              <div className="text-muted-foreground/70 text-xs">
+                {isActive ? 'Ends' : tI18nComplete.raw('text108bff86a0eb')}
               </div>
               <div className="mt-0.5 text-sm font-medium">
                 {isActive ? formatCountdown(trial.endsAt) : formatDateTime(trial.endsAt)}
@@ -2049,15 +2136,15 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
               )}
             </div>
             <div className="px-3 py-2.5">
-              <div className="text-muted-foreground/70 text-xs tracking-wider uppercase">
-                Started
+              <div className="text-muted-foreground/70 text-xs">
+                {tI18nComplete.raw('textecbc89cd37a0')}
               </div>
               <div className="mt-0.5 text-sm font-medium">{formatRelative(trial.startedAt)}</div>
               <div className="text-muted-foreground text-xs">{formatDateTime(trial.startedAt)}</div>
             </div>
           </div>
         ) : (
-          <p className="text-muted-foreground text-xs">No trial has ever been issued.</p>
+          <p className="text-muted-foreground text-xs">{tI18nComplete.raw('text1fd045f22dfd')}</p>
         )}
 
         {trial?.note && (
@@ -2069,19 +2156,21 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
         {/* Grant / replace form */}
         <div className="border-border/60 space-y-3 border-t pt-4">
           <div className="text-foreground text-sm font-medium">
-            {isActive ? 'Replace trial' : 'Grant trial'}
+            {isActive
+              ? tI18nComplete.raw('text57579cf783f3')
+              : tI18nComplete.raw('text8529ff665870')}
           </div>
           <div className="grid gap-2 sm:grid-cols-3">
             <div className="space-y-1">
-              <label className="text-muted-foreground/70 text-xs tracking-wider uppercase">
-                Tier
+              <label className="text-muted-foreground/70 text-xs">
+                {tI18nComplete.raw('textcb9e8664edea')}
               </label>
               <Select value={tierKey} onValueChange={setTierKey}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {TRIAL_TIER_OPTIONS.map((t) => (
+                  {trialTiers.map((t) => (
                     <SelectItem key={t.value} value={t.value}>
                       <span>{t.label}</span>
                       <span className="text-muted-foreground ml-1.5 text-xs">{t.hint}</span>
@@ -2090,12 +2179,12 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
                 </SelectContent>
               </Select>
               <p className="text-muted-foreground text-xs">
-                Model access is the Managed models switch below, not the tier.
+                {tI18nComplete.raw('textf37a3ea11c91')}
               </p>
             </div>
             <div className="space-y-1">
-              <label className="text-muted-foreground/70 text-xs tracking-wider uppercase">
-                Seats
+              <label className="text-muted-foreground/70 text-xs">
+                {tI18nComplete.raw('textf3b81325942e')}
               </label>
               <Input
                 type="number"
@@ -2108,8 +2197,8 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-muted-foreground/70 text-xs tracking-wider uppercase">
-                Credit grant ($)
+              <label className="text-muted-foreground/70 text-xs">
+                {tI18nComplete.raw('text1f1196332022')}
               </label>
               <Input
                 type="number"
@@ -2124,8 +2213,8 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
           </div>
 
           <div className="space-y-1">
-            <label className="text-muted-foreground/70 text-xs tracking-wider uppercase">
-              Duration
+            <label className="text-muted-foreground/70 text-xs">
+              {tI18nComplete.raw('text4fc52a3c4c55')}
             </label>
             <div className="flex flex-wrap items-center gap-1.5">
               {TRIAL_DURATION_PRESETS.map((d) => (
@@ -2147,7 +2236,7 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
                 step={1}
                 value={durationDays}
                 onChange={(e) => setDurationDays(e.target.value)}
-                aria-label="Custom trial duration in days"
+                aria-label={tI18nComplete.raw('textbcd80dd21f3c')}
                 aria-invalid={!durationValid}
                 className="h-7 w-24"
               />
@@ -2157,7 +2246,7 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
           <Input
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="Note (why, who asked, deal context)"
+            placeholder={tI18nComplete.raw('text7147a36979c2')}
             maxLength={2000}
           />
 
@@ -2168,7 +2257,9 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
               className="gap-1.5"
             >
               {grantTrial.isPending && <Loading className="h-3.5 w-3.5" />}
-              {isActive ? 'Replace trial' : 'Grant trial'}
+              {isActive
+                ? tI18nComplete.raw('text57579cf783f3')
+                : tI18nComplete.raw('text8529ff665870')}
             </Button>
             {isActive && (
               <Button
@@ -2176,22 +2267,19 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
                 onClick={() => setConfirmRevoke(true)}
                 disabled={grantTrial.isPending || revokeTrial.isPending}
               >
-                Revoke trial
+                {tI18nComplete.raw('textd85abf75ffac')}
               </Button>
             )}
           </div>
-          <p className="text-muted-foreground text-xs">
-            Credits fund sandbox compute — even a BYOK trial needs wallet balance to run sessions.
-            The free welcome grant is $2; one per-seat month is $25.
-          </p>
+          <p className="text-muted-foreground text-xs">{tI18nComplete.raw('text0a2ea173ab93')}</p>
         </div>
       </div>
 
       {/* Managed models override — tri-state, null restores tier control. */}
-      <div className="border-border/60 bg-card space-y-3 rounded-2xl border p-4">
+      <div className="border-border/60 bg-card space-y-3 rounded-md border p-4">
         <EntitlementRow
-          title="Managed models"
-          description="Force Kortix-credential models on, restrict the account to its own BYOK keys, or leave the decision to the effective tier."
+          title={tI18nComplete.raw('text92cd11d7f50e')}
+          description={tI18nComplete.raw('textb89ec7e4cd95')}
         >
           <div className="flex flex-wrap gap-1.5">
             {managedModelsChoices.map((choice) => (
@@ -2212,29 +2300,29 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
       </div>
 
       {/* Enterprise flags. Demo = evaluation preview; entitled = signed contract. */}
-      <div className="border-border/60 bg-card space-y-4 rounded-2xl border p-4">
+      <div className="border-border/60 bg-card space-y-4 rounded-md border p-4">
         <EntitlementRow
-          title="Enterprise demo"
-          description="Interactive preview of SSO, SCIM, advanced RBAC, and audit logs. Evaluation only — no billing change."
+          title={tI18nComplete.raw('textfdccb896a3a1')}
+          description={tI18nComplete.raw('textc6f417d32fe6')}
         >
           <Switch
             checked={account.demoEnterprise}
             disabled={setEnterpriseDemo.isPending}
             onCheckedChange={handleEnterpriseDemo}
-            aria-label="Toggle enterprise demo"
+            aria-label={tI18nComplete.raw('text8c02ce3010aa')}
           />
         </EntitlementRow>
 
         <div className="border-border/60 border-t pt-4">
           <EntitlementRow
-            title="Enterprise contract entitlements"
-            description="Keeps SSO, SCIM, RBAC, and audit entitled for a signed Enterprise account that is also per-seat billed, so the Stripe reconciliation cannot strip them."
+            title={tI18nComplete.raw('texta7d1ea80d81f')}
+            description={tI18nComplete.raw('text458cde86effb')}
           >
             <Switch
               checked={account.enterpriseEntitled}
               disabled={setEnterpriseEntitled.isPending}
               onCheckedChange={handleEnterpriseEntitled}
-              aria-label="Toggle enterprise contract entitlements"
+              aria-label={tI18nComplete.raw('text33cf107ab219')}
             />
           </EntitlementRow>
         </div>
@@ -2246,15 +2334,17 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
       <OverridesCard account={account} />
 
       {/* Read-only context the operator needs before issuing a trial. */}
-      <div className="border-border/60 bg-card divide-border grid grid-cols-2 divide-x rounded-2xl border text-sm">
+      <div className="border-border/60 bg-card divide-border grid grid-cols-2 divide-x rounded-md border text-sm">
         <div className="flex items-center justify-between gap-3 px-4 py-3">
-          <span className="text-muted-foreground/70 text-xs tracking-wider uppercase">
-            Billing model
+          <span className="text-muted-foreground/70 text-xs">
+            {tI18nComplete.raw('text266240ec402c')}
           </span>
           <span className="text-right font-medium">{account.billingModel || '—'}</span>
         </div>
         <div className="flex items-center justify-between gap-3 px-4 py-3">
-          <span className="text-muted-foreground/70 text-xs tracking-wider uppercase">Seats</span>
+          <span className="text-muted-foreground/70 text-xs">
+            {tI18nComplete.raw('textf3b81325942e')}
+          </span>
           <span className="text-right font-medium">{account.seatCount ?? '—'}</span>
         </div>
       </div>
@@ -2262,21 +2352,19 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
       <ConfirmDialog
         open={confirmRevoke}
         onOpenChange={setConfirmRevoke}
-        title="Revoke trial"
+        title={tI18nComplete.raw('textd85abf75ffac')}
         description={
           <div className="space-y-2 text-sm">
             <p>
-              <span className="font-medium">{accountLabel}</span> drops back to{' '}
+              <span className="font-medium">{accountLabel}</span>{' '}
+              {tI18nComplete.raw('textfd8beb3c3acc')}{' '}
               <span className="text-foreground font-medium">{tierKeyLabel(account.tier)}</span>{' '}
-              immediately.
+              {tI18nComplete.raw('textb94207703902')}
             </p>
-            <p className="text-muted-foreground text-xs">
-              Entitlements, project and session limits, and the managed-models gate all revert on
-              the next request. Credits already granted are not clawed back.
-            </p>
+            <p className="text-muted-foreground text-xs">{tI18nComplete.raw('text05643520119a')}</p>
           </div>
         }
-        confirmLabel="Revoke trial"
+        confirmLabel={tI18nComplete.raw('textd85abf75ffac')}
         onConfirm={handleRevokeTrial}
         isPending={revokeTrial.isPending}
       />
@@ -2293,24 +2381,27 @@ function UsersTab({
   usersQuery: ReturnType<typeof useAdminAccountUsers>;
   accountId: string;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const setMemberRole = useAdminSetMemberRole();
 
   async function handleRoleChange(userId: string, email: string, role: AdminAccountMemberRole) {
     try {
       await setMemberRole.mutateAsync({ accountId, userId, role });
-      successToast('Role updated', { description: `${email} is now ${role}.` });
+      successToast(tI18nComplete.raw('texta172f7fb3563'), {
+        description: tI18nComplete('text359215455ae1', { value0: email, value1: role }),
+      });
     } catch (error) {
-      errorToast('Failed to update role', {
-        description: error instanceof Error ? error.message : 'Unknown error',
+      errorToast(tI18nComplete.raw('text47b31f661d3f'), {
+        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
       });
     }
   }
 
   if (usersQuery.isLoading) {
     return (
-      <div className="border-border/60 bg-card text-muted-foreground flex items-center gap-2 rounded-2xl border px-4 py-6 text-sm">
+      <div className="border-border/60 bg-card text-muted-foreground flex items-center gap-2 rounded-md border px-4 py-6 text-sm">
         <Loading className="h-4 w-4" />
-        {'Loading users…'}
+        {tI18nComplete.raw('texta53ec7ac2a7b')}
       </div>
     );
   }
@@ -2318,11 +2409,11 @@ function UsersTab({
   const users = usersQuery.data?.users ?? [];
   if (users.length === 0) {
     return (
-      <div className="border-border/60 bg-card rounded-2xl border">
+      <div className="border-border/60 bg-card rounded-md border">
         <EmptyState
           icon={IconInbox}
-          title={'No users on this account'}
-          description={'Members will appear here once users are added.'}
+          title={tI18nComplete.raw('text404bfcea3d30')}
+          description={tI18nComplete.raw('text94590e163d12')}
           size="sm"
         />
       </div>
@@ -2330,7 +2421,7 @@ function UsersTab({
   }
 
   return (
-    <div className="border-border/60 bg-card divide-border divide-y rounded-2xl border">
+    <div className="border-border/60 bg-card divide-border divide-y rounded-md border">
       {users.map((user) => {
         const banned = user.banned_until && new Date(user.banned_until) > new Date();
         const confirmed = !!user.email_confirmed_at;
@@ -2340,16 +2431,16 @@ function UsersTab({
               <div className="flex min-w-0 items-center gap-2">
                 <span className="truncate font-medium">{user.email}</span>
                 {confirmed ? (
-                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                  <CheckCircle2 className="text-kortix-green h-3.5 w-3.5 shrink-0" />
                 ) : (
                   <Badge variant="warning" size="sm">
-                    unverified
+                    {tI18nComplete.raw('text97b7e2db799e')}
                   </Badge>
                 )}
                 {banned && (
                   <Badge variant="destructive" size="sm" className="gap-1">
                     <Ban className="h-3 w-3" />
-                    banned
+                    {tI18nComplete.raw('text7b412527489f')}
                   </Badge>
                 )}
               </div>
@@ -2374,20 +2465,26 @@ function UsersTab({
             </div>
             <div className="text-muted-foreground grid grid-cols-2 gap-2 text-xs">
               <div className="truncate">
-                <span className="text-muted-foreground/70">{'Last sign-in:'}</span>
-                <span className="text-foreground/80">
+                <span className="text-muted-foreground/70">
+                  {tI18nComplete.raw('text20c37607a3b4')}
+                </span>
+                <span className="text-muted-foreground">
                   {user.last_sign_in_at ? formatRelative(user.last_sign_in_at) : 'Never'}
                 </span>
               </div>
               <div className="truncate">
-                <span className="text-muted-foreground/70">{'Signed up:'}</span>
-                <span className="text-foreground/80">
+                <span className="text-muted-foreground/70">
+                  {tI18nComplete.raw('textd55e4ce78182')}
+                </span>
+                <span className="text-muted-foreground">
                   {user.signed_up_at ? formatRelative(user.signed_up_at) : '—'}
                 </span>
               </div>
               <div className="truncate">
-                <span className="text-muted-foreground/70">Provider: </span>
-                <span className="text-foreground/80 capitalize">{user.provider || '—'}</span>
+                <span className="text-muted-foreground/70">
+                  {tI18nComplete.raw('text672f1efd8b87')}{' '}
+                </span>
+                <span className="text-muted-foreground capitalize">{user.provider || '—'}</span>
               </div>
               <div className="truncate font-mono text-xs">{user.user_id.slice(0, 8)}…</div>
             </div>
@@ -2403,11 +2500,12 @@ function ProjectsTab({
 }: {
   projectsQuery: ReturnType<typeof useAdminAccountProjects>;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   if (projectsQuery.isLoading) {
     return (
-      <div className="border-border/60 bg-card text-muted-foreground flex items-center gap-2 rounded-2xl border px-4 py-6 text-sm">
+      <div className="border-border/60 bg-card text-muted-foreground flex items-center gap-2 rounded-md border px-4 py-6 text-sm">
         <Loading className="h-4 w-4" />
-        Loading projects…
+        {tI18nComplete.raw('text6970a1ced73d')}
       </div>
     );
   }
@@ -2415,11 +2513,11 @@ function ProjectsTab({
   const projects = projectsQuery.data?.projects ?? [];
   if (projects.length === 0) {
     return (
-      <div className="border-border/60 bg-card rounded-2xl border">
+      <div className="border-border/60 bg-card rounded-md border">
         <EmptyState
           icon={FolderKanban}
-          title="No projects on this account"
-          description="Projects will appear here once the user creates one."
+          title={tI18nComplete.raw('text4b3a077cc3f0')}
+          description={tI18nComplete.raw('textbe60f64bd270')}
           size="sm"
         />
       </div>
@@ -2427,7 +2525,7 @@ function ProjectsTab({
   }
 
   return (
-    <div className="border-border/60 bg-card divide-border divide-y rounded-2xl border">
+    <div className="border-border/60 bg-card divide-border divide-y rounded-md border">
       {projects.map((project) => (
         <a
           key={project.projectId}
@@ -2441,7 +2539,7 @@ function ProjectsTab({
               <span className="truncate font-medium">{project.name}</span>
               {project.activeSessionCount > 0 && (
                 <Badge variant="success" size="sm">
-                  {project.activeSessionCount} active
+                  {project.activeSessionCount} {tI18nComplete.raw('text96879611650f')}
                 </Badge>
               )}
               {project.status && project.status !== 'active' && (
@@ -2454,18 +2552,24 @@ function ProjectsTab({
           </div>
           <div className="text-muted-foreground grid grid-cols-2 gap-2 text-xs">
             <div className="truncate">
-              <span className="text-muted-foreground/70">Sessions: </span>
-              <span className="text-foreground/80">{project.sessionCount}</span>
+              <span className="text-muted-foreground/70">
+                {tI18nComplete.raw('text7bb2d21db6dc')}{' '}
+              </span>
+              <span className="text-muted-foreground">{project.sessionCount}</span>
             </div>
             <div className="truncate">
-              <span className="text-muted-foreground/70">Last activity: </span>
-              <span className="text-foreground/80">
+              <span className="text-muted-foreground/70">
+                {tI18nComplete.raw('textade43e0f021f')}{' '}
+              </span>
+              <span className="text-muted-foreground">
                 {project.lastSessionAt ? formatRelative(project.lastSessionAt) : '—'}
               </span>
             </div>
             <div className="truncate">
-              <span className="text-muted-foreground/70">Updated: </span>
-              <span className="text-foreground/80">{formatRelative(project.updatedAt)}</span>
+              <span className="text-muted-foreground/70">
+                {tI18nComplete.raw('text29d0051ddd19')}{' '}
+              </span>
+              <span className="text-muted-foreground">{formatRelative(project.updatedAt)}</span>
             </div>
             <div className="truncate font-mono text-xs">{project.projectId.slice(0, 8)}…</div>
           </div>
@@ -2489,11 +2593,12 @@ function formatRelative(value: string | null) {
 }
 
 function LedgerTab({ ledgerQuery }: { ledgerQuery: ReturnType<typeof useAdminAccountLedger> }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   if (ledgerQuery.isLoading) {
     return (
-      <div className="border-border/60 bg-card text-muted-foreground flex items-center gap-2 rounded-2xl border px-4 py-6 text-sm">
+      <div className="border-border/60 bg-card text-muted-foreground flex items-center gap-2 rounded-md border px-4 py-6 text-sm">
         <Loading className="h-4 w-4" />
-        {'Loading ledger…'}
+        {tI18nComplete.raw('text2893925796c8')}
       </div>
     );
   }
@@ -2501,11 +2606,11 @@ function LedgerTab({ ledgerQuery }: { ledgerQuery: ReturnType<typeof useAdminAcc
   const entries = ledgerQuery.data?.entries ?? [];
   if (entries.length === 0) {
     return (
-      <div className="border-border/60 bg-card rounded-2xl border">
+      <div className="border-border/60 bg-card rounded-md border">
         <EmptyState
           icon={IconInbox}
-          title={'No ledger entries'}
-          description={'Credit activity will show up here.'}
+          title={tI18nComplete.raw('text1171c854cfa8')}
+          description={tI18nComplete.raw('text866f4db9c935')}
           size="sm"
         />
       </div>
@@ -2523,7 +2628,8 @@ function LedgerTab({ ledgerQuery }: { ledgerQuery: ReturnType<typeof useAdminAcc
 }
 
 function BillingTab({ account }: { account: AdminAccount }) {
-  const actions = billingActionsFor(account);
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const actions = billingActionsFor(account, tI18nComplete);
 
   const summary: Array<[string, React.ReactNode]> = [
     ['Plan', <PlanBadge key="tier" account={account} />],
@@ -2549,16 +2655,16 @@ function BillingTab({ account }: { account: AdminAccount }) {
   ];
 
   const idRows: Array<{ label: string; value: string | null; href: string | null }> = [
-    { label: 'Account ID', value: account.accountId, href: null },
+    { label: tI18nComplete.raw('text919bb4cb2182'), value: account.accountId, href: null },
     {
-      label: 'Stripe subscription',
+      label: tI18nComplete.raw('text53f71e08be88'),
       value: account.stripeSubscriptionId,
       href: account.stripeSubscriptionId?.startsWith('sub_')
         ? stripeUrl('subscription', account.stripeSubscriptionId)
         : null,
     },
     {
-      label: 'Stripe customer',
+      label: tI18nComplete.raw('text8f169be1ff6f'),
       value: account.billingCustomerId,
       href: account.billingCustomerId?.startsWith('cus_')
         ? stripeUrl('customer', account.billingCustomerId)
@@ -2586,31 +2692,27 @@ function BillingTab({ account }: { account: AdminAccount }) {
         </div>
       )}
 
-      <div className="border-border/60 bg-card rounded-2xl border text-sm">
+      <div className="border-border/60 bg-card rounded-md border text-sm">
         <div className="divide-border grid grid-cols-1 divide-y sm:grid-cols-2 sm:divide-x sm:divide-y-0">
           {summary.map(([label, value]) => (
             <div key={label} className="flex items-center justify-between gap-3 px-4 py-3">
-              <span className="text-muted-foreground/70 text-xs tracking-wider uppercase">
-                {label}
-              </span>
+              <span className="text-muted-foreground/70 text-xs">{label}</span>
               <span className="text-right font-medium">{value}</span>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="border-border/60 bg-card divide-border divide-y rounded-2xl border text-sm">
+      <div className="border-border/60 bg-card divide-border divide-y rounded-md border text-sm">
         {idRows.map(({ label, value, href }) => (
           <div
             key={label}
             className="flex flex-col gap-1 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-6"
           >
-            <span className="text-muted-foreground/70 shrink-0 text-xs tracking-wider uppercase sm:w-40">
-              {label}
-            </span>
+            <span className="text-muted-foreground/70 shrink-0 text-xs sm:w-40">{label}</span>
             {value ? (
               <div className="flex min-w-0 flex-1 items-center gap-2">
-                <code className="text-foreground/90 bg-muted/30 min-w-0 flex-1 rounded px-2 py-1 font-mono text-xs break-all">
+                <code className="text-muted-foreground bg-muted/30 min-w-0 flex-1 rounded px-2 py-1 font-mono text-xs break-all">
                   {value}
                 </code>
                 {href && (
@@ -2619,10 +2721,10 @@ function BillingTab({ account }: { account: AdminAccount }) {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="border-border/60 bg-card text-muted-foreground hover:bg-muted/40 hover:text-foreground inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium transition-colors"
-                    title={'Open in Stripe'}
+                    title={tI18nComplete.raw('textd1f9c6739594')}
                   >
                     <ServiceFavicon domain="stripe.com" className="h-3 w-3" />
-                    Open
+                    {tI18nComplete.raw('texted077f3d8125')}
                   </a>
                 )}
               </div>

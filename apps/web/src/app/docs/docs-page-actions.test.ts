@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync } from '@/i18n/test-source';
 import { resolve } from 'node:path';
 
 /**
@@ -99,13 +99,14 @@ describe('docs page actions', () => {
     // form. Swapping it to "Copied" resized the button and shoved the "Open"
     // trigger sideways for two seconds.
     expect(source).toContain('Copy Markdown');
-    expect(source).toContain('>Copy</span>');
+    expect(source).toContain("tI18nComplete.raw('texte21f935f11d7')");
 
     // The word only survives on `aria-label`, lower-cased. A capital-C
     // "Copied" anywhere in this file means the visible label swap is back.
     // (`COPIED_RESET_MS` is all-caps, so it does not trip this.)
     expect(code).not.toContain('Copied');
-    expect(code).toContain("aria-label={copied ? 'Markdown copied' : 'Copy markdown'}");
+    expect(code).toContain("copied ? tI18nComplete.raw('text5f7a2a7a529c')");
+    expect(code).toContain(": tI18nComplete.raw('text7a99a7125c7c')");
   });
 
   /**
@@ -158,8 +159,8 @@ describe('docs page actions', () => {
     expect(source).toContain('flex-wrap');
     expect(source).toContain('sm:hidden');
     expect(source).toContain('hidden sm:inline');
-    expect(source).toContain('>Copy</span>');
-    expect(source).toContain('>Edit</span>');
+    expect(source).toContain("tI18nComplete.raw('texte21f935f11d7')");
+    expect(source).toContain("tI18nComplete.raw('text464c4ffd019e')");
   });
 
   /**

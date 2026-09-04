@@ -2,7 +2,7 @@
 
 import { useFeatureFlag } from '@kortix/sdk/react';
 import { CaretRightIcon, TrayIcon } from '@phosphor-icons/react';
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from '@/i18n/use-translations';
 import Link from 'next/link';
 import { useCallback, useMemo, useState } from 'react';
 
@@ -69,6 +69,7 @@ function useOpenCrController(): CrController {
  * label's `px-2.5` left edge, which a hand-rolled `px-3.5` did not.
  */
 function OpenCrChooser({ crs, onPick }: { crs: ChangeRequest[]; onPick: (id: string) => void }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('sidebar');
   const locale = useLocale();
   return (
@@ -89,7 +90,7 @@ function OpenCrChooser({ crs, onPick }: { crs: ChangeRequest[]; onPick: (id: str
               <span className="text-muted-foreground mt-0.5 flex items-center gap-1.5 text-xs">
                 <span className="shrink-0 tabular-nums">#{cr.number}</span>
                 <span className="text-muted-foreground/40" aria-hidden="true">
-                  &bull;
+                  {tI18nComplete.raw('text3b9453dad42b')}
                 </span>
                 <span className="truncate">{relativeTime(cr.created_at, locale)}</span>
               </span>

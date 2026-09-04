@@ -5,7 +5,7 @@ import { resolvedPlan, useAccountState } from '@/hooks/billing';
 import { isBillingEnabled } from '@/lib/config';
 import { cn } from '@/lib/utils';
 import { useUpgradeDialogStore } from '@/stores/upgrade-dialog-store';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { useCallback } from 'react';
 
 interface SidebarUpgradeButtonProps {

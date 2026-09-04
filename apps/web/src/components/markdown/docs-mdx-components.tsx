@@ -167,8 +167,7 @@ export const docsMdxComponents = {
   // the same rules the client-highlighted app blocks already lean on.
   pre: ({ className, children }: ComponentPropsWithoutRef<'pre'>) => {
     const codeElement = Children.toArray(children).find(isValidElement) as
-      | ReactElement<ComponentPropsWithoutRef<'code'>>
-      | undefined;
+      ReactElement<ComponentPropsWithoutRef<'code'>> | undefined;
     const childClassName = codeElement?.props.className ?? '';
     // `language-*` on the <code> comes from `addLanguageClass` in
     // source.config.ts — rehype-code emits no language anywhere else.

@@ -1,8 +1,9 @@
 import { GRANTABLE_KORTIX_CLI_ACTIONS } from '@kortix/manifest-schema';
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync } from '@/i18n/test-source';
 import { fileURLToPath } from 'node:url';
 
+import { testUiTranslator } from '@/i18n/test-translator';
 import {
   AGENT_MODE_LABEL,
   AGENT_MODES,
@@ -36,7 +37,7 @@ describe('agent environment editor', () => {
   test('loads sandbox templates and exposes the Environment field', () => {
     expect(editorSource).toContain('listProjectSandboxTemplates(projectId)');
     expect(editorSource).toContain('options.set(initial.sandbox, initial.sandbox)');
-    expect(accessFieldsSource).toContain('label="Environment"');
+    expect(accessFieldsSource).toContain("raw('text9e471951a1b4')");
     expect(accessFieldsSource).toContain("set('sandbox'");
     expect(accessFieldsSource).toContain("raw('texte8cb80e5c5cb')");
   });
@@ -121,19 +122,22 @@ describe('stableStringify — the dirty check', () => {
 
 describe('grantSummary — governance grant card labels', () => {
   test('"all" → All / outline', () => {
-    expect(grantSummary('all')).toEqual({ label: 'All', tone: 'outline' });
+    expect(grantSummary('all', testUiTranslator)).toEqual({ label: 'All', tone: 'outline' });
   });
   test('undefined (omitted, deny-by-default) → None / muted', () => {
-    expect(grantSummary(undefined)).toEqual({ label: 'None', tone: 'muted' });
+    expect(grantSummary(undefined, testUiTranslator)).toEqual({ label: 'None', tone: 'muted' });
   });
   test('"none" → None / muted', () => {
-    expect(grantSummary('none')).toEqual({ label: 'None', tone: 'muted' });
+    expect(grantSummary('none', testUiTranslator)).toEqual({ label: 'None', tone: 'muted' });
   });
   test('empty list → None / muted (picked nothing reads as deny, not all)', () => {
-    expect(grantSummary([])).toEqual({ label: 'None', tone: 'muted' });
+    expect(grantSummary([], testUiTranslator)).toEqual({ label: 'None', tone: 'muted' });
   });
   test('a specific list → "<n> picked" / outline', () => {
-    expect(grantSummary(['a', 'b', 'c'])).toEqual({ label: '3 picked', tone: 'outline' });
+    expect(grantSummary(['a', 'b', 'c'], testUiTranslator)).toEqual({
+      label: '3 picked',
+      tone: 'outline',
+    });
   });
 });
 
@@ -168,7 +172,7 @@ describe('mode pickers use the shared component library', () => {
     expect(accessFieldsSource).toContain("raw('texte8cb80e5c5cb')");
     expect(basicsFieldsSource).toContain("raw('texte8cb80e5c5cb')");
     expect(permissionEditorSource).toContain('inheritLabel');
-    expect(permissionEditorSource).toContain('inheritLabel="Inherit"');
+    expect(permissionEditorSource).toContain("raw('text3f72f0385768')");
   });
 });
 
@@ -268,7 +272,7 @@ describe('PERMISSION_KEY_LABEL — plain-word names', () => {
   });
 
   test('the editor renders the label, not only the key', () => {
-    expect(permissionEditorSource).toContain('PERMISSION_KEY_LABEL[permKey]');
+    expect(permissionEditorSource).toContain('keyLabel[permKey] ?? permKey');
   });
 });
 

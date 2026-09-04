@@ -9,7 +9,7 @@
  * Adding an eighth step must never require inventing new chrome.
  */
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { createContext, useContext, useId, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';

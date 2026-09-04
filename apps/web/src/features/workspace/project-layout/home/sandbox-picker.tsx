@@ -6,7 +6,7 @@ import {
   FileCodeIcon as FileCode,
   PackageIcon as Package,
 } from '@phosphor-icons/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 
 import { Badge } from '@/components/ui/badge';
 import {

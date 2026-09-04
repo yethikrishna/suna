@@ -5,7 +5,7 @@ import { readOnboardingParam } from '@/features/workspace/new/onboarding-param';
 import { readSourceParam } from '@/features/workspace/new/source-param';
 import { useSignedOutRedirect } from '@/lib/auth/use-signed-out-redirect';
 import { AnimatePresence, m, useReducedMotion } from 'motion/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 
@@ -118,6 +118,7 @@ const ICON_WIDTH = '2.5rem';
  * top-right, independent of the form below.
  */
 export function NewWorkspacePage() {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('newWorkspace');
   const { user, isLoading: authLoading } = useAuth();
   const searchParams = useSearchParams();
@@ -510,7 +511,7 @@ export function NewWorkspacePage() {
                       href="mailto:support@kortix.ai"
                       className="text-foreground underline underline-offset-2"
                     >
-                      support@kortix.ai
+                      {tI18nComplete.raw('textb18f581a06eb')}
                     </a>{' '}
                     {t('permissions.unknownAccountSuffix')}
                   </p>

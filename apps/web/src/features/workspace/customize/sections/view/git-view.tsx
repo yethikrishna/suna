@@ -44,7 +44,7 @@ import {
   WarningIcon,
 } from '@phosphor-icons/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import Link from 'next/link';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 
@@ -304,6 +304,7 @@ function RepositoryGroup({
   connection: ProjectGitConnection | null | undefined;
   canManage: boolean;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('settings.git');
   const queryClient = useQueryClient();
   const branchesQuery = useQuery({
@@ -350,7 +351,8 @@ function RepositoryGroup({
       queryClient.invalidateQueries({ queryKey: qk.projects.scope() });
       queryClient.invalidateQueries({ queryKey: qk.project.branches(project.project_id) });
     },
-    onError: (error: Error) => errorToast(error.message || t('updateFailed')),
+    onError: (error: Error) =>
+      errorToast(error.message || tI18nComplete('textdd2d120a9ea9')),
   });
 
   const { mutate, isPending } = mutation;
@@ -714,6 +716,7 @@ function ExternallyManagedRepoAccess({
 }
 
 function RepoCollaboratorInvite({ projectId }: { projectId: string }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('settings.git');
   const [username, setUsername] = useState('');
   const [permission, setPermission] = useState<'read' | 'write'>('write');
@@ -722,13 +725,14 @@ function RepoCollaboratorInvite({ projectId }: { projectId: string }) {
     mutationFn: () => inviteRepoCollaborator(projectId, username.trim(), permission),
     onSuccess: (res) => {
       if (res.alreadyCollaborator) {
-        successToast(t('alreadyHasAccess', { username: res.username }));
+        successToast(tI18nComplete('texteed8a3ac1ec6', { username: res.username }));
       } else {
-        successToast(t('inviteSent', { username: res.username }));
+        successToast(tI18nComplete('text1ad2cc6a4099', { username: res.username }));
       }
       setUsername('');
     },
-    onError: (error: Error) => errorToast(error.message || t('inviteFailed')),
+    onError: (error: Error) =>
+      errorToast(error.message || tI18nComplete('textcd2434c323fa')),
   });
 
   const submit = (e: FormEvent) => {

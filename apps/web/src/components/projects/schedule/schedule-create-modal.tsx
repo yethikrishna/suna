@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 /**
  * Creating a trigger — a schedule or a webhook.
  *
@@ -66,11 +66,11 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 
 import {
-  KIND_COPY,
   type SessionMode,
   type TriggerKind,
   describeCadence,
   describeOneOff,
+  localizedKindCopy,
 } from './schedule-copy';
 import {
   type ConditionRow,
@@ -125,7 +125,7 @@ export function ScheduleCreateModal({
 }) {
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const [kind, setKind] = useState<TriggerKind | null>(null);
-  const copy = kind ? KIND_COPY[kind] : null;
+  const copy = kind ? localizedKindCopy(tI18nComplete)[kind] : null;
   const isCron = kind === 'cron';
 
   const [step, setStep] = useState<Step>('type');
@@ -267,13 +267,16 @@ export function ScheduleCreateModal({
       const created = listing.triggers
         .filter((t) => t.type === kind && t.name === name.trim())
         .slice(-1)[0];
-      successToast(isCron ? 'Schedule created' : 'Webhook created', {
-        description: isCron
-          ? runAt
-            ? describeOneOff(runAt)
-            : describeCadence(cron.trim())
-          : 'Copy its address from the panel to finish setup.',
-      });
+      successToast(
+        isCron ? tI18nComplete.raw('text84e98b45ad8b') : tI18nComplete.raw('text20bf63f7b46f'),
+        {
+          description: isCron
+            ? runAt
+              ? describeOneOff(runAt)
+              : describeCadence(cron.trim())
+            : tI18nComplete.raw('text4aded5c6750d'),
+        },
+      );
       if (created) onCreated(created.slug);
     },
     onError: (err) => setError(err instanceof Error ? err.message : 'Could not create it'),
@@ -321,13 +324,13 @@ export function ScheduleCreateModal({
     >
       <ModalContent className="gap-0 overflow-hidden p-0 sm:max-w-lg" modalClassName="lg:max-w-lg">
         <ModalHeader className="pb-1">
-          <ModalTitle>{copy ? copy.createLabel : 'New trigger'}</ModalTitle>
+          <ModalTitle>{copy ? copy.createLabel : tI18nComplete.raw('texta38f4ea67a30')}</ModalTitle>
           <ModalDescription>
             {step === 'type'
-              ? 'Choose how this trigger starts.'
+              ? tI18nComplete.raw('textf60eb7723e40')
               : isCron
-                ? 'Have an agent do something on its own, on a schedule you set.'
-                : 'Let another app start an agent by sending a request.'}
+                ? tI18nComplete.raw('text530f84eed1b8')
+                : tI18nComplete.raw('text8d5ac88c84ff')}
           </ModalDescription>
           <StepIndicator step={step} labels={stepLabels} />
         </ModalHeader>
@@ -337,20 +340,23 @@ export function ScheduleCreateModal({
             <div className="space-y-2">
               <TypeCard
                 icon={TimerIcon}
-                title="Scheduled"
+                title={tI18nComplete.raw('text4724f344c1c0')}
                 description={tI18nComplete.raw('textfd7761663e4f')}
                 onClick={() => chooseKind('cron')}
               />
               <TypeCard
                 icon={WebhooksLogoIcon}
-                title="Webhook"
+                title={tI18nComplete.raw('text4814f62c108d')}
                 description={tI18nComplete.raw('textf1b28a589920')}
                 onClick={() => chooseKind('webhook')}
               />
             </div>
           ) : step === 'what' && copy ? (
             <>
-              <Field label="Name" hint={`Shown in your list of ${copy.noun}s.`}>
+              <Field
+                label={tI18nComplete.raw('textdcd1d5223f73')}
+                hint={`Shown in your list of ${copy.noun}s.`}
+              >
                 <Input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -360,7 +366,10 @@ export function ScheduleCreateModal({
                 />
               </Field>
 
-              <Field label="Instruction" hint={tI18nComplete.raw('text03956d4b33dc')}>
+              <Field
+                label={tI18nComplete.raw('text112f3ccb1b36')}
+                hint={tI18nComplete.raw('text03956d4b33dc')}
+              >
                 <Textarea
                   value={instruction}
                   onChange={(e) => setInstruction(e.target.value)}
@@ -370,7 +379,10 @@ export function ScheduleCreateModal({
                 />
               </Field>
 
-              <Field label="Agent" hint={tI18nComplete.raw('text1b7bdab96532')}>
+              <Field
+                label={tI18nComplete.raw('text11b39c93777e')}
+                hint={tI18nComplete.raw('text1b7bdab96532')}
+              >
                 {/* Same shape as the detail sheet: a full-width rounded-md
                     panel, not the chat composer pill these selectors ship
                     with. The control must not look different depending on
@@ -384,7 +396,10 @@ export function ScheduleCreateModal({
                 </div>
               </Field>
 
-              <Field label="Model" hint={tI18nComplete.raw('text0593f4f7c4ed')}>
+              <Field
+                label={tI18nComplete.raw('text5e2c614c23f0')}
+                hint={tI18nComplete.raw('text0593f4f7c4ed')}
+              >
                 <div className="bg-popover flex w-full items-center rounded-md border px-2 py-1.5">
                   <ModelSelector
                     models={models}
@@ -481,18 +496,18 @@ export function ScheduleCreateModal({
                         onChange={setSessionAccess}
                         showHeading={false}
                         copy={{
-                          heading: 'Who can access sessions created by this trigger',
+                          heading: tI18nComplete.raw('textefcc5a598260'),
                           private: {
-                            label: 'Trigger agent and project Managers',
-                            desc: 'Project Managers can always open trigger-created sessions.',
+                            label: tI18nComplete.raw('text56536365c70b'),
+                            desc: tI18nComplete.raw('textc296b293902b'),
                           },
                           members: {
-                            label: 'Selected teammates',
-                            desc: 'Choose additional members and groups. Project Managers always have access.',
+                            label: tI18nComplete.raw('text1999ea7700a7'),
+                            desc: tI18nComplete.raw('text96f78a1908b4'),
                           },
                           project: {
-                            label: 'Whole project',
-                            desc: 'Every project member can open these sessions.',
+                            label: tI18nComplete.raw('text28ff734e9722'),
+                            desc: tI18nComplete.raw('text655d15facaf2'),
                           },
                         }}
                       />
@@ -525,8 +540,8 @@ export function ScheduleCreateModal({
                       label={tI18nComplete.raw('text7396f100afdf')}
                       hint={
                         isCron
-                          ? "Built from the name if you leave this blank. It can't be changed later."
-                          : "Used at the end of the web address. Built from the name if you leave this blank, and it can't be changed later."
+                          ? tI18nComplete.raw('textfb2536db879a')
+                          : tI18nComplete.raw('text9f2198f23b84')
                       }
                     >
                       <Input
@@ -658,11 +673,15 @@ function TypeCard({
 }
 
 function StepIndicator({ step, labels }: { step: Step; labels: Record<Step, string> }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const order: Step[] = ['type', 'what', 'how'];
   return (
     <div
       className="flex items-center gap-2 pt-3"
-      aria-label={`Step ${order.indexOf(step) + 1} of ${order.length}`}
+      aria-label={tI18nComplete('texteb0fea7e437e', {
+        value0: order.indexOf(step) + 1,
+        value1: order.length,
+      })}
     >
       {order.map((id, index) => {
         const current = step === id;

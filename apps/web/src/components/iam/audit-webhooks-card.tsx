@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 // Audit-webhook management on the Settings tab. Lets admins ship every
 // audit event to a customer-controlled HTTP endpoint (Splunk, Datadog,
 // internal SIEM). The secret is shown EXACTLY ONCE at creation so it can
@@ -80,18 +80,18 @@ export function AuditWebhooksCard({ accountId, canManage }: AuditWebhooksCardPro
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['audit-webhooks', accountId] });
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to update webhook'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('text42e45c4f8d15')),
     onSettled: () => setTogglingId(null),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteAuditWebhook(accountId, id),
     onSuccess: () => {
-      successToast('Webhook removed');
+      successToast(tI18nComplete.raw('text2f6a48c637a9'));
       queryClient.invalidateQueries({ queryKey: ['audit-webhooks', accountId] });
       setDeleteTarget(null);
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to delete webhook'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('text25cb42517890')),
   });
 
   const hooks = hooksQuery.data ?? [];
@@ -177,7 +177,7 @@ export function AuditWebhooksCard({ accountId, canManage }: AuditWebhooksCardPro
                     },
                   },
                   {
-                    label: 'Delete webhook',
+                    label: tI18nComplete.raw('text60f85e57e4a7'),
                     icon: <Trash2 className="size-3.5 shrink-0" />,
                     variant: 'destructive',
                     separated: true,
@@ -200,7 +200,7 @@ export function AuditWebhooksCard({ accountId, canManage }: AuditWebhooksCardPro
                         variant="outline"
                         size="sm"
                         className="font-mono"
-                        title={`Only events with action starting "${h.action_prefix}"`}
+                        title={tI18nComplete('text108d15248c17', { value0: h.action_prefix })}
                       >
                         {h.action_prefix}
                       </Badge>
@@ -221,7 +221,7 @@ export function AuditWebhooksCard({ accountId, canManage }: AuditWebhooksCardPro
                     : []),
                 ]}
                 kebab={kebab}
-                kebabLabel={`Actions for ${h.name}`}
+                kebabLabel={tI18nComplete('text33da220b1a34', { value0: h.name })}
                 pending={togglingId === h.webhook_id}
               />
             );
@@ -242,9 +242,7 @@ export function AuditWebhooksCard({ accountId, canManage }: AuditWebhooksCardPro
         }}
         title={tI18nComplete.raw('text60f85e57e4a7')}
         description={
-          deleteTarget
-            ? `Stop sending audit events to "${deleteTarget.name}"? Existing receivers must be reconfigured if you re-create it.`
-            : ''
+          deleteTarget ? tI18nComplete('texted0ac6320b04', { value0: deleteTarget.name }) : ''
         }
         confirmLabel={tI18nComplete.raw('text60f85e57e4a7')}
         confirmVariant="destructive"
@@ -300,13 +298,15 @@ function CreateAuditWebhookDialog({
       // after silently dropping real audit events.
       if (hook.test && !hook.test.ok) {
         warningToast(
-          `Webhook saved, but the test delivery failed${hook.test.error ? `: ${hook.test.error}` : ''}. Check the URL — events won't arrive until it succeeds.`,
+          tI18nComplete('text2f1d28728a8b', {
+            value0: hook.test.error ? `: ${hook.test.error}` : '',
+          }),
         );
       } else if (hook.test?.ok) {
-        successToast('Webhook created — test event delivered successfully.');
+        successToast(tI18nComplete.raw('text13636ed4dbfc'));
       }
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to create webhook'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('text1e1df0872c2f')),
   });
 
   function submit(e: FormEvent<HTMLFormElement>) {
@@ -320,11 +320,15 @@ function CreateAuditWebhookDialog({
     <Modal open={open} onOpenChange={close}>
       <ModalContent className="lg:max-w-lg">
         <ModalHeader>
-          <ModalTitle>{created ? 'Webhook created' : 'New audit webhook'}</ModalTitle>
+          <ModalTitle>
+            {created
+              ? tI18nComplete.raw('text20bf63f7b46f')
+              : tI18nComplete.raw('texta2578b541745')}
+          </ModalTitle>
           <ModalDescription>
             {created
-              ? 'Save the signing secret now. You will not see it again — to rotate, delete this webhook and create a new one.'
-              : 'Each event is POSTed to the URL with an X-Kortix-Signature header (HMAC-SHA256 of the body using the secret).'}
+              ? tI18nComplete.raw('text17e516073450')
+              : tI18nComplete.raw('text3028b5ac8e62')}
           </ModalDescription>
         </ModalHeader>
 
@@ -405,7 +409,7 @@ function CreateAuditWebhookDialog({
                   id="hook-prefix"
                   value={actionPrefix}
                   onChange={(e) => setActionPrefix(e.target.value)}
-                  placeholder="iam."
+                  placeholder={tI18nComplete.raw('text0d60b61e0226')}
                   maxLength={128}
                   disabled={mutation.isPending}
                   variant="popover"
@@ -413,13 +417,16 @@ function CreateAuditWebhookDialog({
                 <div className="flex flex-wrap gap-1.5">
                   {(
                     [
-                      { label: 'All events', prefix: '' },
-                      { label: 'IAM only', prefix: 'iam.' },
-                      { label: 'Auth lifecycle', prefix: 'auth.' },
-                      { label: 'Failed logins', prefix: 'auth.login.fail' },
-                      { label: 'Policies only', prefix: 'iam.policy' },
-                      { label: 'Super-admin grants', prefix: 'iam.member.super_admin' },
-                      { label: 'Approvals', prefix: 'iam.approval' },
+                      { label: tI18nComplete.raw('text20b8487b3804'), prefix: '' },
+                      { label: tI18nComplete.raw('text7277eaf46f84'), prefix: 'iam.' },
+                      { label: tI18nComplete.raw('text7a73099df9bd'), prefix: 'auth.' },
+                      { label: tI18nComplete.raw('textc4b167af6ca0'), prefix: 'auth.login.fail' },
+                      { label: tI18nComplete.raw('text86419686092b'), prefix: 'iam.policy' },
+                      {
+                        label: tI18nComplete.raw('text012ca83708fd'),
+                        prefix: 'iam.member.super_admin',
+                      },
+                      { label: tI18nComplete.raw('text2bfc3471571e'), prefix: 'iam.approval' },
                     ] as const
                   ).map((preset) => (
                     <button

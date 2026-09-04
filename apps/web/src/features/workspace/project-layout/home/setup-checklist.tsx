@@ -3,7 +3,7 @@
 import { CheckCircleIcon, CircleIcon, XIcon } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, m, useReducedMotion } from 'motion/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { useCallback, useEffect, useSyncExternalStore, type ReactNode } from 'react';
 
 import { HoverPrefetchLink } from '@/components/common/hover-prefetch-link';

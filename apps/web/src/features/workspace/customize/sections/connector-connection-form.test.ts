@@ -1,14 +1,14 @@
-import { describe, expect, test } from 'bun:test';
 import { qk } from '@kortix/sdk/react';
+import { describe, expect, test } from 'bun:test';
 
 import {
-  connectionOwnerTypeForStrategy,
   buildEasyConnectConnectorDraft,
   buildEmailConnectorConnectionSlug,
-  connectorConnectionQueryKeys,
+  connectionOwnerTypeForStrategy,
   connectorAuthorizationStrategyForProvider,
   connectorAuthorizationStrategyIsEditable,
   connectorAuthorizationUpdateIsPending,
+  connectorConnectionQueryKeys,
   connectorConnectionSlugAfterNameChange,
   connectorSetupStatus,
   connectorSyncErrorForSlug,
@@ -173,9 +173,9 @@ describe('connector setup status', () => {
     expect(connectorSetupStatus({ ...connector, status: 'needs_auth' })).toBe('needs_setup');
     // Even with a credential present it is NOT connected — the credential is
     // not the thing that is missing.
-    expect(
-      connectorSetupStatus({ ...connector, status: 'needs_auth', secretSet: true }),
-    ).toBe('needs_setup');
+    expect(connectorSetupStatus({ ...connector, status: 'needs_auth', secretSet: true })).toBe(
+      'needs_setup',
+    );
   });
 
   test('error still outranks needs_auth', () => {

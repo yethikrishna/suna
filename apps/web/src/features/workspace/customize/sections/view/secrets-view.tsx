@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 
 import {
   AsteriskIcon as Asterisk,
@@ -272,7 +272,7 @@ export function SecretsView({ projectId }: { projectId: string }) {
 
   return (
     <CapabilityPageShell
-      title="Secrets"
+      title={tHardcodedUi.raw('i18nComplete.textd8707d411d99')}
       /* "the real value" is exact, not hedged: an enforced secret DOES put an
          env var in the sandbox — an opaque handle under the same key
          (`apps/api/src/projects/secrets.ts`
@@ -341,7 +341,10 @@ export function SecretsView({ projectId }: { projectId: string }) {
             title={tHardcodedUi.raw(
               'appProjectsIdCustomizeSecretsPage.line773JsxAttrTitleFailedToLoadSecrets',
             )}
-            description={(secretsQuery.error as Error)?.message ?? 'Failed to load secrets'}
+            description={
+              (secretsQuery.error as Error)?.message ??
+              tHardcodedUi.raw('i18nComplete.text398e53499fed')
+            }
             action={
               <Button variant="outline" size="sm" onClick={() => secretsQuery.refetch()}>
                 {tHardcodedUi.raw('i18nComplete.text942087cc2d41')}
@@ -354,7 +357,10 @@ export function SecretsView({ projectId }: { projectId: string }) {
               <InfoBanner
                 tone="warning"
                 icon={<DangerTriangleSolid weight="fill" />}
-                title={`${missingRequired.length} required ${missingRequired.length === 1 ? 'secret' : 'secrets'} not set`}
+                title={tI18nHardcoded('i18nComplete.text10d33709a797', {
+                  value0: missingRequired.length,
+                  value1: missingRequired.length === 1 ? 'secret' : 'secrets',
+                })}
               >
                 {tHardcodedUi.raw('i18nComplete.textc18dc13ca821')}
               </InfoBanner>
@@ -440,18 +446,25 @@ export function SecretsView({ projectId }: { projectId: string }) {
         }}
         title={tHardcodedUi.raw('i18nComplete.text1a48c8c83043')}
         description={
-          deleteRow ? `Delete ${deleteRow.identifier}? The stored value can't be recovered.` : ''
+          deleteRow
+            ? tI18nHardcoded('i18nComplete.text05b1f0cd964e', {
+                value0: deleteRow.identifier,
+              })
+            : ''
         }
-        confirmLabel="Delete"
+        confirmLabel={tHardcodedUi.raw('i18nComplete.texte2d0a54968ea')}
         confirmVariant="destructive"
         onConfirm={() => {
           if (!deleteRow) return;
           removeShared.mutate(deleteRow.identifier, {
             onSuccess: () => {
               setDeleteRow(null);
-              successToast('Secret deleted');
+              successToast(tHardcodedUi.raw('i18nComplete.textb2c5bc52374a'));
             },
-            onError: (e) => errorToast(e instanceof Error ? e.message : 'Could not delete secret'),
+            onError: (e) =>
+              errorToast(
+                e instanceof Error ? e.message : tHardcodedUi.raw('i18nComplete.text9e55b28c22d0'),
+              ),
           });
         }}
         isPending={removeShared.isPending}
@@ -493,7 +506,7 @@ function SecretsAccessExplainer({ showEnforced }: { showEnforced: boolean }) {
       </CollapsibleTrigger>
       <CollapsibleContent>
         <dl className="border-border bg-sidebar mt-2 flex flex-col gap-2.5 rounded-md border p-3">
-          {secretDeliveryLegend(showEnforced).map((mode) => (
+          {secretDeliveryLegend(showEnforced, tI18nComplete).map((mode) => (
             <div key={mode.key} className="flex flex-col gap-1 sm:flex-row sm:gap-3">
               <dt className="shrink-0 sm:w-44">
                 <Badge variant={mode.tone} size="sm">
@@ -522,7 +535,9 @@ function SecretsAccessExplainer({ showEnforced }: { showEnforced: boolean }) {
               show a badge with no matching option, and that reads as a bug
               unless the page says who set it. */}
           <p className="text-muted-foreground border-border mt-0.5 border-t pt-2.5 text-xs text-pretty">
-            {showEnforced ? 'The first values' : 'The first two'}{' '}
+            {showEnforced
+              ? tI18nComplete.raw('text8aa824e472ff')
+              : tI18nComplete.raw('texte5a718af362a')}{' '}
             {tI18nComplete.raw('texte1673f438808')}
             {showEnforced ? (
               <>
@@ -675,13 +690,16 @@ function SecretMarks({ row }: { row: SecretRow }) {
         </Hint>
       ) : null}
       {row.requirement === 'required' ? (
-        <Hint label={row.configured ? 'Required' : 'Required — not set'} side="top">
+        <Hint
+          label={row.configured ? 'Required' : tI18nComplete.raw('text85f09652bb1d')}
+          side="top"
+        >
           <Asterisk
             className={cn(
               'size-3.5 shrink-0',
               row.configured ? 'text-muted-foreground' : 'text-kortix-orange',
             )}
-            aria-label={row.configured ? 'Required' : 'Required, not set'}
+            aria-label={row.configured ? 'Required' : tI18nComplete.raw('textf0335c9d1910')}
           />
         </Hint>
       ) : null}
@@ -705,9 +723,13 @@ function SecretTableRow({
   onDelete: () => void;
 }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const canManageShared = canManage && !row.system;
   const distinctKey = row.identifier !== row.key;
-  const delivery = secretDeliveryPresentation(row.strategy, row.consumer, { llmGatewayEnabled });
+  const delivery = secretDeliveryPresentation(row.strategy, row.consumer, {
+    llmGatewayEnabled,
+    tI18nComplete,
+  });
 
   return (
     <TableRow
@@ -769,7 +791,9 @@ function SecretTableRow({
             <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuItem onClick={onEdit}>
                 <PencilSimpleIcon className="size-3.5 shrink-0" />
-                {row.configured ? 'Edit secret' : 'Set value'}
+                {row.configured
+                  ? tI18nHardcoded.raw('i18nComplete.textb5068d24eb4f')
+                  : tI18nHardcoded.raw('i18nComplete.text58bf3410b028')}
               </DropdownMenuItem>
               {row.configured && (
                 <DropdownMenuItem onClick={onDelete}>
@@ -1012,11 +1036,11 @@ function SecretDialog({
       }
       // The write can land while the running sandboxes refuse the new policy.
       // A plain success toast would hide that split outcome.
-      const syncWarning = secretDeliverySyncWarning(plan.finalIdentifier, result);
+      const syncWarning = secretDeliverySyncWarning(plan.finalIdentifier, result, tI18nComplete);
       if (syncWarning) {
         warningToast(syncWarning.message, { description: syncWarning.description });
       } else {
-        successToast(`Saved ${plan.finalIdentifier}`);
+        successToast(tI18nComplete('textaf6b8a4894f0', { value0: plan.finalIdentifier }));
       }
       resetForm();
       onSaved();
@@ -1029,7 +1053,7 @@ function SecretDialog({
         context?.previous,
       );
       onOpenChange(true);
-      errorToast(err.message || 'Failed to save secret');
+      errorToast(err.message || tI18nComplete.raw('textfc85de2d5feb'));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: qk.project.secrets(projectId) });
@@ -1049,7 +1073,7 @@ function SecretDialog({
     mutationFn: (agent: string) => grantSecretToAgent(projectId, grantIdentifier, agent),
     onSuccess: (result) => {
       setGrantConfirmOpen(false);
-      const outcome = agentGrantOutcome(result);
+      const outcome = agentGrantOutcome(result, tI18nComplete);
       const options = outcome.description ? { description: outcome.description } : undefined;
       if (outcome.tone === 'info') infoToast(outcome.message, options);
       else successToast(outcome.message, options);
@@ -1076,7 +1100,7 @@ function SecretDialog({
     try {
       save.mutate(prepareSavePlan());
     } catch (error) {
-      errorToast(error instanceof Error ? error.message : 'Failed to save secret');
+      errorToast(error instanceof Error ? error.message : tI18nComplete.raw('textfc85de2d5feb'));
     }
   }
 
@@ -1087,30 +1111,35 @@ function SecretDialog({
       : `Set ${row.identifier}`;
   const selectedDelivery = secretDeliveryPresentation(strategy, nextConsumer, {
     llmGatewayEnabled,
+    tI18nComplete,
   });
   const bindingIdentifier = (row?.identifier ?? identifier).trim() || key.trim().toUpperCase();
-  const connectorOptions = connectorBindingOptions(connectors, bindingIdentifier);
+  const connectorOptions = connectorBindingOptions(connectors, bindingIdentifier, tI18nComplete);
   // Offer "Enforce at the network" only when the experimental flag is on, or
   // when this row is already enforced (so a legacy secret stays readable and
   // can be moved off enforcement even after the flag is switched back off).
   const rowIsEnforced = row ? secretExposure(row.strategy, row.consumer) === 'enforced' : false;
-  const exposureOptions = secretExposureOptions(egressEnabled || rowIsEnforced);
-  const echoNotice = enforcedEchoNotice(hosts);
-  const legacyDetail = legacyInjectionDetail(legacyInject ? currentPolicy : null);
+  const exposureOptions = secretExposureOptions(egressEnabled || rowIsEnforced, tI18nComplete);
+  const echoNotice = enforcedEchoNotice(hosts, tI18nComplete);
+  const legacyDetail = legacyInjectionDetail(legacyInject ? currentPolicy : null, tI18nComplete);
   // The dialog keeps the row it opened with, so a completed grant clears its own
   // warning — the refetch only reaches the table behind it.
   const grantNotice =
     row &&
     shouldWarnMissingAgentGrant(row.deliveryBlockedReason, strategy, nextConsumer) &&
     !grant.isSuccess
-      ? missingAgentGrantNotice(row.identifier)
+      ? missingAgentGrantNotice(row.identifier, tI18nComplete)
       : null;
   const grantManifest = agentGrantSnippet(
     grantIdentifier,
     selectedGrantAgent,
     selectedGrantCandidate?.currentSecrets,
   );
-  const grantConfirmation = agentGrantConfirmation(grantIdentifier, selectedGrantAgent ?? '');
+  const grantConfirmation = agentGrantConfirmation(
+    grantIdentifier,
+    selectedGrantAgent ?? '',
+    tI18nComplete,
+  );
   const selectedGrantHint = selectedGrantCandidate
     ? agentGrantCandidateHint(selectedGrantCandidate)
     : null;
@@ -1157,7 +1186,7 @@ function SecretDialog({
                     name="kortix-secret-identifier"
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
-                    placeholder={key ? key : 'e.g. GMAPS-primary'}
+                    placeholder={key ? key : tI18nComplete.raw('text2f3263f5c933')}
                     className="bg-sidebar disabled:bg-sidebar h-8 rounded-none border-none px-0 font-mono"
                     autoFocus={!isEdit}
                     autoComplete="off"
@@ -1220,11 +1249,18 @@ function SecretDialog({
               {!isEdit && classification.modelProvider && exposure === 'enforced' && (
                 <InfoBanner
                   tone="neutral"
-                  title={`Recognized: ${classification.modelProvider.label} key`}
+                  title={tI18nComplete('text04b204d5535c', {
+                    value0: classification.modelProvider.label,
+                  })}
                 >
                   {classification.hosts.length > 0
-                    ? `The approved host is prefilled with ${classification.hosts[0]}, so agent code can call ${classification.modelProvider.label} directly without ever holding the key.`
-                    : `Add ${classification.modelProvider.label}'s API host below so agent code can call it directly without ever holding the key.`}{' '}
+                    ? tI18nComplete('texta1827e131521', {
+                        value0: classification.hosts[0],
+                        value1: classification.modelProvider.label,
+                      })
+                    : tI18nComplete('texta8415274068a', {
+                        value0: classification.modelProvider.label,
+                      })}{' '}
                   {tI18nComplete.raw('textf0e27f45cf6a')} {classification.modelProvider.label}{' '}
                   {tI18nComplete.raw('text137f1b68d2c8')}
                 </InfoBanner>
@@ -1232,7 +1268,7 @@ function SecretDialog({
 
               <Field>
                 <FieldLabel htmlFor="secret-dialog-delivery">
-                  {usageAssigned ? 'Access' : 'Can your code read this value?'}
+                  {usageAssigned ? 'Access' : tI18nComplete.raw('text696c6794e048')}
                 </FieldLabel>
                 {usageAssigned ? (
                   /* Read-only, because another flow assigned it. Same treatment
@@ -1391,7 +1427,7 @@ function SecretDialog({
                       id="secret-dialog-hosts"
                       value={hosts}
                       onChange={(event) => setEditedHosts(event.target.value)}
-                      placeholder={'api.example.com\nuploads.example.com'}
+                      placeholder={tI18nComplete.raw('text07de8e6e567f')}
                       minHeight={56}
                       maxHeight={112}
                       variant="outline"

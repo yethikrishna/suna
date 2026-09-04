@@ -1,5 +1,6 @@
 'use client';
 
+import { useLocalizedUiCatalog } from '@/i18n/use-localized-ui-catalog';
 import {
   AlarmIcon as AlarmClock,
   ArrowRightIcon,
@@ -13,6 +14,7 @@ import {
   type Icon,
 } from '@phosphor-icons/react';
 import { m, useReducedMotion } from 'motion/react';
+import { useTranslations } from '@/i18n/use-translations';
 import Link from 'next/link';
 
 import { Skeleton } from '@/components/ui/skeleton';
@@ -124,6 +126,8 @@ function DotGrid() {
 }
 
 export function CustomizeIndexPage({ projectId }: { projectId: string }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const cardCopy = useLocalizedUiCatalog(CARD_COPY);
   const prefersReducedMotion = useReducedMotion();
 
   // The SAME probe list and the SAME rule the tab bar applies
@@ -137,10 +141,13 @@ export function CustomizeIndexPage({ projectId }: { projectId: string }) {
   const reviewEnabled = useFeatureFlag(projectId, 'review_center').enabled;
   const visible = visibleCapabilityTabs(caps, { reviewEnabled });
 
-  const cards = CAPABILITY_TABS.filter((tab) => visible.includes(tab)).map((tab) => ({
-    tab,
-    ...CARD_COPY[tab.key],
-  }));
+  const localizedTabs = useLocalizedUiCatalog(CAPABILITY_TABS);
+  const cards = localizedTabs
+    .filter((tab) => visible.some((item) => item.key === tab.key))
+    .map((tab) => ({
+      tab,
+      ...cardCopy[tab.key],
+    }));
 
   const loading = CAPABILITY_TAB_GATE_ACTIONS.some((a) => caps[a]?.isLoading);
 
@@ -150,13 +157,13 @@ export function CustomizeIndexPage({ projectId }: { projectId: string }) {
       <div className="relative mx-auto w-full max-w-3xl px-4 py-14 pb-24 lg:py-20">
         <header className="space-y-2">
           <h1 className="text-foreground text-3xl font-medium tracking-tight text-balance">
-            Customize
+            {tI18nComplete.raw('textc5276e27afba')}
           </h1>
           {/* The marketing site's own sentence shape: the claim in
               `text-foreground`, the qualifier that follows it muted, one line. */}
           <p className="text-muted-foreground max-w-md text-sm text-pretty">
-            <span className="text-foreground">Every way to configure this project.</span> Pick where
-            you want to start.
+            <span className="text-foreground">{tI18nComplete.raw('text4a1be26b9eb7')}</span>{' '}
+            {tI18nComplete.raw('text8fbf6e7011a3')}
           </p>
         </header>
 
@@ -181,11 +188,14 @@ export function CustomizeIndexPage({ projectId }: { projectId: string }) {
             <EmptyState
               icon={Lock}
               size="sm"
-              title="You don't have access to this project's configuration"
-              description="Ask a project manager if you need to change how this project is set up."
+              title={tI18nComplete.raw('text566648319b0b')}
+              description={tI18nComplete.raw('text7b8fd4e94dee')}
             />
           ) : (
-            <nav aria-label="Customize" className="border-border/60 border-y">
+            <nav
+              aria-label={tI18nComplete.raw('textc5276e27afba')}
+              className="border-border/60 border-y"
+            >
               {cards.map(({ tab, icon: CardIcon, description }, i) => (
                 <m.div
                   key={tab.key}

@@ -2,7 +2,7 @@
 
 import { EnvelopeIcon, PhoneIcon, XIcon } from '@phosphor-icons/react';
 import { m, useReducedMotion } from 'motion/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -70,7 +70,7 @@ export function PersonalOnboardingWelcome({ projectId }: { projectId?: string } 
   const copyEmail = async () => {
     try {
       await navigator.clipboard.writeText(MARKO_EMAIL);
-      successToast(t('emailCopied'));
+      successToast(tI18nHardcoded.raw('i18nComplete.text982aa9d2037b'));
     } catch {
       window.location.href = `mailto:${MARKO_EMAIL}`;
     }
@@ -105,7 +105,7 @@ export function PersonalOnboardingWelcome({ projectId }: { projectId?: string } 
               <div className="bg-muted size-10 shrink-0 overflow-hidden rounded-md">
                 <Image
                   src="/marko.png"
-                  alt="Marko Kraemer"
+                  alt={tI18nHardcoded.raw('i18nComplete.text2219a1d40514')}
                   width={80}
                   height={80}
                   className="size-full object-cover outline-1 outline-black/10 dark:outline-white/10"
@@ -174,7 +174,7 @@ export function PersonalOnboardingWelcome({ projectId }: { projectId?: string } 
                 <Button asChild size="sm" variant="outline" className="w-full active:scale-[0.96]">
                   <Link href={`https://wa.me/${MARKO_WHATSAPP}`} target="_blank" rel="noreferrer">
                     <WhatsApp className="size-3.5" />
-                    WhatsApp
+                    {tI18nHardcoded.raw('i18nComplete.text6a40edf1fc87')}
                   </Link>
                 </Button>
                 <div className="min-w-0">

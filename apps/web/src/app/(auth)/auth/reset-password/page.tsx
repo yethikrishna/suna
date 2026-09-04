@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 
 import { CheckCircleIcon as CheckCircle2 } from '@phosphor-icons/react';
 import Link from 'next/link';

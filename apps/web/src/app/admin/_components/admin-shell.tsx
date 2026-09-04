@@ -1,7 +1,7 @@
 'use client';
 
-
 import { ShieldCheckIcon as ShieldCheck } from '@phosphor-icons/react';
+import { useTranslations } from '@/i18n/use-translations';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -10,8 +10,8 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/s
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAdminRole } from '@/hooks/admin/use-admin-role';
 
-import { AdminSidebar } from './admin-sidebar';
 import { PROJECT_LANDING_PATH } from '@/lib/onboarding/landing-destination';
+import { AdminSidebar } from './admin-sidebar';
 
 // Only routes that exist under app/admin/*. (Analytics lands with the
 // activity-dashboard branch and re-adds its entry there.)
@@ -31,6 +31,7 @@ export function AdminShell({
   children: React.ReactNode;
   initialOpen: boolean;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const { data: adminRole, isLoading } = useAdminRole();
   const pathname = usePathname();
   const label =
@@ -54,16 +55,16 @@ export function AdminShell({
           </div>
           <div className="space-y-1">
             <h1 className="text-lg font-semibold tracking-tight">
-              {'Admin access required'}
+              {tI18nComplete.raw('text812fc8371083')}
             </h1>
-            <p className="text-muted-foreground text-sm">
-              {'Your account doesn\'t have admin permissions. Return to the app and contact a workspace admin if this looks wrong.'}
-            </p>
+            <p className="text-muted-foreground text-sm">{tI18nComplete.raw('texte1e0544508e5')}</p>
           </div>
           <Link
             href={PROJECT_LANDING_PATH}
-            className="inline-flex text-sm font-medium text-foreground underline-offset-4 hover:underline"
-          >{'Back to projects'}</Link>
+            className="text-foreground inline-flex text-sm font-medium underline-offset-4 hover:underline"
+          >
+            {tI18nComplete.raw('textd9088c8aee01')}
+          </Link>
         </div>
       </div>
     );
@@ -81,7 +82,7 @@ export function AdminShell({
               href="/admin"
               className="text-muted-foreground hover:text-foreground transition-colors"
             >
-              Admin
+              {tI18nComplete.raw('textc1c224b03cd9')}
             </Link>
             {pathname !== '/admin' && (
               <>

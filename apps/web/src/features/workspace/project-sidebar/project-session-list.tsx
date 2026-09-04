@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 
 import { HoverPrefetchLink } from '@/components/common/hover-prefetch-link';
 import {
@@ -166,6 +166,7 @@ function ProjectSessionListSkeleton() {
 }
 
 export function ProjectSessionList({ projectId }: ProjectSessionListProps) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('sidebar');
   const { holdPeek } = useSidebar();
   const pathname = usePathname();
@@ -224,11 +225,11 @@ export function ProjectSessionList({ projectId }: ProjectSessionListProps) {
     mutationFn: ({ sessionId }: { sessionId: string; label: string }) =>
       restartProjectSession(projectId, sessionId),
     onSuccess: (_data, { label }) => {
-      successToast(`Restarting "${label}"…`);
+      successToast(tI18nComplete('textdd465809683b', { value0: label }));
       queryClient.invalidateQueries({ queryKey: qk.project.sessionsScope(projectId) });
     },
     onError: (err) => {
-      errorToast(err instanceof Error ? err.message : 'Failed to restart session');
+      errorToast(err instanceof Error ? err.message : tI18nComplete.raw('text1604d2906a45'));
     },
   });
 
@@ -236,11 +237,11 @@ export function ProjectSessionList({ projectId }: ProjectSessionListProps) {
     mutationFn: ({ sessionId }: { sessionId: string; label: string }) =>
       stopProjectSession(projectId, sessionId),
     onSuccess: (_data, { label }) => {
-      successToast(`"${label}" stopped`);
+      successToast(tI18nComplete('textb86777c5ad5c', { value0: label }));
       queryClient.invalidateQueries({ queryKey: qk.project.sessionsScope(projectId) });
     },
     onError: (err) => {
-      errorToast(err instanceof Error ? err.message : 'Failed to stop session');
+      errorToast(err instanceof Error ? err.message : tI18nComplete.raw('texte0e30badc30c'));
     },
   });
 
@@ -253,7 +254,8 @@ export function ProjectSessionList({ projectId }: ProjectSessionListProps) {
   // only applies the two ANDed multi-select facets from the store.
   const visibleSessions = sessions.filter(
     (session) =>
-      matchesStatusFilters(session, statusFilters) && matchesSourceFilters(session, sourceFilters),
+      matchesStatusFilters(session, statusFilters) &&
+      matchesSourceFilters(session, sourceFilters, tI18nComplete),
   );
 
   const viewState = resolveSessionListViewState({
@@ -312,12 +314,16 @@ export function ProjectSessionList({ projectId }: ProjectSessionListProps) {
     // Below the early returns: grouping is only ever read by the content state,
     // and computing it above meant every loading/error/empty render paid for a
     // result it threw away.
-    const grouped = groupSessions(visibleSessions, {
-      mode: groupMode,
-      order: orderMode,
-      reviewCountBySession: reviewSummary.needsYouBySession,
-      hiddenSections,
-    });
+    const grouped = groupSessions(
+      visibleSessions,
+      {
+        mode: groupMode,
+        order: orderMode,
+        reviewCountBySession: reviewSummary.needsYouBySession,
+        hiddenSections,
+      },
+      tI18nComplete,
+    );
 
     // `resolveSessionListViewState` only sees counts before filtering by
     // `hiddenSections` — it has no way to know every section got hidden. Catch
@@ -709,6 +715,7 @@ function ProjectSessionRow({
   reviewCount = 0,
   nested = false,
 }: ProjectSessionRowProps) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('sidebar');
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -717,7 +724,7 @@ function ProjectSessionRow({
     requestAnimationFrame(() => fn());
   };
 
-  const source = sessionSource(session);
+  const source = sessionSource(session, tI18nComplete);
   const SourceIcon = source.kind !== 'chat' ? SOURCE_ICONS[source.kind] : null;
   const isMeta = isMetaCoordinatorSession(session);
   const spawnedBy = spawnedBySessionId(session);
@@ -817,7 +824,10 @@ function ProjectSessionRow({
             data-session-indicators="true"
           >
             {showSpawnedBy && spawnedBy && (
-              <Hint side="top" label={`Spawned by session ${spawnedBy.slice(0, 8)}`}>
+              <Hint
+                side="top"
+                label={tI18nComplete('text4d67694a7607', { value0: spawnedBy.slice(0, 8) })}
+              >
                 <span className="text-muted-foreground/70 flex size-4 shrink-0 items-center justify-center">
                   <SpawnedBy className="size-3" />
                 </span>
@@ -891,7 +901,7 @@ function ProjectSessionRow({
               onSelect={() => deferAfterClose(() => onRename(session.session_id, displayTitle))}
             >
               <PencilSimpleIcon />
-              Rename
+              {tI18nComplete.raw('text3064d79a295c')}
             </DropdownMenuItem>
             {/* Shown to everyone who can open the session: the owner
                 changes access here, everyone else reads who has it. */}
@@ -900,7 +910,9 @@ function ProjectSessionRow({
               onSelect={() => deferAfterClose(() => onShare(session))}
             >
               <Share />
-              {session.can_manage_sharing !== false ? 'Share' : 'Who has access'}
+              {session.can_manage_sharing !== false
+                ? 'Share'
+                : tI18nComplete.raw('textadc01d813da0')}
             </DropdownMenuItem>
             <DropdownMenuItem
               className="cursor-pointer"
@@ -908,7 +920,7 @@ function ProjectSessionRow({
               onSelect={() => deferAfterClose(() => onRestart(session.session_id, displayTitle))}
             >
               {isRestarting ? <Loading className="size-4 shrink-0" /> : <RotateCcw />}
-              Restart
+              {tI18nComplete.raw('text6b983a81e5e8')}
             </DropdownMenuItem>
             {/* Lifecycle, not sharing: a project manager keeps Stop on a
                 session they did not create. */}
@@ -919,7 +931,7 @@ function ProjectSessionRow({
                 onSelect={() => deferAfterClose(() => onStop(session.session_id, displayTitle))}
               >
                 {isStopping ? <Loading className="size-4 shrink-0" /> : <Square />}
-                Stop
+                {tI18nComplete.raw('textcae7d57bc067')}
               </DropdownMenuItem>
             )}
             <DropdownMenuItem
@@ -927,7 +939,7 @@ function ProjectSessionRow({
               onSelect={() => deferAfterClose(() => onDelete(session.session_id, displayTitle))}
             >
               <TrashIcon />
-              Delete
+              {tI18nComplete.raw('texte2d0a54968ea')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

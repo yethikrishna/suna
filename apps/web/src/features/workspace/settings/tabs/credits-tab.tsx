@@ -66,7 +66,7 @@ import { BillingAccountProvider } from '@/stores/billing-account-context';
 import type { AccountState } from '@kortix/sdk';
 import { dollarsToCredits, formatCredits } from '@kortix/shared';
 import { ReceiptIcon } from '@phosphor-icons/react';
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from '@/i18n/use-translations';
 
 import { SettingsTabHeader } from '../settings-tab-header';
 

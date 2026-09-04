@@ -1,5 +1,7 @@
 'use client';
 
+import { useTranslations } from '@/i18n/use-translations';
+import { useLocalizedUiCatalog } from '@/i18n/use-localized-ui-catalog';
 import { useEffect, useMemo, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -89,6 +91,8 @@ const MODE_FILTERS: ReadonlyArray<{ value: ModeFilter; label: string }> = [
  * alone.
  */
 export function AgentsPage({ projectId }: { projectId: string }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const modeFilters = useLocalizedUiCatalog(MODE_FILTERS);
   // `accountId` skips useProjectCan's own getProject and lets the IAM probe
   // run on the first render instead of waiting a round-trip for it.
   const accountId = useProjectAccountId(projectId);
@@ -147,7 +151,9 @@ export function AgentsPage({ projectId }: { projectId: string }) {
   // them. Telling the user "No agents yet" in the second case is false and
   // points at the wrong fix (clear the filter, not create an agent).
   const emptyKind = catalogEmptyKind(agents.length, filtered.length);
-  const modeLabel = MODE_FILTERS.find((filter) => filter.value === mode)?.label ?? 'All';
+  const modeLabel =
+    modeFilters.find((filter) => filter.value === mode)?.label ??
+    tI18nComplete.raw('texta52ace420f21');
   const defaultAgent = config?.open_code_default_agent ?? null;
 
   // One control, two labels — same rule as the Skills page. The header has a
@@ -176,8 +182,8 @@ export function AgentsPage({ projectId }: { projectId: string }) {
 
   return (
     <CapabilityPageShell
-      title="Agents"
-      description="Who does the work — each one's instructions, model, and access."
+      title={tI18nComplete.raw('text279b44d2ab4b')}
+      description={tI18nComplete.raw('text9a6a77d58095')}
       action={createButton('New')}
       search={
         <InputGroupSearch>
@@ -185,7 +191,7 @@ export function AgentsPage({ projectId }: { projectId: string }) {
             <MagnifyingGlassIcon />
           </InputGroupSearchIcon>
           <InputGroupSearchInput
-            placeholder="Search agents"
+            placeholder={tI18nComplete.raw('text212fd04a1d20')}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             variant="popover"
@@ -198,7 +204,7 @@ export function AgentsPage({ projectId }: { projectId: string }) {
         <>
           <Tabs value={mode} onValueChange={(value) => setMode(value as ModeFilter)}>
             <TabsList>
-              {MODE_FILTERS.map((filter) => (
+              {modeFilters.map((filter) => (
                 <TabsTrigger key={filter.value} value={filter.value}>
                   {filter.label}
                 </TabsTrigger>
@@ -221,14 +227,16 @@ export function AgentsPage({ projectId }: { projectId: string }) {
             query.trim() ? (
               <CatalogNoMatch query={query} />
             ) : (
-              <CatalogEmptyNote>No matches in {modeLabel}.</CatalogEmptyNote>
+              <CatalogEmptyNote>
+                {tI18nComplete.raw('textdc5255461795')} {modeLabel}.
+              </CatalogEmptyNote>
             )
           ) : (
             <EmptyState
               icon={RobotIcon}
               size="sm"
-              title="No agents yet"
-              description="Create an agent to customize how sessions run."
+              title={tI18nComplete.raw('text971b61f8cb4d')}
+              description={tI18nComplete.raw('textc4e4294c6777')}
               action={createButton('Create an agent')}
               secondaryAction={
                 <Button asChild variant="ghost" size="sm" className="gap-1.5">
@@ -237,7 +245,7 @@ export function AgentsPage({ projectId }: { projectId: string }) {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    Docs
+                    {tI18nComplete.raw('text7af023c43013')}
                   </a>
                 </Button>
               }
@@ -304,6 +312,7 @@ export function AgentsPage({ projectId }: { projectId: string }) {
  * worth marking.
  */
 function AgentCardBadges({ agent, isDefault }: { agent: Agent; isDefault: boolean }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const mode = agent.mode?.toLowerCase();
   return (
     <>
@@ -315,13 +324,13 @@ function AgentCardBadges({ agent, isDefault }: { agent: Agent; isDefault: boolea
       {isDefault ? (
         <StarSolid
           weight="fill"
-          aria-label="Default agent"
+          aria-label={tI18nComplete.raw('text94da52ecd6c5')}
           className="text-kortix-orange size-3.5 shrink-0"
         />
       ) : null}
       {agent.enabled === false ? (
         <Badge variant="muted" size="xs">
-          Disabled
+          {tI18nComplete.raw('text75081b593d15')}
         </Badge>
       ) : null}
     </>
@@ -340,6 +349,7 @@ function AgentCardBadges({ agent, isDefault }: { agent: Agent; isDefault: boolea
  * path under the title — which says the same thing and is clickable-accurate.
  */
 function AgentDetailMeta({ agent, config }: { agent: Agent; config: ProjectConfigSummary }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const mode = agent.mode?.toLowerCase();
   return (
     <>
@@ -351,12 +361,12 @@ function AgentDetailMeta({ agent, config }: { agent: Agent; config: ProjectConfi
       {config.open_code_default_agent === agent.name ? (
         <Badge variant="outline" size="sm" className="text-muted-foreground gap-1 font-medium">
           <StarSolid weight="fill" className="text-kortix-orange size-3.5 shrink-0" />
-          Default
+          {tI18nComplete.raw('text21b111cbfe6e')}
         </Badge>
       ) : null}
       {agent.enabled === false ? (
         <Badge variant="muted" size="sm">
-          Disabled
+          {tI18nComplete.raw('text75081b593d15')}
         </Badge>
       ) : null}
     </>
@@ -380,6 +390,7 @@ function DefaultAgentSelector({
   config: ProjectConfigSummary;
   canWrite: boolean;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const queryClient = useQueryClient();
   const isV2 = detectManifestVersion(config.manifest_raw) === 2;
   const availableAgents = toArray(config.agents).filter((agent) => agent.enabled !== false);
@@ -387,28 +398,36 @@ function DefaultAgentSelector({
   const mutation = useMutation({
     mutationFn: (agentName: string) => updateProjectDefaultAgent(projectId, agentName),
     onSuccess: async (result) => {
-      successToast(`${capitalizeWords(result.default_agent)} is now the project default`);
+      successToast(
+        tI18nComplete('text0bb557895b32', { value0: capitalizeWords(result.default_agent) }),
+      );
       // One invalidation, not two: the project CONFIG is a `select` projection
       // over this same `qk.project.detail(id)` entry (`useProjectConfig`), not
       // its own fetch. The retired standalone `['project-config', id]` slot no
       // longer exists, so a second call for it would invalidate nothing.
       await queryClient.invalidateQueries({ queryKey: qk.project.detail(projectId) });
     },
-    onError: (error: Error) => errorToast(error.message || 'Failed to update default agent'),
+    onError: (error: Error) => errorToast(error.message || tI18nComplete.raw('text7f724c2ad694')),
   });
 
   if (!isV2 || availableAgents.length === 0 || !current) return null;
 
   return (
     <div className="flex shrink-0 items-center gap-2">
-      <span className="text-muted-foreground hidden text-xs sm:block">Default</span>
+      <span className="text-muted-foreground hidden text-xs sm:block">
+        {tI18nComplete.raw('text21b111cbfe6e')}
+      </span>
       {mutation.isPending ? <Loading className="size-4 shrink-0" /> : null}
       <Select
         value={current}
         onValueChange={(agentName) => mutation.mutate(agentName)}
         disabled={!canWrite || mutation.isPending}
       >
-        <SelectTrigger aria-label="Default agent" className="w-44 shrink-0" size="sm">
+        <SelectTrigger
+          aria-label={tI18nComplete.raw('text94da52ecd6c5')}
+          className="w-44 shrink-0"
+          size="sm"
+        >
           <SelectValue />
         </SelectTrigger>
         <SelectContent align="end">

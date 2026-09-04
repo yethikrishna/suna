@@ -81,7 +81,7 @@ import {
 import { contract, invalidateProject, qk, refreshProjectProviderState } from '@kortix/sdk/react';
 import { FlagIcon, MagnifyingGlassIcon as Search } from '@phosphor-icons/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { SettingsTabHeader } from '../settings-tab-header';
 
 /**
@@ -370,6 +370,7 @@ export function ExperimentalTabView({
  *  `settings-panel.tsx` returns `null` otherwise), so nothing here fetches on
  *  panel open. */
 export function ExperimentalTab({ projectId }: { projectId: string }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('settings.featureFlags');
   const queryClient = useQueryClient();
 
@@ -435,7 +436,7 @@ export function ExperimentalTab({ projectId }: { projectId: string }) {
       }
     },
     onError: (error: Error, variables) => {
-      errorToast(error.message || t('updateFailed', { key: variables.key }));
+      errorToast(error.message || tI18nComplete('textdd2d120a9ea9', { key: variables.key }));
     },
   });
 

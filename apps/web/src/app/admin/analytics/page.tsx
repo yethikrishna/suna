@@ -1,5 +1,7 @@
 'use client';
 
+import { useLocalizedUiCatalog } from '@/i18n/use-localized-ui-catalog';
+import { useTranslations } from '@/i18n/use-translations';
 /**
  * Admin activity analytics — "how active are our users?" at a glance.
  *
@@ -83,6 +85,11 @@ const burnConfig = {
 } satisfies ChartConfig;
 
 export default function AdminAnalyticsPage() {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const ranges = useLocalizedUiCatalog(RANGES);
+  const localizedSessionsConfig = useLocalizedUiCatalog(sessionsConfig);
+  const localizedAccountsConfig = useLocalizedUiCatalog(accountsConfig);
+  const localizedBurnConfig = useLocalizedUiCatalog(burnConfig);
   const [range, setRange] = useState<string>('30');
   const days = Number(range);
 
@@ -113,13 +120,13 @@ export default function AdminAnalyticsPage() {
   const header = (
     <SectionHeader
       icon={ChartLineUpIcon}
-      title="Analytics"
-      description="Daily platform activity and credit burn. All buckets are UTC days."
+      title={tI18nComplete.raw('text94c116ee118a')}
+      description={tI18nComplete.raw('textd8e9d699a5dd')}
       actions={
         <>
           <Tabs value={range} onValueChange={setRange}>
             <TabsListCompact>
-              {RANGES.map((r) => (
+              {ranges.map((r) => (
                 <TabsTriggerCompact key={r.value} value={r.value}>
                   {r.label}
                 </TabsTriggerCompact>
@@ -128,7 +135,7 @@ export default function AdminAnalyticsPage() {
           </Tabs>
           <Button variant="outline" size="sm" onClick={refresh} disabled={isFetching}>
             <RefreshIcon className="size-4 shrink-0" />
-            Refresh
+            {tI18nComplete.raw('text0e9161011702')}
           </Button>
         </>
       }
@@ -140,11 +147,13 @@ export default function AdminAnalyticsPage() {
       <SectionContainer>
         {header}
         <ErrorState
-          title="Could not load analytics"
-          description={error instanceof Error ? error.message : 'The analytics request failed.'}
+          title={tI18nComplete.raw('text4a6562501752')}
+          description={
+            error instanceof Error ? error.message : tI18nComplete.raw('text59845e809cc9')
+          }
           action={
             <Button variant="outline" size="sm" onClick={refresh}>
-              Retry
+              {tI18nComplete.raw('text942087cc2d41')}
             </Button>
           }
         />
@@ -181,23 +190,23 @@ export default function AdminAnalyticsPage() {
 
       <StatRow>
         <StatPill
-          label="Sessions last 7d"
+          label={tI18nComplete.raw('text8f5fca25f1a7')}
           value={formatCount(sessionsLast7d)}
           hint={delta ?? `${formatCount(sessionsPrev7d)} in the previous 7 days`}
           tone={deltaTone(sessionsLast7d, sessionsPrev7d)}
         />
         <StatPill
-          label="DAU / WAU / MAU"
+          label={tI18nComplete.raw('text240580c01610')}
           value={`${formatCount(summary?.dau ?? 0)} / ${formatCount(summary?.wau ?? 0)} / ${formatCount(summary?.mau ?? 0)}`}
-          hint="Distinct users who started a session"
+          hint={tI18nComplete.raw('texte8eb61063713')}
         />
         <StatPill
-          label={`New accounts (${days}d)`}
+          label={tI18nComplete('textd196b7afe1d9', { value0: days })}
           value={formatCount(newAccountsInWindow)}
           hint={`${formatCount(summary?.totalAccounts ?? 0)} accounts total`}
         />
         <StatPill
-          label={`Credit burn (${days}d)`}
+          label={tI18nComplete('textfd537cf32a82', { value0: days })}
           value={formatUsd(usageSummary?.totalUsd ?? 0)}
           hint={`${formatCount(usageSummary?.payingAccountsLast7d ?? 0)} accounts spent in the last 7d`}
         />
@@ -205,11 +214,11 @@ export default function AdminAnalyticsPage() {
 
       <ChartPanel
         icon={ChartBarIcon}
-        title="Sessions created per day"
+        title={tI18nComplete.raw('text3d7978401c4c')}
         subtitle={`${formatCount(summary?.totalProjects ?? 0)} projects on the platform`}
       >
         {hasActivity ? (
-          <ChartContainer config={sessionsConfig} className="h-[260px] w-full">
+          <ChartContainer config={localizedSessionsConfig} className="h-[260px] w-full">
             <BarChart accessibilityLayer data={activityDays} margin={{ left: 4, right: 8, top: 4 }}>
               <CartesianGrid vertical={false} />
               <XAxis
@@ -245,18 +254,18 @@ export default function AdminAnalyticsPage() {
             </BarChart>
           </ChartContainer>
         ) : (
-          <NoData label="No sessions were created in this window." />
+          <NoData label={tI18nComplete.raw('textbe20f8439a89')} />
         )}
       </ChartPanel>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <ChartPanel
           icon={UsersIcon}
-          title="Active accounts per day"
-          subtitle="Accounts that started at least one session"
+          title={tI18nComplete.raw('text85afe431118b')}
+          subtitle={tI18nComplete.raw('textba1eac1c3fa4')}
         >
           {hasActivity ? (
-            <ChartContainer config={accountsConfig} className="h-[220px] w-full">
+            <ChartContainer config={localizedAccountsConfig} className="h-[220px] w-full">
               <AreaChart
                 accessibilityLayer
                 data={activityDays}
@@ -297,13 +306,13 @@ export default function AdminAnalyticsPage() {
               </AreaChart>
             </ChartContainer>
           ) : (
-            <NoData label="No accounts were active in this window." />
+            <NoData label={tI18nComplete.raw('text4da168d59932')} />
           )}
         </ChartPanel>
 
         <ChartPanel
           icon={CurrencyDollarIcon}
-          title="Credit burn per day"
+          title={tI18nComplete.raw('text8fd4602d9483')}
           subtitle={
             usageSummary
               ? `${formatUsd(usageSummary.llmUsd)} LLM · ${formatUsd(usageSummary.computeUsd)} compute · ${formatUsd(usageSummary.otherUsd)} other`
@@ -311,7 +320,7 @@ export default function AdminAnalyticsPage() {
           }
         >
           {hasBurn ? (
-            <ChartContainer config={burnConfig} className="h-[220px] w-full">
+            <ChartContainer config={localizedBurnConfig} className="h-[220px] w-full">
               <BarChart accessibilityLayer data={usageDays} margin={{ left: 4, right: 8, top: 4 }}>
                 <CartesianGrid vertical={false} />
                 <XAxis
@@ -350,7 +359,7 @@ export default function AdminAnalyticsPage() {
               </BarChart>
             </ChartContainer>
           ) : (
-            <NoData label="No credits were spent in this window." />
+            <NoData label={tI18nComplete.raw('texteda00b33d3af')} />
           )}
         </ChartPanel>
       </div>
@@ -390,9 +399,15 @@ function ChartPanel({
 }
 
 function NoData({ label }: { label: string }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
     <div className="flex h-[220px] items-center justify-center">
-      <EmptyState icon={ChartBarIcon} size="sm" title="No activity" description={label} />
+      <EmptyState
+        icon={ChartBarIcon}
+        size="sm"
+        title={tI18nComplete.raw('text0cf9505f9f97')}
+        description={label}
+      />
     </div>
   );
 }

@@ -17,7 +17,7 @@
 
 import { EyeIcon as Eye, EyeSlashIcon as EyeOff } from '@phosphor-icons/react';
 import { m, useReducedMotion } from 'motion/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { type FormEvent, Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
@@ -119,6 +119,7 @@ function AuthCardForm({
   returnUrl: string;
   mobileCallbackState: string | null;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('auth.unified');
   const prefersReducedMotion = useReducedMotion();
   const enabledMethods = useMemo(() => parseAuthMethods(getEnv().AUTH_METHODS), []);
@@ -485,7 +486,7 @@ function AuthCardForm({
       formData.set('mobileCallback', 'true');
       formData.set('mobileCallbackState', mobileCallbackState);
     }
-    const copy = credentialsCopy(credMode);
+    const copy = credentialsCopy(credMode, tI18nComplete);
     if (copy.submitsAs === 'signup') {
       // Single password field (with reveal toggle) — the server still expects
       // a confirmation value, so mirror it.
@@ -507,11 +508,14 @@ function AuthCardForm({
         !(result as any).requiresEmailConfirmation
       ) {
         const failureCode = (result as any).code ?? null;
-        const failure = passwordFailureCopy({
-          mode: credMode,
-          code: failureCode,
-          fallback: result.message as string,
-        });
+        const failure = passwordFailureCopy(
+          {
+            mode: credMode,
+            code: failureCode,
+            fallback: result.message as string,
+          },
+          tI18nComplete,
+        );
         // The attempt itself proved the account exists (e.g. the existence
         // check was degraded, or it raced an account created elsewhere) —
         // relabel the step so the retry reads as the sign-in it really is.
@@ -760,7 +764,7 @@ function AuthCardForm({
 
   /* ── Credentials step (password, with email-code alternative) ── */
   if (step === 'credentials') {
-    const copy = credentialsCopy(credMode);
+    const copy = credentialsCopy(credMode, tI18nComplete);
     const credentialKey =
       credMode === 'signin' ? 'signin' : credMode === 'signup' ? 'signup' : 'unknown';
     return (

@@ -2,7 +2,7 @@
 
 import { CreditCardIcon, KeyIcon } from '@phosphor-icons/react';
 import { AnimatePresence, m, useReducedMotion } from 'motion/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/features/layout/section/empty-state';

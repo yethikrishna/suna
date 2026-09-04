@@ -23,6 +23,7 @@ import {
 } from '@/hooks/billing/use-session-costs';
 import { BillingAccountProvider } from '@/stores/billing-account-context';
 
+import { testUiTranslator } from '@/i18n/test-translator';
 import {
   buildBreadcrumbCrumbs,
   CostExplorer,
@@ -511,13 +512,21 @@ const range = resolvePreset('30d', NOW);
 
 describe('buildBreadcrumbCrumbs', () => {
   test('at the projects level, renders a single current Usage crumb', () => {
-    const crumbs = buildBreadcrumbCrumbs({ range, projectId: null, sessionId: null }, null);
+    const crumbs = buildBreadcrumbCrumbs(
+      { range, projectId: null, sessionId: null },
+      null,
+      testUiTranslator,
+    );
     expect(crumbs).toHaveLength(1);
     expect(crumbs[0]).toMatchObject({ key: 'usage', label: 'Usage', current: true });
   });
 
   test('at the sessions level, Usage is a clickable crumb that clears the project', () => {
-    const crumbs = buildBreadcrumbCrumbs({ range, projectId: 'p1', sessionId: null }, 'Alpha');
+    const crumbs = buildBreadcrumbCrumbs(
+      { range, projectId: 'p1', sessionId: null },
+      'Alpha',
+      testUiTranslator,
+    );
     expect(crumbs).toHaveLength(2);
 
     const usage = crumbs[0]!;
@@ -532,6 +541,7 @@ describe('buildBreadcrumbCrumbs', () => {
     const crumbs = buildBreadcrumbCrumbs(
       { range, projectId: 'p1', sessionId: 'session-abcdefgh-long-tail' },
       'Alpha',
+      testUiTranslator,
     );
     expect(crumbs).toHaveLength(3);
 
@@ -554,6 +564,7 @@ describe('buildBreadcrumbCrumbs', () => {
     const crumbs = buildBreadcrumbCrumbs(
       { range: customRange, projectId: 'p1', sessionId: 's1' },
       'Alpha',
+      testUiTranslator,
     );
     for (const crumb of crumbs) {
       expect(crumb.target.range).toEqual(customRange);
@@ -564,6 +575,7 @@ describe('buildBreadcrumbCrumbs', () => {
     const crumbs = buildBreadcrumbCrumbs(
       { range, projectId: 'project-without-a-loaded-name', sessionId: null },
       null,
+      testUiTranslator,
     );
     expect(crumbs[1]!.label).toBe('project-w');
   });
@@ -579,12 +591,20 @@ describe('buildBreadcrumbCrumbs', () => {
 
 describe('firstClickableCrumbIndex', () => {
   test('at the projects level there is nowhere up, so no crumb carries the chevron', () => {
-    const crumbs = buildBreadcrumbCrumbs({ range, projectId: null, sessionId: null }, null);
+    const crumbs = buildBreadcrumbCrumbs(
+      { range, projectId: null, sessionId: null },
+      null,
+      testUiTranslator,
+    );
     expect(firstClickableCrumbIndex(crumbs)).toBe(-1);
   });
 
   test('at the sessions level the Usage crumb carries it', () => {
-    const crumbs = buildBreadcrumbCrumbs({ range, projectId: 'p1', sessionId: null }, 'Alpha');
+    const crumbs = buildBreadcrumbCrumbs(
+      { range, projectId: 'p1', sessionId: null },
+      'Alpha',
+      testUiTranslator,
+    );
     expect(firstClickableCrumbIndex(crumbs)).toBe(0);
     expect(crumbs[0]!.key).toBe('usage');
   });
@@ -592,7 +612,11 @@ describe('firstClickableCrumbIndex', () => {
   // Two crumbs are clickable at the session level. Only the shallowest gets
   // the chevron — one "go up" target, not a row of them.
   test('at the session level only the shallowest clickable crumb carries it', () => {
-    const crumbs = buildBreadcrumbCrumbs({ range, projectId: 'p1', sessionId: 's1' }, 'Alpha');
+    const crumbs = buildBreadcrumbCrumbs(
+      { range, projectId: 'p1', sessionId: 's1' },
+      'Alpha',
+      testUiTranslator,
+    );
     expect(crumbs.filter((crumb) => !crumb.current)).toHaveLength(2);
     expect(firstClickableCrumbIndex(crumbs)).toBe(0);
   });

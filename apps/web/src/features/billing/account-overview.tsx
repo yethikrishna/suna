@@ -1,5 +1,7 @@
 'use client';
 
+import type { UiTranslator } from '@/i18n/translator';
+import { useTranslations } from '@/i18n/use-translations';
 /**
  * The account overview block at the top of the Billing tab: what you can
  * spend, what plan you are on, what you spent this period, and the limits
@@ -51,6 +53,7 @@ interface AccountOverviewTabProps {
 
 /** Container: owns the account-state read, renders the view. */
 export function AccountOverviewTab({ accountId }: AccountOverviewTabProps = {}) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const accountState = useAccountState({ accountId });
 
   if (accountState.isLoading) {
@@ -64,7 +67,7 @@ export function AccountOverviewTab({ accountId }: AccountOverviewTabProps = {}) 
 
   const state = accountState.data;
   if (!state) {
-    return <p className="text-muted-foreground text-sm">Couldn&apos;t load this account.</p>;
+    return <p className="text-muted-foreground text-sm">{tI18nComplete.raw('text68b8f8d47a7a')}</p>;
   }
 
   return <AccountOverviewView state={state} />;
@@ -79,10 +82,11 @@ export function AccountOverviewTab({ accountId }: AccountOverviewTabProps = {}) 
  * a fixed `AccountState` with no API, no auth, and no billing flag.
  */
 export function AccountOverviewView({ state }: { state: AccountState }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const wallet = state.credits?.total ?? 0;
   const isNegative = wallet < 0;
   const usage = state.usage_this_period;
-  const limits = buildLimitRows(state.limits);
+  const limits = buildLimitRows(state.limits, tI18nComplete);
 
   return (
     <div className="space-y-4">
@@ -94,7 +98,7 @@ export function AccountOverviewView({ state }: { state: AccountState }) {
       <div className="bg-popover rounded-md border">
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 py-4">
           <div className="min-w-0">
-            <p className="text-muted-foreground text-xs">Available balance</p>
+            <p className="text-muted-foreground text-xs">{tI18nComplete.raw('text3ab7dd8428d1')}</p>
             {/* `tabular-nums`, deliberately NOT `font-mono`. Tabular figures
                 give the equal-width digits a balance wants; a monospace face
                 gives the '.' and ',' the same advance as a '0' too, which
@@ -109,7 +113,8 @@ export function AccountOverviewView({ state }: { state: AccountState }) {
               {formatUsd(wallet)}
             </p>
             <p className="text-muted-foreground mt-1.5 text-xs tabular-nums">
-              {formatCredits(dollarsToCredits(Math.abs(wallet)))} credits
+              {formatCredits(dollarsToCredits(Math.abs(wallet)))}{' '}
+              {tI18nComplete.raw('textbe379a30f1aa')}
               {isNegative ? ' owed' : ''}
             </p>
           </div>
@@ -118,16 +123,22 @@ export function AccountOverviewView({ state }: { state: AccountState }) {
 
         {usage ? (
           <div className="divide-border grid grid-cols-3 divide-x border-t">
-            <SpendStat label="Compute" value={usage.compute_usd} />
+            <SpendStat label={tI18nComplete.raw('textcedc516df056')} value={usage.compute_usd} />
             <SpendStat label="LLM" value={usage.llm_usd} />
-            <SpendStat label="Spent this period" value={usage.total_usd} strong />
+            <SpendStat
+              label={tI18nComplete.raw('text97c8335e2880')}
+              value={usage.total_usd}
+              strong
+            />
           </div>
         ) : null}
       </div>
 
       {limits.length > 0 ? (
         <section className="space-y-2">
-          <h3 className="text-foreground text-sm font-medium">Limits</h3>
+          <h3 className="text-foreground text-sm font-medium">
+            {tI18nComplete.raw('textdffb64dc7001')}
+          </h3>
           <div className="bg-popover divide-border divide-y rounded-md border">
             {limits.map((row) => {
               const atCap = row.limit > 0 && row.active >= row.limit;
@@ -292,13 +303,14 @@ function SpendStat({ label, value, strong }: { label: string; value: number; str
 
 function buildLimitRows(
   limits: NonNullable<ReturnType<typeof useAccountState>['data']>['limits'],
+  tI18nComplete: UiTranslator,
 ): LimitRow[] {
   if (!limits) return [];
   const rows: LimitRow[] = [];
   if (limits.concurrent_sessions) {
     rows.push({
       id: 'sessions',
-      label: 'Concurrent sessions',
+      label: tI18nComplete.raw('text44912abd87c3'),
       active: limits.concurrent_sessions.active,
       limit: limits.concurrent_sessions.limit,
     });
@@ -306,7 +318,7 @@ function buildLimitRows(
   if (limits.concurrent_runs) {
     rows.push({
       id: 'runs',
-      label: 'Concurrent agent runs',
+      label: tI18nComplete.raw('texte03d3314ccda'),
       active: limits.concurrent_runs.running_count,
       limit: limits.concurrent_runs.limit,
     });
@@ -314,7 +326,7 @@ function buildLimitRows(
   if (limits.ai_worker_count) {
     rows.push({
       id: 'workers',
-      label: 'AI workers',
+      label: tI18nComplete.raw('textd165df0008b1'),
       active: limits.ai_worker_count.current_count,
       limit: limits.ai_worker_count.limit,
     });
@@ -322,7 +334,7 @@ function buildLimitRows(
   if (limits.custom_mcp_count) {
     rows.push({
       id: 'mcps',
-      label: 'Custom MCP connectors',
+      label: tI18nComplete.raw('text49b3a401c749'),
       active: limits.custom_mcp_count.current_count,
       limit: limits.custom_mcp_count.limit,
     });

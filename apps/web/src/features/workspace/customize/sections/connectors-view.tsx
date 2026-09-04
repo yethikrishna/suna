@@ -1,5 +1,7 @@
 'use client';
 
+import { useLocalizedUiCatalog } from '@/i18n/use-localized-ui-catalog';
+import { useTranslations } from '@/i18n/use-translations';
 import {
   CheckIcon as Check,
   CaretDownIcon as ChevronDown,
@@ -24,7 +26,6 @@ import {
   LightningIcon as Zap,
 } from '@phosphor-icons/react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
 import Image from 'next/image';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
@@ -257,8 +258,8 @@ function ConnectorsMasterDetail({ projectId }: { projectId: string }) {
   useEffect(() => {
     if (oauth2Result !== 'connected' && oauth2Result !== 'error') return;
     if (oauth2Result === 'connected')
-      successToast(tI18nHardcoded.raw('i18nComplete.text75586c42e862'));
-    else errorToast(oauth2Error || 'OAuth 2.0 connection failed');
+      successToast(tI18nHardcoded.raw('i18nComplete.text5738301b7beb'));
+    else errorToast(oauth2Error || tI18nHardcoded.raw('i18nComplete.texta6fac795d6d6'));
     for (const affectedQueryKey of connectionQueryKeys) {
       void queryClient.invalidateQueries({ queryKey: affectedQueryKey });
     }
@@ -297,10 +298,17 @@ function ConnectorsMasterDetail({ projectId }: { projectId: string }) {
     mutationFn: () => syncConnectors(projectId),
     onSuccess: (res) => {
       invalidate();
-      if (res.errors.length) warningToast(`Synced ${res.synced}, ${res.errors.length} with issues`);
-      else successToast(`Synced ${res.synced} connector(s)`);
+      if (res.errors.length)
+        warningToast(
+          tI18nHardcoded('i18nComplete.text01e458a231aa', {
+            value0: res.synced,
+            value1: res.errors.length,
+          }),
+        );
+      else successToast(tI18nHardcoded('i18nComplete.textf6a7db3563d0', { value0: res.synced }));
     },
-    onError: (err: Error) => errorToast(err.message || 'Sync failed'),
+    onError: (err: Error) =>
+      errorToast(err.message || tI18nHardcoded.raw('i18nComplete.textabf3e80b5b4c')),
   });
 
   if (query.isLoading) return <MasterDetailSkeleton />;
@@ -475,7 +483,7 @@ function ConnectorRail({
 
   return (
     <nav
-      aria-label="Connectors"
+      aria-label={tI18nHardcoded.raw('i18nComplete.textc3d2e79ebdd0')}
       className="border-border/60 bg-muted/20 flex w-72 shrink-0 flex-col border-r"
     >
       <div className="border-border/60 space-y-2 border-b p-3">
@@ -703,7 +711,7 @@ function ConnectionRow({
   // or, for a project authorization, a project manager.
   const mayMutate = isProjectAuthorization ? canManage : isMine;
 
-  const { copy } = useCopy({ successMessage: 'Connection ID copied to clipboard.' });
+  const { copy } = useCopy({ successMessage: tI18nComplete.raw('text56ee71f3ece0') });
 
   return (
     <li className="group bg-popover flex items-center gap-3 rounded-md border px-4 py-2.5 transition-colors">
@@ -747,7 +755,7 @@ function ConnectionRow({
             variant="ghost"
             size="icon"
             className="size-8 shrink-0"
-            aria-label={`Actions for ${connection.label}`}
+            aria-label={tI18nComplete('text33da220b1a34', { value0: connection.label })}
             disabled={pending || disabled}
           >
             {pending ? (
@@ -843,19 +851,19 @@ export function ConnectionsList({
   const setDefault = useMutation({
     mutationFn: (connectionId: string) => setDefaultConnection(projectId, connectionId),
     onSuccess: () => {
-      successToast(tI18nComplete.raw('text1c59fde888ed'));
+      successToast(tI18nComplete.raw('text109ff88aec78'));
       refresh();
     },
-    onError: (e: Error) => errorToast(e.message || 'Failed to set the default'),
+    onError: (e: Error) => errorToast(e.message || tI18nComplete.raw('texta2cf78785484')),
   });
   const disconnect = useMutation({
     mutationFn: (connectionId: string) => revokeConnection(projectId, connectionId),
     onSuccess: () => {
-      successToast('Disconnected');
+      successToast(tI18nComplete.raw('text04dfac3671b4'));
       setConfirmDisconnect(null);
       refresh();
     },
-    onError: (e: Error) => errorToast(e.message || 'Failed to disconnect'),
+    onError: (e: Error) => errorToast(e.message || tI18nComplete.raw('textb7668a581f59')),
   });
 
   const adding = addProject.isPending || addMine.isPending;
@@ -904,7 +912,7 @@ export function ConnectionsList({
         <EmptyState
           size="sm"
           icon={Plug}
-          title={`No ${displayName} connections yet`}
+          title={tI18nComplete('textee168539f43a', { value0: displayName })}
           description={
             connectionOwnerType === 'project'
               ? tI18nComplete.raw('texte6e0b4594c95')
@@ -945,8 +953,8 @@ export function ConnectionsList({
           <ModalHeader>
             <ModalTitle>
               {addScope === 'project'
-                ? `Add a project ${displayName} connection`
-                : `Add your own ${displayName}`}
+                ? tI18nComplete('textca04bb211a4b', { value0: displayName })
+                : tI18nComplete('text9819d9aeec29', { value0: displayName })}
             </ModalTitle>
             <ModalDescription>
               {addScope === 'project'
@@ -1003,13 +1011,13 @@ export function ConnectionsList({
       <ConfirmDialog
         open={confirmDisconnect !== null}
         onOpenChange={(open) => !open && setConfirmDisconnect(null)}
-        title={`Disconnect "${confirmDisconnect?.label ?? ''}"?`}
+        title={tI18nComplete('text13716a578591', { value0: confirmDisconnect?.label ?? '' })}
         description={
           confirmDisconnect?.owner_type === 'project'
             ? tI18nComplete.raw('texte2cbafcec553')
             : tI18nComplete.raw('text64db32d83da9')
         }
-        confirmLabel="Disconnect"
+        confirmLabel={tI18nComplete.raw('textacfc5be785a9')}
         confirmVariant="destructive"
         isPending={disconnect.isPending}
         onConfirm={() => confirmDisconnect && disconnect.mutate(confirmDisconnect.connection_id)}
@@ -1231,11 +1239,12 @@ export function ConnectorDetail({
   const rename = useMutation({
     mutationFn: () => setConnectorName(projectId, connector.slug, nameDraft.trim()),
     onSuccess: () => {
-      successToast('Renamed');
+      successToast(tI18nHardcoded.raw('i18nComplete.text05487af3f074'));
       setEditingName(false);
       onChanged();
     },
-    onError: (e: Error) => errorToast(e.message || 'Failed to rename'),
+    onError: (e: Error) =>
+      errorToast(e.message || tI18nHardcoded.raw('i18nComplete.text8fcf8ce07dcf')),
   });
 
   const updateAuthorizationStrategy = useMutation({
@@ -1244,18 +1253,23 @@ export function ConnectorDetail({
     onSuccess: (result, next) => {
       const syncError = result.sync?.errors.find((error) => error.slug === connector.slug);
       if (syncError) {
-        warningToast(
-          `Authorization owner changed, but synchronization failed: ${syncError.error}. Use Sync to retry.`,
-        );
+        warningToast(tI18nHardcoded('i18nComplete.textec7a4e3094f9', { value0: syncError.error }));
         onChanged();
         return;
       }
-      successToast(`Authorization owner set to ${next === 'project' ? 'Project' : 'User'}`);
+      successToast(
+        tI18nHardcoded('i18nComplete.text67ccb61d5f27', {
+          value0:
+            next === tI18nHardcoded.raw('i18nComplete.text244210e48437')
+              ? tI18nHardcoded.raw('i18nComplete.text985959785319')
+              : tI18nHardcoded.raw('i18nComplete.textb512d97e7cbf'),
+        }),
+      );
       onChanged();
     },
     onError: (error: Error) => {
       setAuthorizationStrategyAwaitingRefresh(null);
-      errorToast(error.message || 'Failed to update authorization owner');
+      errorToast(error.message || tI18nHardcoded.raw('i18nComplete.texta743aa4452d3'));
     },
   });
   const strategyUpdating = connectorAuthorizationUpdateIsPending(
@@ -1267,10 +1281,11 @@ export function ConnectorDetail({
   const remove = useMutation({
     mutationFn: () => deleteConnector(projectId, connector.slug),
     onSuccess: () => {
-      successToast(`Removed ${displayName}`);
+      successToast(tI18nHardcoded('i18nComplete.textffd34ade9168', { value0: displayName }));
       onRemoved();
     },
-    onError: (e: Error) => errorToast(e.message || 'Failed to remove'),
+    onError: (e: Error) =>
+      errorToast(e.message || tI18nHardcoded.raw('i18nComplete.text1d0486014da5')),
   });
 
   const toolCount = connector.actions.length;
@@ -1330,12 +1345,12 @@ export function ConnectorDetail({
             <div className="group flex items-center gap-2">
               <h2 className="text-foreground truncate text-lg font-semibold">{displayName}</h2>
               {canWrite && (
-                <Hint label="Rename">
+                <Hint label={tI18nHardcoded.raw('i18nComplete.text3064d79a295c')}>
                   <button
                     type="button"
                     onClick={() => !strategyUpdating && setEditingName(true)}
                     disabled={strategyUpdating}
-                    aria-label="Rename"
+                    aria-label={tI18nHardcoded.raw('i18nComplete.text3064d79a295c')}
                     className="text-muted-foreground hover:text-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
                   >
                     <PencilSimpleIcon className="h-3.5 w-3.5" />
@@ -1427,7 +1442,7 @@ export function ConnectorDetail({
             <InfoBanner
               tone="info"
               icon={Users}
-              title={`Connect ${displayName} for the project`}
+              title={tI18nHardcoded('i18nComplete.textbe90d607b9d7', { value0: displayName })}
               action={
                 canWrite ? (
                   <Button
@@ -1447,7 +1462,7 @@ export function ConnectorDetail({
               }
             >
               {isManagedProvider
-                ? `One project-managed ${displayName} account is available to allowed sessions and triggers.`
+                ? tI18nHardcoded('i18nComplete.text877733202b1b', { value0: displayName })
                 : tI18nHardcoded.raw('i18nComplete.textd460f97920a4')}
             </InfoBanner>
           )}
@@ -1459,7 +1474,7 @@ export function ConnectorDetail({
             <InfoBanner
               tone="info"
               icon={Lock}
-              title={`Connect ${displayName} for your sessions`}
+              title={tI18nHardcoded('i18nComplete.text5fe5c81da268', { value0: displayName })}
               action={
                 <Button
                   size="lg"
@@ -1614,7 +1629,7 @@ export function ConnectorDetail({
       <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
-        title={`Remove ${displayName}?`}
+        title={tI18nHardcoded('i18nComplete.textbc43ab815937', { value0: displayName })}
         description={
           <>
             {tI18nHardcoded.raw(
@@ -1953,7 +1968,7 @@ function EmailSenderPolicyEditor({
                 <Input
                   value={domains}
                   onChange={(e) => setDomains(e.target.value)}
-                  placeholder="example.com"
+                  placeholder={tI18nComplete.raw('texta379a6f6eeaf')}
                   disabled={!canWrite}
                 />
               </Field>
@@ -2121,7 +2136,7 @@ export function EmailConnectForm({
               onChange={(e) =>
                 setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))
               }
-              placeholder="support"
+              placeholder={tI18nComplete.raw('texta18603086e5b')}
               autoComplete="off"
               spellCheck={false}
             />
@@ -2191,7 +2206,7 @@ export function EmailConnectForm({
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="am_..."
+              placeholder={tI18nComplete.raw('text3ce8275b54eb')}
               autoComplete="off"
               spellCheck={false}
             />
@@ -2230,7 +2245,7 @@ export function EmailConnectForm({
                   <Input
                     value={domains}
                     onChange={(e) => setDomains(e.target.value)}
-                    placeholder="example.com"
+                    placeholder={tI18nComplete.raw('texta379a6f6eeaf')}
                     spellCheck={false}
                   />
                 </Field>
@@ -2398,10 +2413,10 @@ export function SlackConnectForm({
     try {
       await navigator.clipboard.writeText(manifest.data);
       setCopiedManifest(true);
-      successToast(tI18nComplete.raw('texta51790c814e5'));
+      successToast(tI18nComplete.raw('text1f1228d5e972'));
       setTimeout(() => setCopiedManifest(false), 1500);
     } catch {
-      errorToast(tI18nComplete.raw('textb73ce9104ddb'));
+      errorToast(tI18nComplete.raw('text1801bed8cea5'));
     }
   };
 
@@ -2554,7 +2569,7 @@ export function SlackConnectForm({
                     type="password"
                     value={botToken}
                     onChange={(e) => setBotToken(e.target.value)}
-                    placeholder="xoxb-..."
+                    placeholder={tI18nComplete.raw('textdf964376e432')}
                     autoComplete="off"
                     spellCheck={false}
                   />
@@ -2678,13 +2693,14 @@ export function ConnectionSection({
         slug: connector.slug,
       }),
     onSuccess: () => {
-      successToast(tI18nHardcoded.raw('i18nComplete.text1e965e25daad'));
+      successToast(tI18nHardcoded.raw('i18nComplete.text23922935b1f8'));
       queryClient.invalidateQueries({
         queryKey: qk.project.connectorConfig(projectId, connector.slug),
       });
       onChanged();
     },
-    onError: (e: Error) => errorToast(e.message || 'Failed to save connection'),
+    onError: (e: Error) =>
+      errorToast(e.message || tI18nHardcoded.raw('i18nComplete.textf9581c8d3b47')),
   });
 
   return (
@@ -2789,10 +2805,13 @@ function PermissionPicker({
   onChange: (c: PolicyChoice) => void;
   readOnly?: boolean;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const policyChoices = useLocalizedUiCatalog(POLICY_CHOICES);
+  const policyLabels = useLocalizedUiCatalog(POLICY_LABEL);
   const meta =
     value === 'default'
-      ? { label: 'Default', tint: 'text-muted-foreground' }
-      : { label: POLICY_LABEL[value].label, tint: POLICY_LABEL[value].tint };
+      ? { label: tI18nComplete.raw('text21b111cbfe6e'), tint: 'text-muted-foreground' }
+      : { label: policyLabels[value].label, tint: policyLabels[value].tint };
   if (readOnly) {
     return (
       <span
@@ -2820,9 +2839,9 @@ function PermissionPicker({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-28">
-        {POLICY_CHOICES.map((c) => (
+        {policyChoices.map((c) => (
           <DropdownMenuItem key={c.value} onClick={() => onChange(c.value)} className="text-xs">
-            <span className={cn(c.value !== 'default' && POLICY_LABEL[c.value].tint)}>
+            <span className={cn(c.value !== 'default' && policyLabels[c.value].tint)}>
               {c.label}
             </span>
             {c.value === value && <Check className="ml-auto size-3.5" />}
@@ -2904,10 +2923,15 @@ export function PermissionsSection({
   const sensitiveMut = useMutation({
     mutationFn: (next: boolean) => setConnectorSensitive(projectId, connector.slug, next),
     onSuccess: (_r, next) => {
-      successToast(next ? 'Marked sensitive — reads now ask' : 'No longer sensitive');
+      successToast(
+        next
+          ? tI18nHardcoded.raw('i18nComplete.text3f4f94c9ca11')
+          : tI18nHardcoded.raw('i18nComplete.text5fcf2002eb0b'),
+      );
       onChanged();
     },
-    onError: (e: Error) => errorToast(e.message || 'Failed to update sensitivity'),
+    onError: (e: Error) =>
+      errorToast(e.message || tI18nHardcoded.raw('i18nComplete.textc00080b272bc')),
   });
 
   const policiesQuery = useQuery({
@@ -2964,12 +2988,13 @@ export function PermissionsSection({
       return setConnectorPolicies(projectId, connector.slug, policies);
     },
     onSuccess: () => {
-      successToast(tI18nHardcoded.raw('i18nComplete.textd5221364a548'));
+      successToast(tI18nHardcoded.raw('i18nComplete.text06f352cee5a7'));
       queryClient.invalidateQueries({
         queryKey: ['connector-policies', projectId, connector.slug],
       });
     },
-    onError: (e: Error) => errorToast(e.message || 'Failed to save permissions'),
+    onError: (e: Error) =>
+      errorToast(e.message || tI18nHardcoded.raw('i18nComplete.textecd3c555ab44')),
   });
 
   const setChoice = (path: string, choice: PolicyChoice) =>
@@ -3071,7 +3096,13 @@ export function PermissionsSection({
         <InfoBanner
           tone="warning"
           icon={Lock}
-          title={`${projectDecided.size} ${projectDecided.size === 1 ? tI18nHardcoded.raw('i18nComplete.text547602d87c05') : tI18nHardcoded.raw('i18nComplete.text5273e4e9e2bc')} set by a project-wide rule`}
+          title={tI18nHardcoded('i18nComplete.textc5a4b3f3a022', {
+            value0: projectDecided.size,
+            value1:
+              projectDecided.size === 1
+                ? tI18nHardcoded.raw('i18nComplete.text547602d87c05')
+                : tI18nHardcoded.raw('i18nComplete.text5273e4e9e2bc'),
+          })}
         >
           {tI18nHardcoded.raw('i18nComplete.text0eaf8d2c6d6c')}
         </InfoBanner>
@@ -3232,7 +3263,9 @@ export function PermissionsSection({
                               'shrink-0 text-xs opacity-80',
                               POLICY_LABEL[ruled.action].tint,
                             )}
-                            title={`From pattern rule: ${ruled.match}`}
+                            title={tI18nHardcoded('i18nComplete.textdf6224fb4ca9', {
+                              value0: ruled.match,
+                            })}
                           >
                             {POLICY_LABEL[ruled.action].label}{' '}
                             {tI18nHardcoded.raw(
@@ -3242,7 +3275,9 @@ export function PermissionsSection({
                         )}
                         {projectAction && (
                           <Hint
-                            label={`A project-wide rule sets this to "${POLICY_LABEL[projectAction].label}". Project rules are evaluated first and win — anything you set here is ignored for this tool.`}
+                            label={tI18nHardcoded('i18nComplete.text9e2fda379985', {
+                              value0: POLICY_LABEL[projectAction].label,
+                            })}
                           >
                             <Badge variant="outline" size="sm" className="shrink-0 gap-1">
                               <Lock className="size-3 shrink-0" />
@@ -3672,16 +3707,14 @@ function AddEmailConnectionCard({
     onSuccess: ({ slug, syncError }) => {
       setOpen(false);
       if (syncError) {
-        warningToast(
-          `Added the Email inbox to the manifest, but synchronization failed: ${syncError}. Use Sync to retry.`,
-        );
+        warningToast(tI18nComplete('text4e12058e58c1', { value0: syncError }));
         onAdded();
         return;
       }
-      successToast(tI18nComplete.raw('text96d7604c9dc8'));
+      successToast(tI18nComplete.raw('textd1dcd7a7bbec'));
       onAdded(slug);
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to add Email inbox'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('text3df88e8f7ea6')),
   });
 
   return (
@@ -3732,7 +3765,7 @@ function AddEmailConnectionCard({
                 onChange={(e) =>
                   setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))
                 }
-                placeholder="support"
+                placeholder={tI18nComplete.raw('texta18603086e5b')}
                 autoComplete="off"
                 spellCheck={false}
               />
@@ -3766,7 +3799,7 @@ function AddSlackConnectionCard({
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const [open, setOpen] = useState(false);
   const handleConnected = () => {
-    successToast(tI18nComplete.raw('text4fce550efde4'));
+    successToast(tI18nComplete.raw('text1bfa15228ca8'));
     setOpen(false);
     onAdded('kortix_slack');
   };
@@ -3848,15 +3881,19 @@ function AppCatalogue({
       setSelectedApp(null);
       if (connector.syncError) {
         warningToast(
-          `Added ${connector.name} to the manifest, but synchronization failed: ${connector.syncError}. Use Sync to retry.`,
+          tI18nHardcoded('i18nComplete.textd6a135de3872', {
+            value0: connector.name,
+            value1: connector.syncError,
+          }),
         );
         onAdded();
         return;
       }
-      successToast(`Added ${connector.name} — click Connect to authorize`);
+      successToast(tI18nHardcoded('i18nComplete.text590d36262e11', { value0: connector.name }));
       onAdded(connector.slug);
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to add'),
+    onError: (err: Error) =>
+      errorToast(err.message || tI18nHardcoded.raw('i18nComplete.texta34a2714da91')),
   });
 
   return (
@@ -3898,7 +3935,9 @@ function AppCatalogue({
               'autoComponentsProjectsCustomizeSectionsConnectorsViewJsxAttrTitleNof8067eda',
             )}
             description={
-              q ? `Nothing matches "${q}".` : tI18nHardcoded.raw('i18nComplete.textecbd276ebec2')
+              q
+                ? tI18nHardcoded('i18nComplete.text3e71adfa7d54', { value0: q })
+                : tI18nHardcoded.raw('i18nComplete.textecbd276ebec2')
             }
           />
         ) : (
@@ -4073,7 +4112,7 @@ function HeadersEditor({
                   onChange={(e) =>
                     commit(rows.map((r, j) => (j === i ? [e.target.value, r[1]] : r)))
                   }
-                  placeholder="X-Tenant-Id"
+                  placeholder={tI18nComplete.raw('text1447557b9c1e')}
                   className="font-mono text-xs"
                   variant="popover"
                   disabled={readOnly}
@@ -4084,7 +4123,7 @@ function HeadersEditor({
                   onChange={(e) =>
                     commit(rows.map((r, j) => (j === i ? [r[0], e.target.value] : r)))
                   }
-                  placeholder="acme"
+                  placeholder={tI18nComplete.raw('text822b33ad87c1')}
                   className="font-mono text-xs"
                   variant="popover"
                   disabled={readOnly}
@@ -4178,7 +4217,7 @@ function ConnectorConfigFields({
               slugTouched.current = true;
               set({ slug: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '-') });
             }}
-            placeholder="my-api"
+            placeholder={tI18nHardcoded.raw('i18nComplete.text9696f2b4e020')}
             className="font-mono text-xs"
             variant="popover"
             disabled={!slugEditable || readOnly}
@@ -4318,7 +4357,7 @@ function ConnectorConfigFields({
               id="connector-sdl"
               value={draft.spec ?? ''}
               onChange={(e) => set({ spec: e.target.value })}
-              placeholder=".kortix/connectors/schema.graphql"
+              placeholder={tI18nHardcoded.raw('i18nComplete.textecccd43d1878')}
               variant="popover"
               disabled={readOnly}
             />
@@ -4391,7 +4430,7 @@ function ConnectorConfigFields({
               id="connector-routes"
               value={draft.spec ?? ''}
               onChange={(e) => set({ spec: e.target.value })}
-              placeholder=".kortix/connectors/routes.toml"
+              placeholder={tI18nHardcoded.raw('i18nComplete.textb2c293b68745')}
               variant="popover"
               disabled={readOnly}
             />
@@ -4514,7 +4553,7 @@ function ConnectorConfigFields({
                   id="connector-auth-name"
                   value={draft.auth?.name ?? ''}
                   onChange={(e) => setAuth({ name: e.target.value })}
-                  placeholder="X-API-Key"
+                  placeholder={tI18nHardcoded.raw('i18nComplete.text6f9f03f95e78')}
                   variant="popover"
                   disabled={readOnly}
                   required
@@ -4631,17 +4670,23 @@ export function CustomConnectorForm({
     onSuccess: (result) => {
       if (result.syncError) {
         warningToast(
-          `Added ${draft.slug} to the manifest, but synchronization failed: ${result.syncError}. Use Sync to retry.`,
+          tI18nHardcoded('i18nComplete.textd6a135de3872', {
+            value0: draft.slug,
+            value1: result.syncError,
+          }),
         );
         onAdded();
         return;
       }
       successToast(
-        result.credentialStored ? `Added and connected ${draft.slug}` : `Added ${draft.slug}`,
+        result.credentialStored
+          ? tI18nHardcoded('i18nComplete.text5120ee26cbf5', { value0: draft.slug })
+          : tI18nHardcoded('i18nComplete.text29f396e2d238', { value0: draft.slug }),
       );
       onAdded(draft.slug);
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to add connector'),
+    onError: (err: Error) =>
+      errorToast(err.message || tI18nHardcoded.raw('i18nComplete.textbdc7d54433e6')),
   });
   const discovery = useQuery<ConnectorAuthDiscovery>({
     queryKey: ['connector-auth-discovery', projectId, discoveryDraft],
@@ -4852,14 +4897,19 @@ export function SetCredentialModal({
         if (stopped || status.status === 'pending') return;
         stopped = true;
         if (status.status === 'active') {
-          successToast(tI18nHardcoded.raw('i18nComplete.text82cc866db8c3'));
+          successToast(tI18nHardcoded.raw('i18nComplete.textc2a5f8398f12'));
           onSaved();
           onOpenChange(false);
         } else {
-          errorToast(status.error_code || 'OAuth 2.0 device connection failed');
+          errorToast(status.error_code || tI18nHardcoded.raw('i18nComplete.text911a1cde90bc'));
         }
       } catch (error) {
-        if (!stopped) errorToast(error instanceof Error ? error.message : 'Device polling failed');
+        if (!stopped)
+          errorToast(
+            error instanceof Error
+              ? error.message
+              : tI18nHardcoded.raw('i18nComplete.textfa23c868781d'),
+          );
       }
     };
     void poll();
@@ -4867,7 +4917,7 @@ export function SetCredentialModal({
     const expiryTimer = window.setTimeout(
       () => {
         stopped = true;
-        errorToast(tI18nHardcoded.raw('i18nComplete.text168fa55c02d3'));
+        errorToast(tI18nHardcoded.raw('i18nComplete.text02c1d7b545ea'));
       },
       Math.max(0, new Date(device.expires_at).getTime() - Date.now()),
     );
@@ -4971,7 +5021,8 @@ export function SetCredentialModal({
       window.location.assign(result.authorization_url);
       return result;
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to connect'),
+    onError: (err: Error) =>
+      errorToast(err.message || tI18nHardcoded.raw('i18nComplete.text46c9f3b7520f')),
   });
 
   const save = useMutation({
@@ -5029,14 +5080,19 @@ export function SetCredentialModal({
     },
     onSuccess: () => {
       if (credentialType === 'oauth2' && application.grant !== 'client_credentials') return;
-      successToast(credentialType === 'oauth2' ? 'OAuth 2.0 connection saved' : 'Credential saved');
+      successToast(
+        credentialType === tI18nHardcoded.raw('i18nComplete.textd8ad572d2fb1')
+          ? tI18nHardcoded.raw('i18nComplete.text6984a3c945fa')
+          : tI18nHardcoded.raw('i18nComplete.textf0341f8dbcc5'),
+      );
       setValue('');
       setOauth2(EMPTY_OAUTH2_CREDENTIAL_FORM);
       setApplication(EMPTY_OAUTH2_APPLICATION_FORM);
       onSaved();
       onOpenChange(false);
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to save'),
+    onError: (err: Error) =>
+      errorToast(err.message || tI18nHardcoded.raw('i18nComplete.text2c07997249ab')),
   });
   return (
     <Modal
@@ -5142,7 +5198,11 @@ export function SetCredentialModal({
                       title={tI18nHardcoded.raw('i18nComplete.text477d50f7ddbf')}
                     >
                       {tI18nHardcoded.raw('i18nComplete.text07fdd059f8a1')}
-                      {plan.scopes.length ? ` Scopes: ${plan.scopes.join(', ')}.` : ''}
+                      {plan.scopes.length
+                        ? tI18nHardcoded('i18nComplete.text1d42883b00c1', {
+                            value0: plan.scopes.join(', '),
+                          })
+                        : ''}
                     </InfoBanner>
                     <div className="flex items-center gap-2">
                       <Button
@@ -5252,7 +5312,9 @@ export function SetCredentialModal({
                 {device && (
                   <InfoBanner
                     tone="neutral"
-                    title={`Enter code ${device.user_code}`}
+                    title={tI18nHardcoded('i18nComplete.textbfd271fe6ead', {
+                      value0: device.user_code,
+                    })}
                     action={
                       <Button
                         type="button"

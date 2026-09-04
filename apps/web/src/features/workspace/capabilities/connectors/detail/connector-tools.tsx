@@ -1,5 +1,7 @@
 'use client';
 
+import { useLocalizedUiCatalog } from '@/i18n/use-localized-ui-catalog';
+import { useTranslations } from '@/i18n/use-translations';
 import {
   type AdminConnector,
   type ConnectorPolicyAction,
@@ -17,7 +19,6 @@ import {
   WrenchIcon,
 } from '@phosphor-icons/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -150,6 +151,7 @@ export function ConnectorTools({
   onChanged,
 }: ConnectorToolsProps) {
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const policySegments = useLocalizedUiCatalog(POLICY_SEGMENTS);
   const queryClient = useQueryClient();
   const slug = connector.slug;
   const queryKey = useMemo(() => ['connector-policies', projectId, slug], [projectId, slug]);
@@ -191,7 +193,7 @@ export function ConnectorTools({
     () => filterActions(connector.actions, query),
     [connector.actions, query],
   );
-  const groups = useMemo(() => groupToolsByRisk(matches), [matches]);
+  const groups = useMemo(() => groupToolsByRisk(matches, tI18nComplete), [matches, tI18nComplete]);
 
   const projectLockedCount = useMemo(
     () => effective.filter((entry) => entry.source === 'project').length,
@@ -224,7 +226,7 @@ export function ConnectorTools({
     },
     onError: (error, _write, context) => {
       if (context?.previous) queryClient.setQueryData(queryKey, context.previous);
-      errorToast(error.message || 'Failed to update permissions');
+      errorToast(error.message || tI18nComplete.raw('text2b52d8b009f9'));
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey });
@@ -235,12 +237,12 @@ export function ConnectorTools({
     mutationFn: (next: boolean) => setConnectorSensitive(projectId, slug, next),
     onSuccess: (_result, next) => {
       successToast(
-        next ? 'Every tool will ask before it runs' : 'Tools follow the rules below again',
+        next ? tI18nComplete.raw('text8aa6061345d9') : tI18nComplete.raw('text02a865a79c8b'),
       );
       void queryClient.invalidateQueries({ queryKey });
       onChanged();
     },
-    onError: (error: Error) => errorToast(error.message || 'Failed to update'),
+    onError: (error: Error) => errorToast(error.message || tI18nComplete.raw('text8eb4917bbe54')),
   });
 
   const busy = writePolicies.isPending || sensitiveMutation.isPending;
@@ -348,7 +350,13 @@ export function ConnectorTools({
         <InfoBanner
           tone="warning"
           icon={LockIcon}
-          title={`${projectLockedCount} ${projectLockedCount === 1 ? 'tool is' : 'tools are'} decided by a project rule`}
+          title={tI18nComplete('textd3d900c89bd0', {
+            value0: projectLockedCount,
+            value1:
+              projectLockedCount === 1
+                ? tI18nComplete.raw('text86ca67d2851a')
+                : tI18nComplete.raw('textd50ab26e1621'),
+          })}
         >
           {tI18nComplete.raw('textf7d6d7f585c5')}
         </InfoBanner>
@@ -367,7 +375,7 @@ export function ConnectorTools({
           description={
             policiesQuery.error instanceof Error
               ? policiesQuery.error.message
-              : 'The permission rules for this connector could not be read.'
+              : tI18nComplete.raw('texta47c08d35337')
           }
           action={
             <Button variant="outline" size="sm" onClick={() => void policiesQuery.refetch()}>
@@ -383,7 +391,7 @@ export function ConnectorTools({
           icon={WrenchIcon}
           size="sm"
           title={tI18nComplete.raw('text99dd86336467')}
-          description={`${displayName} hasn’t reported any tools. Once it syncs, each one gets its own Default · Block · Ask · Allow control here.`}
+          description={tI18nComplete('text0679d5053dda', { value0: displayName })}
         />
       ) : groups.length === 0 ? (
         // The same line the four catalogs render, from the same component.
@@ -413,7 +421,7 @@ export function ConnectorTools({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-32 rounded-lg">
-                  {POLICY_SEGMENTS.map((segment) => (
+                  {policySegments.map((segment) => (
                     <DropdownMenuItem
                       key={segment.choice}
                       onSelect={() => setBulk({ group, choice: segment.choice })}
@@ -448,7 +456,9 @@ export function ConnectorTools({
                       ) : null}
                     </div>
                     <ToolPolicyControl
-                      label={`Permission for ${row.path ?? row.title}`}
+                      label={tI18nComplete('textb34f1e3c1569', {
+                        value0: row.path ?? row.title,
+                      })}
                       value={toolChoice(action.path, policies, effective)}
                       onChange={(next) => setToolPolicy(action.path, next)}
                       disabled={frozen || busy}
@@ -570,7 +580,9 @@ export function ConnectorTools({
                     size="icon"
                     variant="ghost"
                     className="hover:text-destructive size-8 shrink-0"
-                    aria-label={`Remove rule ${row.match || '(empty)'}`}
+                    aria-label={tI18nComplete('texte2cbd4618228', {
+                      value0: row.match || '(empty)',
+                    })}
                     disabled={frozen}
                     onClick={() =>
                       setDraft((rows) => rows.filter((candidate) => candidate.id !== row.id))
@@ -634,8 +646,8 @@ export function ConnectorTools({
         confirmLabel={
           bulk
             ? bulk.choice === 'default'
-              ? 'Return to default'
-              : `Set to ${POLICY_CHOICE_LABEL[bulk.choice]}`
+              ? tI18nComplete.raw('text1707565fd3f0')
+              : tI18nComplete('text41ffc5e14073', { value0: POLICY_CHOICE_LABEL[bulk.choice] })
             : 'Confirm'
         }
         isPending={writePolicies.isPending}

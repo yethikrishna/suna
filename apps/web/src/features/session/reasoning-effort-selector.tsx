@@ -31,7 +31,7 @@
  * 38 days stale (#6879). Two knobs by mode, three catalog copies. Now one.
  */
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { useCallback, useState } from 'react';
 
 import { Button } from '@/components/ui/button';

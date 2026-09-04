@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync } from '@/i18n/test-source';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,13 +20,9 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(here, 'connectors-page.tsx'), 'utf8');
-const tabs = readFileSync(
-  resolve(here, '../shared/capability-tabs.tsx'),
-  'utf8',
-);
+const tabs = readFileSync(resolve(here, '../shared/capability-tabs.tsx'), 'utf8');
 
-const code = (src: string) =>
-  src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+const code = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
 
 const filtersSlice = (body: string) => {
   const start = body.indexOf('filters={');
@@ -87,7 +83,7 @@ describe('connectors page Global rules', () => {
     expect(header).toContain('<PlusIcon className="size-4" />');
     expect(header).toContain('Add');
     expect(header).not.toContain('size="icon-md"');
-    expect(header).toContain('aria-label="Add a custom connector"');
+    expect(header).toContain("raw('text90ccaee30bdc')");
   });
 
   test('it opens in a Sheet and renders PoliciesPanel, with the copy intact', () => {

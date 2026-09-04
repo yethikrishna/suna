@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from '@/i18n/use-translations';
 import { useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/marketing/button';
@@ -18,6 +19,7 @@ const ALL = 'All';
  * under the cursor.
  */
 export function UseCasesBrowser({ posts }: { posts: Post[] }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const filters = useMemo(() => {
     const counts = new Map<string, number>();
     for (const post of posts) {
@@ -38,7 +40,7 @@ export function UseCasesBrowser({ posts }: { posts: Post[] }) {
       <div
         className="border-border/60 mb-10 flex flex-wrap items-center gap-1.5 border-b pb-6 sm:mb-12"
         role="group"
-        aria-label="Filter use cases by type"
+        aria-label={tI18nComplete.raw('text56b46fc5bc85')}
       >
         {filters.map(({ tag, count }) => {
           const isActive = active === tag;
@@ -61,8 +63,8 @@ export function UseCasesBrowser({ posts }: { posts: Post[] }) {
 
       {visible.length === 0 ? (
         <EmptyState
-          title="No use cases yet"
-          description="Case studies and use cases are on the way. Check back soon."
+          title={tI18nComplete.raw('text40db06073883')}
+          description={tI18nComplete.raw('text18d7a47acb40')}
         />
       ) : (
         // No card borders: whitespace separates the cells, so the vertical gap

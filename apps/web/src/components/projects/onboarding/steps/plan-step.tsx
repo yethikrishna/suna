@@ -14,7 +14,7 @@
  */
 
 import { ClockIcon as Clock, KeyIcon as Key } from '@phosphor-icons/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { useState } from 'react';
 
 import { RadioGroup } from '@/components/ui/radio-group';

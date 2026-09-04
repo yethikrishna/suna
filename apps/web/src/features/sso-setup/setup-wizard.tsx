@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 // Guided identity setup — Vercel-style wizards for SAML SSO and Directory
 // Sync (SCIM). Screen 1 picks the identity provider; screen 2 walks the
 // provider-specific steps (guides.ts) with a vertical stepper, copyable
@@ -10,6 +10,7 @@ import { useTranslations } from 'next-intl';
 // per account+flow+provider in localStorage.
 
 import { errorToast, successToast, warningToast } from '@/components/ui/toast';
+import { useLocalizedUiCatalog } from '@/i18n/use-localized-ui-catalog';
 import {
   ArrowLeftIcon as ArrowLeft,
   ArrowRightIcon as ArrowRight,
@@ -159,12 +160,12 @@ function saveMetadataStash(accountId: string, provider: string, stash: MetadataS
   }
 }
 
-async function copyValue(value: string, msg: string) {
+async function copyValue(value: string, successMessage: string, failureMessage: string) {
   try {
     await navigator.clipboard.writeText(value);
-    successToast(msg);
+    successToast(successMessage);
   } catch {
-    warningToast('Copy failed — select and copy manually');
+    warningToast(failureMessage);
   }
 }
 
@@ -283,6 +284,7 @@ function StepFigure({
 }
 
 function CopyRow({ label, value }: { label: string; value: string }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   return (
     <div className="space-y-1.5">
       <Label className="text-xs">{label}</Label>
@@ -294,7 +296,13 @@ function CopyRow({ label, value }: { label: string; value: string }) {
           variant="outline"
           size="icon"
           aria-label={`Copy ${label}`}
-          onClick={() => copyValue(value, `${label} copied`)}
+          onClick={() =>
+            copyValue(
+              value,
+              tI18nComplete.raw('text8d525e5f158b'),
+              tI18nComplete.raw('text19efd469fc32'),
+            )
+          }
         >
           <Copy className="size-3.5 shrink-0" />
         </Button>
@@ -336,8 +344,14 @@ function ClaimsTable({
                 variant="ghost"
                 size="icon"
                 className="size-6 shrink-0"
-                aria-label={`Copy claim name ${row.name}`}
-                onClick={() => copyValue(row.name, 'Claim name copied')}
+                aria-label={tI18nComplete('textd5ff152d9a54', { value0: row.name })}
+                onClick={() =>
+                  copyValue(
+                    row.name,
+                    tI18nComplete.raw('texte0d8e95e7401'),
+                    tI18nComplete.raw('text19efd469fc32'),
+                  )
+                }
               >
                 <Copy className="size-3" />
               </Button>
@@ -349,8 +363,14 @@ function ClaimsTable({
                 variant="ghost"
                 size="icon"
                 className="size-6 shrink-0"
-                aria-label={`Copy source attribute ${row.source}`}
-                onClick={() => copyValue(row.source, 'Source attribute copied')}
+                aria-label={tI18nComplete('text9b5549456e23', { value0: row.source })}
+                onClick={() =>
+                  copyValue(
+                    row.source,
+                    tI18nComplete.raw('textc98000c7438d'),
+                    tI18nComplete.raw('text19efd469fc32'),
+                  )
+                }
               >
                 <Copy className="size-3" />
               </Button>
@@ -417,6 +437,7 @@ function ProviderSelect({
   onPick: (id: string) => void;
 }) {
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const flowConfig = useLocalizedUiCatalog(FLOW_CONFIG);
   const [query, setQuery] = useState('');
   const all = flow === 'sso' ? PROVIDER_GUIDES : SCIM_PROVIDER_GUIDES;
   const guides = useMemo(() => {
@@ -428,10 +449,10 @@ function ProviderSelect({
   return (
     <div className="mx-auto w-full max-w-xl">
       <h1 className="text-foreground text-center text-2xl font-semibold">
-        {FLOW_CONFIG[flow].heading}
+        {flowConfig[flow].heading}
       </h1>
       <p className="text-muted-foreground mt-2 text-center text-sm">
-        {FLOW_CONFIG[flow].subheading}
+        {flowConfig[flow].subheading}
       </p>
       {flow === 'scim' && !ssoConnected && (
         <div className="mt-6">
@@ -536,10 +557,24 @@ function MetadataInputStep({
           // 'url' card would send a rule-following admin to a dead input.
           // Drop it — and its "Recommended" lure — for those providers.
           (config.preferredMetadata === 'xml'
-            ? ([['xml', 'Paste the metadata XML', 'Your IdP offers an XML download only']] as const)
+            ? ([
+                [
+                  'xml',
+                  tI18nComplete.raw('textf68119748553'),
+                  tI18nComplete.raw('text990a8502b6f1'),
+                ],
+              ] as const)
             : ([
-                ['url', 'Dynamic configuration', 'Recommended — a metadata URL'],
-                ['xml', 'Manual configuration', 'Paste the metadata XML'],
+                [
+                  'url',
+                  tI18nComplete.raw('text5a673d73be7d'),
+                  tI18nComplete.raw('text0ad3b7155490'),
+                ],
+                [
+                  'xml',
+                  tI18nComplete.raw('text2e22eec2a812'),
+                  tI18nComplete.raw('textf68119748553'),
+                ],
               ] as const)
           ).map(([m, title, sub]) => (
             <button
@@ -565,7 +600,9 @@ function MetadataInputStep({
 
       <div className="border-border/60 bg-popover space-y-1.5 rounded-md border p-4">
         <Label htmlFor="sso-idp-metadata">
-          {mode === 'url' ? 'Identity provider metadata URL' : 'Identity provider metadata XML'}
+          {mode === 'url'
+            ? tI18nComplete.raw('text98b2093683f0')
+            : tI18nComplete.raw('text6158d619dcb8')}
         </Label>
         {mode === 'url' ? (
           <Input
@@ -684,11 +721,11 @@ function ImportForm({
           : { metadata_url: metaUrl.trim() }),
       }),
     onSuccess: () => {
-      successToast('Identity provider connected');
+      successToast(tI18nComplete.raw('text4e454ace879c'));
       queryClient.invalidateQueries({ queryKey: ['iam-sso-provider', accountId] });
       onDone();
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to connect the provider'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('textc28d0504b164')),
   });
 
   const metadataReady =
@@ -726,7 +763,7 @@ function ImportForm({
           <Input
             value={domain}
             onChange={(e) => setDomain(e.target.value)}
-            placeholder="acme.com"
+            placeholder={tI18nComplete.raw('text1194228da8fd')}
             disabled={mutation.isPending}
           />
           <p className="text-muted-foreground text-xs">{tI18nComplete.raw('texte6c1f062119d')}</p>
@@ -755,8 +792,8 @@ function ImportForm({
           <div className="border-border/70 inline-flex overflow-hidden rounded-md border">
             {(
               [
-                ['url', 'From URL'],
-                ['xml', 'Paste XML'],
+                ['url', tI18nComplete.raw('text8d71559c9817')],
+                ['xml', tI18nComplete.raw('text40d0593ae5fc')],
               ] as const
             ).map(([k, label]) => (
               <button
@@ -948,9 +985,9 @@ function ScimTokenStep({
       // Keep the settings SCIM card and this step's own resume detection in
       // sync — both read ['scim-tokens', accountId] with a 30s staleTime.
       queryClient.invalidateQueries({ queryKey: ['scim-tokens', accountId] });
-      successToast('SCIM token minted — both values stay visible for the rest of this setup');
+      successToast(tI18nComplete.raw('text9bae517c4742'));
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to mint the token'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('text8b624587552a')),
   });
 
   return (
@@ -1013,8 +1050,8 @@ function ScimTokenStep({
             </h4>
             <p className="text-muted-foreground mt-1 text-xs">
               {minted
-                ? 'Both values above stay on this page — copy each one straight into the fields below.'
-                : 'Same steps as your previous visit — check each one is actually done before continuing. The Tenant URL above is unchanged; the secret is the one you pasted last time (or mint a fresh one).'}
+                ? tI18nComplete.raw('textcc7e587a074a')
+                : tI18nComplete.raw('text504328ab57c1')}
             </p>
           </div>
           <StepBlocks blocks={connectContent} spUrls={spUrls} />
@@ -1152,8 +1189,8 @@ function SsoTestStatusPanel({
           <div className="min-w-0 text-sm">
             <p className="text-foreground font-medium">
               {arrived.length === 1
-                ? 'Your test user just arrived'
-                : `${arrived.length} users arrived`}
+                ? tI18nComplete.raw('texta94a9c97db84')
+                : tI18nComplete('textd5d95217828e', { value0: arrived.length })}
             </p>
             <p className="text-muted-foreground truncate text-xs">
               {arrived.map((m) => m.email ?? m.user_id).join(', ')}{' '}
@@ -1251,7 +1288,7 @@ function ProvisionedStatusPanel({
             {tI18nComplete.raw('text97df9d6eae8f')}
           </span>
           <span className="text-foreground font-medium whitespace-nowrap">
-            {lastSyncAt ? relativeTime(lastSyncAt) : 'none yet'}
+            {lastSyncAt ? relativeTime(lastSyncAt) : tI18nComplete.raw('text98ca0d518997')}
           </span>
         </p>
         {freshness === 'never' && !tokensQuery.isLoading && (
@@ -1290,8 +1327,7 @@ function ProvisionedStatusPanel({
       )}
       <p className="text-muted-foreground text-xs">
         {tI18nComplete.raw('textba88c968e1e5')}{' '}
-        {cadenceHint ??
-          'Your IdP pushes changes on its own schedule — no manual action needed on the Kortix side.'}
+        {cadenceHint ?? tI18nComplete.raw('textab080c35a997')}
       </p>
     </div>
   );
@@ -1353,7 +1389,7 @@ function StepBody({
               ) : (
                 <ShieldCheck className="size-3" />
               )}
-              {step.where === 'idp' ? providerName : 'Kortix dashboard'}
+              {step.where === 'idp' ? providerName : tI18nComplete.raw('text7144535c8be1')}
             </Badge>
           )}
           {step.menuPath && (
@@ -1412,7 +1448,7 @@ function StepBody({
           accountId={accountId}
           providerId={providerId}
           config={config}
-          doneLabel={step.doneLabel ?? 'I’ve added the identity provider metadata'}
+          doneLabel={step.doneLabel ?? tI18nComplete.raw('textaaa072ad6fc2')}
           onDone={onCompleteStep}
         />
       ) : step.kind === 'import' ? (
@@ -1451,7 +1487,8 @@ function StepBody({
                   onClick={() =>
                     copyValue(
                       `${typeof window === 'undefined' ? '' : window.location.origin}/auth`,
-                      'Sign-in URL copied — open it in a private/incognito window',
+                      tI18nComplete.raw('text3f6029ebc897'),
+                      tI18nComplete.raw('text19efd469fc32'),
                     )
                   }
                 >
@@ -1478,7 +1515,7 @@ function StepBody({
               <Check className="text-kortix-green size-3.5" />
             </span>
             <span className="text-foreground truncate text-sm">
-              {step.doneLabel ?? 'I’ve completed this step'}
+              {step.doneLabel ?? tI18nComplete.raw('textfc90a89c4980')}
             </span>
           </span>
           <Button onClick={onCompleteStep} className="shrink-0 gap-1.5">
@@ -1495,11 +1532,15 @@ function StepBody({
 
 function WizardCore({ accountId, flow }: { accountId: string; flow: Flow }) {
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const flowConfig = useLocalizedUiCatalog(FLOW_CONFIG);
   const router = useRouter();
   const searchParams = useSearchParams();
   const providerId = searchParams?.get('provider') ?? null;
-  const guide = flow === 'sso' ? getProviderGuide(providerId) : getScimGuide(providerId);
-  const config = FLOW_CONFIG[flow];
+  const guide =
+    flow === 'sso'
+      ? getProviderGuide(providerId, tI18nComplete)
+      : getScimGuide(providerId, tI18nComplete);
+  const config = flowConfig[flow];
 
   const accountStateQuery = useAccountState({ accountId, enabled: !!accountId });
   const entitlements = accountStateQuery.data?.tier?.entitlements;
@@ -1630,7 +1671,10 @@ function WizardCore({ accountId, flow }: { accountId: string; flow: Flow }) {
           <ShieldCheck className="text-muted-foreground size-4" />
           <span className="text-foreground text-sm font-medium">{guide.name}</span>
           <span className="text-muted-foreground text-xs">
-            · {flow === 'sso' ? 'SAML SSO' : 'Directory Sync'}
+            ·{' '}
+            {flow === 'sso'
+              ? tI18nComplete.raw('text405e739d53d2')
+              : tI18nComplete.raw('textea18bba8cbdb')}
           </span>
         </div>
         <div className="flex items-center gap-1">
@@ -1738,7 +1782,7 @@ function WizardCore({ accountId, flow }: { accountId: string; flow: Flow }) {
             <span className="text-muted-foreground text-xs">
               {activeStep < guide.steps.length - 1
                 ? `Next: ${guide.steps[activeStep + 1]?.title}`
-                : 'Last step'}
+                : tI18nComplete.raw('text7c8f89daffea')}
             </span>
           </div>
         </div>
@@ -1747,7 +1791,11 @@ function WizardCore({ accountId, flow }: { accountId: string; flow: Flow }) {
       <ConfirmDialog
         open={confirmAction !== null}
         onOpenChange={(open) => !open && setConfirmAction(null)}
-        title={confirmAction === 'change' ? 'Change provider?' : 'Start over?'}
+        title={
+          confirmAction === 'change'
+            ? tI18nComplete.raw('text988d146cc0be')
+            : tI18nComplete.raw('textd48f39d295a7')
+        }
         description={
           confirmAction === 'change' ? (
             <span>
@@ -1761,7 +1809,11 @@ function WizardCore({ accountId, flow }: { accountId: string; flow: Flow }) {
             </span>
           )
         }
-        confirmLabel={confirmAction === 'change' ? 'Change provider' : 'Start over'}
+        confirmLabel={
+          confirmAction === 'change'
+            ? tI18nComplete.raw('textc8d2a9446813')
+            : tI18nComplete.raw('text5eed7e9fc8f3')
+        }
         confirmVariant="destructive"
         onConfirm={() => {
           if (confirmAction === 'change') goChangeProvider();

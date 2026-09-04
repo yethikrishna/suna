@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 /**
  * `MemberAccessPanel` — one person's detail surface, rendered INSIDE the
  * account hub pane (`/accounts/{id}?tab=members&member=<id>`), exactly like
@@ -228,14 +228,18 @@ export function MemberAccessPanel({
   const setSuperAdminMutation = useMutation({
     mutationFn: (next: boolean) => setMemberSuperAdmin(accountId, memberUserId, next),
     onSuccess: (res) => {
-      successToast(res.is_super_admin ? 'Granted super-admin' : 'Revoked super-admin');
+      successToast(
+        res.is_super_admin
+          ? tI18nComplete.raw('text9648d371aee7')
+          : tI18nComplete.raw('textecffbad40a81'),
+      );
       // Super-admin is a total bypass: every verdict for this principal moves.
       void invalidatePermissionProbes(queryClient, { accountId, userId: memberUserId });
       queryClient.invalidateQueries({ queryKey: ['account-members', accountId] });
       setGrantConfirmOpen(false);
       setRevokeConfirmOpen(false);
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to update'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('text8eb4917bbe54')),
   });
 
   const member = useMemo(
@@ -246,14 +250,14 @@ export function MemberAccessPanel({
   const removeMutation = useMutation({
     mutationFn: () => removeAccountMember(accountId, memberUserId),
     onSuccess: () => {
-      successToast('Member removed');
+      successToast(tI18nComplete.raw('text23b0caa9d34a'));
       void invalidatePermissionProbes(queryClient, { accountId, userId: memberUserId });
       queryClient.invalidateQueries({ queryKey: ['account-members', accountId] });
       queryClient.invalidateQueries({ queryKey: ['account', accountId] });
       setRemoveOpen(false);
       onBack();
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to remove member'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('text1cff79b7eb0b')),
   });
 
   // canPromoteSuperAdmin gates the Grant/Revoke super-admin menu items below —
@@ -285,7 +289,7 @@ export function MemberAccessPanel({
 
   return (
     <AccessDetailShell
-      back={{ label: 'All members', onClick: onBack }}
+      back={{ label: tI18nComplete.raw('text3d6fe3e703f6'), onClick: onBack }}
       loading={membersQuery.isLoading}
       avatar={<UserAvatar email={memberLabel} name={member?.email ?? undefined} size="lg" />}
       title={memberLabel}
@@ -317,7 +321,7 @@ export function MemberAccessPanel({
       meta={
         member ? (
           <InlineMeta className="text-sm">
-            <span>{builtinRoleLabel('account', member.account_role)}</span>
+            <span>{builtinRoleLabel('account', member.account_role, tI18nComplete)}</span>
             <span>
               {tI18nComplete.raw('text69318b0c6a92')} {formatDate(member.joined_at)}
             </span>
@@ -338,7 +342,7 @@ export function MemberAccessPanel({
                 variant="ghost"
                 size="icon"
                 className="text-muted-foreground hover:text-foreground size-7 shrink-0"
-                aria-label={`Actions for ${memberLabel}`}
+                aria-label={tI18nComplete('text33da220b1a34', { value0: memberLabel })}
               >
                 <MoreHorizontal className="size-3.5" />
               </Button>
@@ -459,8 +463,11 @@ export function MemberAccessPanel({
         open={removeOpen}
         onOpenChange={setRemoveOpen}
         title={tI18nComplete.raw('text914d43beac26')}
-        description={`${memberLabel} loses access to ${accountName}.`}
-        confirmLabel="Remove"
+        description={tI18nComplete('text0b628a266141', {
+          value0: memberLabel,
+          value1: accountName,
+        })}
+        confirmLabel={tI18nComplete.raw('textc3812fc4acb8')}
         confirmVariant="destructive"
         isPending={removeMutation.isPending}
         onConfirm={() => removeMutation.mutate()}
@@ -611,12 +618,14 @@ function MemberProjectAccessSection({
           title={tI18nComplete.raw('text5b9616df2058')}
           description={
             isAdminLike
-              ? `${accountRole === 'owner' ? 'Owners' : 'Admins'} are implicit Manager on every active project in the account.`
-              : "Grant this member a project from the project's Access list."
+              ? tI18nComplete('textdfad83e7eb69', {
+                  value0: accountRole === 'owner' ? 'Owners' : 'Admins',
+                })
+              : tI18nComplete.raw('text25cc3dcfa2a5')
           }
         />
       ) : (
-        <AccessList header={{ title: 'Projects', count: sorted.length }}>
+        <AccessList header={{ title: tI18nComplete.raw('text04e2a9728af7'), count: sorted.length }}>
           {sorted.map((project) => {
             const policy = directPolicy(project.custom_role_policies);
             const inheritedOnly = project.sources.length === 1 && project.sources[0] === 'implicit';
@@ -625,13 +634,13 @@ function MemberProjectAccessSection({
             const kebab: KebabItem[] = [];
             if (canEdit && !inheritedOnly) {
               kebab.push({
-                label: 'Edit access',
+                label: tI18nComplete.raw('texta514a684676a'),
                 icon: <PencilSimple className="size-3.5" />,
                 onSelect: () => void openEdit(project),
               });
             }
             kebab.push({
-              label: 'Open project',
+              label: tI18nComplete.raw('text5e5eba7f41ab'),
               icon: <OpenIcon className="size-3.5" />,
               href: `/projects/${project.project_id}`,
             });
@@ -652,15 +661,17 @@ function MemberProjectAccessSection({
                     </InlineMeta>
                   </span>
                 }
-                trailing={policy?.role_name ?? builtinRoleLabel('project', project.role)}
+                trailing={
+                  policy?.role_name ?? builtinRoleLabel('project', project.role, tI18nComplete)
+                }
                 href={`/projects/${project.project_id}`}
                 pending={openingProjectId === project.project_id}
                 kebab={kebab}
-                kebabLabel={`Actions for ${project.project_name}`}
+                kebabLabel={tI18nComplete('text33da220b1a34', { value0: project.project_name })}
                 notEditable={
                   inheritedOnly && canEdit
                     ? {
-                        hint: 'Owners and admins are Manager on every project — change their account role to limit this.',
+                        hint: tI18nComplete.raw('text4e6c3453b25d'),
                       }
                     : undefined
                 }
@@ -731,7 +742,9 @@ function MemberGroupsSection({
     );
   }
   return (
-    <AccessList header={{ title: 'Groups', count: memberGroups.length }}>
+    <AccessList
+      header={{ title: tI18nComplete.raw('text39bbb719fa2b'), count: memberGroups.length }}
+    >
       {memberGroups.map((group) => (
         <AccessRow
           key={group.group_id}

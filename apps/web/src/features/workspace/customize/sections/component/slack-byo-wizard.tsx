@@ -1,6 +1,7 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
+import { useLocalizedUiCatalog } from '@/i18n/use-localized-ui-catalog';
 /**
  * "Use your own Slack app" — the self-hosted / custom-scoped install path,
  * rebuilt as a guided three-step wizard in a Modal.
@@ -100,6 +101,7 @@ export function SlackByoWizard({
   onOpenChange: (open: boolean) => void;
 }) {
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const steps = useLocalizedUiCatalog(STEPS);
   const [step, setStep] = useState<StepNumber>(1);
   const [botToken, setBotToken] = useState('');
   const [signingSecret, setSigningSecret] = useState('');
@@ -117,7 +119,7 @@ export function SlackByoWizard({
       { projectId, bot_token: botToken.trim(), signing_secret: signingSecret.trim() },
       {
         onSuccess: () => {
-          successToast('Slack connected');
+          successToast(tI18nComplete.raw('text1bfa15228ca8'));
           onOpenChange(false);
         },
         onError: (e) => setError(e instanceof Error ? e.message : 'Could not connect Slack'),
@@ -136,12 +138,12 @@ export function SlackByoWizard({
         <ModalBody className="max-h-[65vh] overflow-y-auto">
           <Stepper
             orientation="vertical"
-            count={STEPS.length}
+            count={steps.length}
             value={step}
             onValueChange={(v) => setStep(v as StepNumber)}
             className="flex w-full flex-col"
           >
-            {STEPS.map(({ step: n, title }) => {
+            {steps.map(({ step: n, title }) => {
               const active = n === step;
               return (
                 <div key={n} className="flex gap-3">

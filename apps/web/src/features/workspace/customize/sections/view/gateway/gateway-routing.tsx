@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 /**
  * Routing — where a request goes when the project default can't take it.
  *
@@ -443,7 +443,7 @@ function ChainRows({
               <ArrowDown className="size-3.5" />
             </Button>
           </Hint>
-          <Hint label="Remove">
+          <Hint label={tI18nComplete.raw('textc3812fc4acb8')}>
             <Button
               type="button"
               size="icon-sm"
@@ -470,7 +470,9 @@ function ChainRows({
             value={null}
             models={models}
             exclude={taken}
-            unsetLabel={canAdd ? 'Add a fallback' : 'No models left'}
+            unsetLabel={
+              canAdd ? tI18nComplete.raw('text5b660045c015') : tI18nComplete.raw('text82e4b64f1673')
+            }
             disabled={!canAdd || chain.models.length >= MAX_FALLBACKS}
             onChange={(next) => next && onChange({ ...chain, models: [...chain.models, next] })}
           />
@@ -955,10 +957,10 @@ export function GatewayRouting({
                     label={tI18nComplete.raw('text3efdd4ec1a82')}
                     hint={
                       draft.visionModel
-                        ? 'Requests with an image go here instead of the chain above.'
+                        ? tI18nComplete.raw('textc916a6a191c1')
                         : routing.data.effective.visionModel
                           ? `Inherits ${routing.data.effective.visionModel}.`
-                          : 'Requests with an image follow the chain above.'
+                          : tI18nComplete.raw('text59e7c0aa6df1')
                     }
                   >
                     <div className="flex min-w-0 items-center gap-2">
@@ -1010,7 +1012,10 @@ export function GatewayRouting({
       {writable ? (
         <div className="bg-background/95 sticky bottom-0 -mx-4 mt-8 flex items-center justify-between gap-4 border-t px-4 py-4 backdrop-blur">
           <div className="text-muted-foreground text-xs">
-            {validation ?? (dirty ? 'Unsaved changes' : 'Routing is up to date')}
+            {validation ??
+              (dirty
+                ? tI18nComplete.raw('texta710c2b90913')
+                : tI18nComplete.raw('text634cfb4b6bfd'))}
           </div>
           <Button
             type="button"
@@ -1027,11 +1032,13 @@ export function GatewayRouting({
                         queryKey: qk.project.modelPicker(projectId),
                       }),
                     ]);
-                    successToast('Routing policy saved');
+                    successToast(tI18nComplete.raw('text538f96979be7'));
                   },
                   onError: (error) =>
                     errorToast(
-                      error instanceof Error ? error.message : 'Could not save routing policy',
+                      error instanceof Error
+                        ? error.message
+                        : tI18nComplete.raw('text4501be681694'),
                     ),
                 },
               );
@@ -1056,10 +1063,12 @@ export function GatewayRouting({
             onSuccess: () => {
               setResetOpen(false);
               void queryClient.invalidateQueries({ queryKey: ['model-defaults', projectId] });
-              successToast('Project routing reset');
+              successToast(tI18nComplete.raw('textd70047735b1c'));
             },
             onError: (error) =>
-              errorToast(error instanceof Error ? error.message : 'Could not reset routing'),
+              errorToast(
+                error instanceof Error ? error.message : tI18nComplete.raw('text71ea14bcd4ab'),
+              ),
           })
         }
       />

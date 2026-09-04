@@ -25,7 +25,7 @@
 
 import { GearSixIcon as CogOne, MagnifyingGlassIcon as Search } from '@phosphor-icons/react';
 import { useQueries } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
 import { useMemo, useState, type MouseEvent } from 'react';
@@ -61,6 +61,7 @@ import { contract, qk } from '@kortix/sdk/react';
 import { CheckCircleIcon as CheckCircleSolid } from '@phosphor-icons/react';
 
 export function WorkspaceMenuSection() {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('sidebar');
   const pathname = usePathname();
   const params = useParams<{ id?: string }>();
@@ -246,7 +247,7 @@ export function WorkspaceMenuSection() {
             {visibleGroups.map((group) => (
               <DropdownMenuGroup key={group.accountId} className="p-0.5">
                 <DropdownMenuLabel className="px-1.5 text-sm">
-                  {group.accountName.replaceAll("'s Account", '')}
+                  {group.accountName.replaceAll(tI18nComplete.raw('text78add5e83e0b'), '')}
                 </DropdownMenuLabel>
                 {group.workspaces.map((workspace) => {
                   const active = workspace.project_id === activeProjectId;

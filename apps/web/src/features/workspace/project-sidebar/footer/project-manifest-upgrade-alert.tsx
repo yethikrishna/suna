@@ -20,7 +20,7 @@
  * for good the moment the manifest lands on v2.
  */
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';

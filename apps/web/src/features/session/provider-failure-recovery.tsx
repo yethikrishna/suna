@@ -5,7 +5,7 @@ import { ArrowCounterClockwiseIcon, CopyIcon, TrashIcon } from '@phosphor-icons/
 import { Button } from '@/components/ui/button';
 import Loading from '@/components/ui/loading';
 import type { PendingSessionPrompt } from '@kortix/sdk';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 
 interface ProviderFailureRecoveryProps {
   pendingPrompt: PendingSessionPrompt | null;

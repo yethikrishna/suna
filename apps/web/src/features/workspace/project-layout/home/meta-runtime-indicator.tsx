@@ -1,7 +1,7 @@
 'use client';
 
 import { ShippingContainerIcon as Container } from '@phosphor-icons/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 
 import Hint from '@/components/ui/hint';
 

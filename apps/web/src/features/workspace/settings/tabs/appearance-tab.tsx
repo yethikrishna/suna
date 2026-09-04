@@ -21,7 +21,7 @@
  */
 
 import { CheckCircleIcon as CheckCircleSolid } from '@phosphor-icons/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { useTheme } from 'next-themes';
 import { useEffect } from 'react';
 

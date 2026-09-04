@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 
 /**
  * Shared quiet surface for the auth sub-flows (forgot / reset password).

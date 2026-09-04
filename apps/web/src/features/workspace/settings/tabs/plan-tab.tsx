@@ -33,7 +33,7 @@ import { BillingTab } from '@/features/accounts/settings/billing-tab';
 import { GlobalUpgradeModal } from '@/features/billing/global-upgrade-modal';
 import { usePermission } from '@/lib/use-permission';
 import { BillingAccountProvider } from '@/stores/billing-account-context';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import Link from 'next/link';
 import { SettingsTabHeader } from '../settings-tab-header';
 

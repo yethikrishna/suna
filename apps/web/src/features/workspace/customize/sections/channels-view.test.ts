@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync } from '@/i18n/test-source';
 import { join } from 'node:path';
 
 const dir = import.meta.dir;
@@ -76,7 +76,8 @@ describe('Channels view — a disconnected Slack is a hero, not a table row', ()
     // Not its own list above a "More channels" heading — the label is
     // suppressed precisely when Slack has joined the rows.
     expect(channelsSource).toContain('const showMoreLabel = !slackRow && hasRows;');
-    expect(channelsSource).toMatch(/showMoreLabel \? <Label>More channels<\/Label> : null/);
+    expect(channelsSource).toContain('showMoreLabel ? <Label>');
+    expect(channelsSource).toContain("raw('text28647129955c')");
     expect(channelsSource).toMatch(
       /<ul className="space-y-2">[\s\S]*?<SlackChannelRow[\s\S]*?<EmailChannelRow[\s\S]*?<TeamsChannelRow[\s\S]*?<\/ul>/,
     );
@@ -94,8 +95,8 @@ describe('Channels view — a disconnected Slack is a hero, not a table row', ()
   test('the bindings table survives — that one has real data to compare', () => {
     expect(channelsSource).toContain('function ChannelBindingsSection');
     expect(channelsSource).toContain('<Table>');
-    expect(channelsSource).toContain('<TableHead>Channel</TableHead>');
-    expect(channelsSource).toContain('<TableHead>Join policy</TableHead>');
+    expect(channelsSource).toContain("raw('textce4683e7013a')");
+    expect(channelsSource).toContain("raw('text11b39c93777e')");
   });
 
   test('the duplicate header CTA is gone — the hero owns the only "Add to Slack"', () => {
@@ -406,7 +407,7 @@ describe('Channels view — per-channel binding management (spec §2.5)', () => 
   test('model override reuses the shared ModelSelector and labels the unset state', () => {
     expect(channelsSource).toContain("from '@/features/session/model-selector'");
     expect(channelsSource).toContain('<ModelSelector');
-    expect(channelsSource).toContain('unsetLabel="Project default"');
+    expect(channelsSource).toContain("raw('texte8cb80e5c5cb')");
   });
 
   test('join-policy picker covers all three conversation policies', () => {

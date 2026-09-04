@@ -28,7 +28,7 @@ import {
   ChatCircleIcon as ChatCircle,
   CheckCircleIcon as CheckCircle,
 } from '@phosphor-icons/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 
 import { Button } from '@/components/ui/button';
 import { IdentityConfetti } from '@/components/ui/identity-confetti';

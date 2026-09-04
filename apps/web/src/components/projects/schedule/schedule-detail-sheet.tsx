@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 /**
  * The panel behind a row click.
  *
@@ -153,16 +153,19 @@ export function ScheduleDetailSheet({
   const toggle = useMutation({
     mutationFn: (enabled: boolean) => updateProjectTrigger(projectId, trigger!.slug, { enabled }),
     onSuccess: (_data, enabled) => {
-      successToast(enabled ? 'Resumed' : 'Paused');
+      successToast(
+        enabled ? tI18nComplete.raw('texta97d32ddb6ba') : tI18nComplete.raw('texte159b06187d3'),
+      );
       onMutated();
     },
-    onError: (err) => errorToast(err instanceof Error ? err.message : 'Could not update'),
+    onError: (err) =>
+      errorToast(err instanceof Error ? err.message : tI18nComplete.raw('text43ec39943667')),
   });
 
   if (!trigger) return null;
 
   const isCron = trigger.type === 'cron';
-  const status = triggerStatus(trigger.enabled);
+  const status = triggerStatus(trigger.enabled, tI18nComplete);
   const KindIcon = isCron ? TimerIcon : WebhooksLogoIcon;
 
   return (
@@ -388,10 +391,10 @@ function WhatItDoesPanel({
         prompt_template: instruction,
       }),
     onSuccess: () => {
-      successToast('Saved');
+      successToast(tI18nComplete.raw('textb5c120b316c2'));
       onMutated();
     },
-    onError: (e: Error) => errorToast(e.message || 'Could not save'),
+    onError: (e: Error) => errorToast(e.message || tI18nComplete.raw('text16efcd21d74f')),
   });
 
   if (!canWrite) {
@@ -498,11 +501,11 @@ function WhenItRunsPanel({
           : { cron: cron.trim(), run_at: null, timezone },
       ),
     onSuccess: () => {
-      successToast('Schedule updated');
+      successToast(tI18nComplete.raw('text47931699ba90'));
       setEditing(false);
       onMutated();
     },
-    onError: (e: Error) => errorToast(e.message || 'Could not update the schedule'),
+    onError: (e: Error) => errorToast(e.message || tI18nComplete.raw('text0aef01b447e9')),
   });
 
   const action = !canWrite ? null : editing ? (
@@ -552,12 +555,14 @@ function WhenItRunsPanel({
     <PanelSection title={tI18nComplete.raw('text1bd739e67b5e')} action={action}>
       <PropertyList
         rows={[
-          { label: 'Runs', value: describeWhen(trigger) },
-          ...(trigger.run_at ? [] : [{ label: 'Timezone', value: trigger.timezone }]),
+          { label: tI18nComplete.raw('text848f54e89660'), value: describeWhen(trigger) },
+          ...(trigger.run_at
+            ? []
+            : [{ label: tI18nComplete.raw('text4ceca1d52ced'), value: trigger.timezone }]),
           ...(custom
             ? [
                 {
-                  label: 'Timing',
+                  label: tI18nComplete.raw('textfc4e84255a41'),
                   value: <code className="font-mono text-xs">{trigger.cron}</code>,
                 },
               ]
@@ -584,7 +589,7 @@ function AddressPanel({
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const url = trigger.webhook_url ?? '';
   const sample = useMemo(() => buildSampleRequest(url), [url]);
-  const security = describeSecurity(trigger);
+  const security = describeSecurity(trigger, tI18nComplete);
 
   const [secretName, setSecretName] = useState(trigger.secret_env ?? '');
   useEffect(() => {
@@ -595,17 +600,17 @@ function AddressPanel({
     mutationFn: () =>
       updateProjectTrigger(projectId, trigger.slug, { secret_env: secretName.trim() }),
     onSuccess: () => {
-      successToast('Signing key updated');
+      successToast(tI18nComplete.raw('text523a2c77931b'));
       onMutated();
     },
-    onError: (e: Error) => errorToast(e.message || 'Could not update the signing key'),
+    onError: (e: Error) => errorToast(e.message || tI18nComplete.raw('text966761671cbc')),
   });
 
   const dirty = secretName.trim().length > 0 && secretName.trim() !== (trigger.secret_env ?? '');
 
   return (
     <PanelSection
-      title="Address"
+      title={tI18nComplete.raw('text56ef8f20955f')}
       description={tI18nComplete.raw('text8e3784778668')}
       action={
         canWrite ? (
@@ -701,10 +706,10 @@ function ConditionsPanel({
     mutationFn: () =>
       updateProjectTrigger(projectId, trigger.slug, { filter: rowsToConditions(rows) }),
     onSuccess: () => {
-      successToast('Conditions saved');
+      successToast(tI18nComplete.raw('text264bee80d72a'));
       onMutated();
     },
-    onError: (e: Error) => errorToast(e.message || 'Could not save the conditions'),
+    onError: (e: Error) => errorToast(e.message || tI18nComplete.raw('text2371acc8f6df')),
   });
 
   if (!canWrite) {
@@ -773,10 +778,10 @@ function AgentPanel({
   const saveAgent = useMutation({
     mutationFn: (agent: string) => updateProjectTrigger(projectId, trigger.slug, { agent }),
     onSuccess: () => {
-      successToast('Agent updated');
+      successToast(tI18nComplete.raw('text72f493ee94fe'));
       onMutated();
     },
-    onError: (e: Error) => errorToast(e.message || 'Could not update the agent'),
+    onError: (e: Error) => errorToast(e.message || tI18nComplete.raw('textc617ab4ba83d')),
   });
 
   const saveModel = useMutation({
@@ -785,10 +790,10 @@ function AgentPanel({
         model: model ? modelKeyToWire(model) : null,
       }),
     onSuccess: () => {
-      successToast('Model updated');
+      successToast(tI18nComplete.raw('text3c236853c693'));
       onMutated();
     },
-    onError: (e: Error) => errorToast(e.message || 'Could not update the model'),
+    onError: (e: Error) => errorToast(e.message || tI18nComplete.raw('text6ff3502ac059')),
   });
 
   if (!canWrite) {
@@ -796,8 +801,11 @@ function AgentPanel({
       <PanelSection title={tI18nComplete.raw('text7fcc18556e6e')}>
         <PropertyList
           rows={[
-            { label: 'Agent', value: trigger.agent },
-            { label: 'Model', value: trigger.model ?? "The agent's usual model" },
+            { label: tI18nComplete.raw('text11b39c93777e'), value: trigger.agent },
+            {
+              label: tI18nComplete.raw('text5e2c614c23f0'),
+              value: trigger.model ?? tI18nComplete.raw('text73b95849f271'),
+            },
           ]}
         />
       </PanelSection>
@@ -893,10 +901,10 @@ function MemoryPanel({
     mutationFn: (input: UpdateProjectTriggerInput) =>
       updateProjectTrigger(projectId, trigger.slug, input),
     onSuccess: () => {
-      successToast('Updated');
+      successToast(tI18nComplete.raw('text3a5ecca188c0'));
       onMutated();
     },
-    onError: (e: Error) => errorToast(e.message || 'Could not update'),
+    onError: (e: Error) => errorToast(e.message || tI18nComplete.raw('text43ec39943667')),
   });
 
   if (!canWrite) {
@@ -980,10 +988,10 @@ function AccessPanel({
   const save = useMutation({
     mutationFn: () => updateProjectTrigger(projectId, trigger.slug, { session_access: selection }),
     onSuccess: () => {
-      successToast('Session access updated');
+      successToast(tI18nComplete.raw('text6af67c48af69'));
       onMutated();
     },
-    onError: (e: Error) => errorToast(e.message || 'Could not update session access'),
+    onError: (e: Error) => errorToast(e.message || tI18nComplete.raw('text68d66e06fd0f')),
   });
 
   if (!canWrite) {
@@ -1017,18 +1025,18 @@ function AccessPanel({
         onChange={setSelection}
         showHeading={false}
         copy={{
-          heading: 'Who can access sessions created by this trigger',
+          heading: tI18nComplete.raw('textefcc5a598260'),
           private: {
-            label: 'Trigger agent and project Managers',
-            desc: 'Project Managers can always open trigger-created sessions.',
+            label: tI18nComplete.raw('text56536365c70b'),
+            desc: tI18nComplete.raw('textc296b293902b'),
           },
           members: {
-            label: 'Selected teammates',
-            desc: 'Choose additional members and groups. Project Managers always have access.',
+            label: tI18nComplete.raw('text1999ea7700a7'),
+            desc: tI18nComplete.raw('text96f78a1908b4'),
           },
           project: {
-            label: 'Whole project',
-            desc: 'Every project member can open these sessions.',
+            label: tI18nComplete.raw('text28ff734e9722'),
+            desc: tI18nComplete.raw('text655d15facaf2'),
           },
         }}
       />
@@ -1066,11 +1074,11 @@ function DetailsPanel({ trigger }: { trigger: ProjectTrigger }) {
                 value: <code className="font-mono text-xs">{trigger.slug}</code>,
               },
               {
-                label: 'Saved in',
+                label: tI18nComplete.raw('text456a1fdc1530'),
                 value: <code className="font-mono text-xs">{trigger.path}</code>,
               },
               {
-                label: 'Last run',
+                label: tI18nComplete.raw('text512a48218ba2'),
                 value: (
                   <span className="tabular-nums">
                     {trigger.last_fired_at

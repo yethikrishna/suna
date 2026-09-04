@@ -6,7 +6,7 @@ import { Kbd } from '@/components/ui/kbd';
 import Loading from '@/components/ui/loading';
 import { ArrowUpIcon as ArrowUp, SquareIcon } from '@phosphor-icons/react';
 import { AnimatePresence, m } from 'motion/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { NO_MODEL_AVAILABLE_ACTION_MESSAGE } from '../model-availability';
 import { NO_AGENT_ACCESS_MESSAGE } from './composer-agent-access';
 
@@ -65,6 +65,7 @@ export function SendStopControl({
   agentUnavailable = false,
   onSubmit,
 }: SendStopControlProps) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('threads');
   // One line, the same one the agent picker's tooltip carries — the two
   // controls are refusing for one reason and must not word it two ways.
@@ -99,7 +100,11 @@ export function SendStopControl({
           <div className="animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-2 pointer-events-none absolute right-1/2 bottom-full mb-2 translate-x-1/2 duration-150">
             <div className="bg-background text-foreground z-[9999] inline-flex w-fit items-center gap-1.5 overflow-hidden rounded-sm border p-1 px-1.5 text-[13px] whitespace-nowrap">
               <Kbd>ESC</Kbd>
-              <span>{escCount === 1 ? '×2 to stop' : '×1 to stop'}</span>
+              <span>
+                {escCount === 1
+                  ? tI18nComplete.raw('textb9ef397631ca')
+                  : tI18nComplete.raw('text9754e2d14f9e')}
+              </span>
             </div>
           </div>
         )}
@@ -107,7 +112,7 @@ export function SendStopControl({
           side="top"
           label={
             <p>
-              Stop <Kbd>ESC</Kbd> ×3
+              {tI18nComplete.raw('textcae7d57bc067')} <Kbd>ESC</Kbd> ×3
             </p>
           }
         >

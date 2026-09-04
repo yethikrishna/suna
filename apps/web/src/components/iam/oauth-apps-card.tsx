@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 /**
  * OAuth apps: the account's "Sign in with Kortix" client registry.
  *
@@ -205,11 +205,11 @@ export function OAuthAppsCard({ accountId, canManage }: OAuthAppsCardProps) {
   const deleteMutation = useMutation({
     mutationFn: (client: OAuthClient) => deleteOAuthClient(accountId, client.client_id),
     onSuccess: () => {
-      successToast('App deleted');
+      successToast(tI18nComplete.raw('text30648767dd84'));
       invalidate();
       setPending(null);
     },
-    onError: (err: Error) => errorToast(errorMessage(err, 'Could not delete that app')),
+    onError: (err: Error) => errorToast(errorMessage(err, tI18nComplete.raw('text1c2fb82a41c4'))),
   });
 
   const rotateMutation = useMutation({
@@ -219,7 +219,7 @@ export function OAuthAppsCard({ accountId, canManage }: OAuthAppsCardProps) {
       setPending(null);
       setRotated(result);
     },
-    onError: (err: Error) => errorToast(errorMessage(err, 'Could not rotate that secret')),
+    onError: (err: Error) => errorToast(errorMessage(err, tI18nComplete.raw('text59611ccab0af'))),
   });
 
   const clients = clientsQuery.data?.oauth_clients ?? [];
@@ -281,21 +281,26 @@ export function OAuthAppsCard({ accountId, canManage }: OAuthAppsCardProps) {
           {clients.map((client) => {
             const kebab: KebabItem[] = [
               {
-                label: 'Copy client id',
+                label: tI18nComplete.raw('text0d683ef7eb96'),
                 icon: <CopyIcon className="size-3.5 shrink-0" />,
-                onSelect: () => void copyValue(client.client_id, 'Client id copied'),
+                onSelect: () =>
+                  void copyValue(
+                    client.client_id,
+                    tI18nComplete.raw('text07247959e9ef'),
+                    tI18nComplete.raw('text19efd469fc32'),
+                  ),
               },
               ...(canManage
                 ? ([
                     {
-                      label: 'Edit app',
+                      label: tI18nComplete.raw('textf8301e6fd45e'),
                       icon: <PencilSimpleIcon className="size-3.5 shrink-0" />,
                       onSelect: () => setEditing(client),
                     },
                     ...(client.client_type === 'confidential'
                       ? [
                           {
-                            label: 'Rotate secret',
+                            label: tI18nComplete.raw('text4405518d273b'),
                             icon: <ArrowsClockwiseIcon className="size-3.5 shrink-0" />,
                             separated: true,
                             onSelect: () => setPending({ client, action: 'rotate' }),
@@ -303,7 +308,7 @@ export function OAuthAppsCard({ accountId, canManage }: OAuthAppsCardProps) {
                         ]
                       : []),
                     {
-                      label: 'Delete app',
+                      label: tI18nComplete.raw('text70ddc8217e8b'),
                       icon: <TrashIcon className="size-3.5 shrink-0" />,
                       variant: 'destructive',
                       separated: true,
@@ -327,8 +332,8 @@ export function OAuthAppsCard({ accountId, canManage }: OAuthAppsCardProps) {
                       size="sm"
                       title={
                         client.client_type === 'confidential'
-                          ? 'Server-side app — signs in with its client secret'
-                          : 'Browser or native app — no secret, PKCE only'
+                          ? tI18nComplete.raw('text41cb2b40561f')
+                          : tI18nComplete.raw('text4e7a78e97ff7')
                       }
                     >
                       {CLIENT_TYPE_LABEL[client.client_type]}
@@ -343,12 +348,14 @@ export function OAuthAppsCard({ accountId, canManage }: OAuthAppsCardProps) {
                     {summarizeRedirectUris(client.redirect_uris)}
                   </span>,
                   <code key="scopes" className="font-mono">
-                    {client.scopes.length > 0 ? client.scopes.join(' ') : 'no scopes'}
+                    {client.scopes.length > 0
+                      ? client.scopes.join(' ')
+                      : tI18nComplete.raw('textae5b8724e862')}
                   </code>,
                   `Created ${relativeTime(client.created_at)}`,
                 ]}
                 kebab={kebab}
-                kebabLabel={`Actions for ${client.name}`}
+                kebabLabel={tI18nComplete('text33da220b1a34', { value0: client.name })}
                 pending={busy && pending?.client.client_id === client.client_id}
               />
             );
@@ -377,15 +384,21 @@ export function OAuthAppsCard({ accountId, canManage }: OAuthAppsCardProps) {
         onOpenChange={(open) => {
           if (!open) setPending(null);
         }}
-        title={pending?.action === 'delete' ? 'Delete this app?' : 'Rotate this secret?'}
+        title={
+          pending?.action === 'delete'
+            ? tI18nComplete.raw('texta4f6c318a669')
+            : tI18nComplete.raw('text81bd2a33309d')
+        }
         description={
           pending
             ? pending.action === 'delete'
-              ? `"${pending.client.name}" can no longer sign anyone in, and every token it holds stops working. This can't be undone.`
-              : `"${pending.client.name}" gets a new client secret and the old one stops working right away. Update the app's configuration before its next sign-in.`
+              ? tI18nComplete('text31e4f2bb4dba', { value0: pending.client.name })
+              : tI18nComplete('text548f4cfc6745', { value0: pending.client.name })
             : ''
         }
-        confirmLabel={pending?.action === 'delete' ? 'Delete' : 'Rotate secret'}
+        confirmLabel={
+          pending?.action === 'delete' ? 'Delete' : tI18nComplete.raw('text4405518d273b')
+        }
         confirmVariant={pending?.action === 'delete' ? 'destructive' : 'default'}
         isPending={busy}
         onConfirm={() => {
@@ -531,7 +544,7 @@ function OAuthAppDialog({
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: OAUTH_CLIENTS_KEY(accountId) });
       if (isEdit) {
-        successToast('App updated');
+        successToast(tI18nComplete.raw('text99db90df9291'));
         close();
         return;
       }
@@ -617,7 +630,8 @@ function OAuthAppDialog({
               <ModalTitle>{tI18nComplete.raw('text72320149c3c2')}</ModalTitle>
               <ModalDescription>
                 <strong>{created.name}</strong> {tI18nComplete.raw('text8e15f0dbfa86')}
-                {created.client_secret ? ' and secret' : ''} {tI18nComplete.raw('texte2762471c9d7')}{' '}
+                {created.client_secret ? tI18nComplete.raw('text3f5966e76ae1') : ''}{' '}
+                {tI18nComplete.raw('texte2762471c9d7')}{' '}
                 <code className="font-mono">createKortixAuth</code>{' '}
                 {tI18nComplete.raw('texta45f266b33b5')}
               </ModalDescription>
@@ -634,11 +648,13 @@ function OAuthAppDialog({
         ) : (
           <>
             <ModalHeader>
-              <ModalTitle>{isEdit ? `Edit ${client.name}` : 'Register an app'}</ModalTitle>
+              <ModalTitle>
+                {isEdit ? `Edit ${client.name}` : tI18nComplete.raw('text26c880f0d774')}
+              </ModalTitle>
               <ModalDescription>
                 {isEdit
-                  ? 'Changes apply to the next sign-in. Tokens already issued keep working until they expire.'
-                  : 'An app that signs Kortix users in on its own origin. You get a client id and, for a confidential app, a secret shown once.'}
+                  ? tI18nComplete.raw('texte59a1d133be1')
+                  : tI18nComplete.raw('texte5c8b30df3c9')}
               </ModalDescription>
             </ModalHeader>
             <form onSubmit={submit}>
@@ -655,7 +671,7 @@ function OAuthAppDialog({
                     id={fieldId('name')}
                     value={form.name}
                     onChange={(event) => patch({ name: event.target.value })}
-                    placeholder="Dashboards"
+                    placeholder={tI18nComplete.raw('texta53bcafb67d9')}
                     disabled={mutation.isPending}
                     maxLength={255}
                     autoFocus
@@ -801,7 +817,9 @@ function OAuthAppDialog({
                   className="gap-1.5"
                 >
                   {mutation.isPending ? <Loading className="size-3.5 shrink-0" /> : null}
-                  {isEdit ? 'Save changes' : 'Register app'}
+                  {isEdit
+                    ? tI18nComplete.raw('textdd0ae7a5cbcf')
+                    : tI18nComplete.raw('text02290f388fa8')}
                 </Button>
               </ModalFooter>
             </form>

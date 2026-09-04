@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 import type { Agent } from '@kortix/sdk/react';
 import { capitalizeWords, isMetaAgentName } from '@kortix/shared';
 import { CaretDownIcon, CheckIcon, FolderSimpleIcon as MetaFolder } from '@phosphor-icons/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { useEffect, useMemo, useState } from 'react';
 import { composerSelectableAgents } from './composer-agent-access';
 
@@ -144,7 +144,7 @@ export function AgentSelector({
             </span>
             {meta && (
               <Badge variant="outline" size="xs" className="shrink-0 font-normal">
-                Platform
+                {tHardcodedUi.raw('i18nComplete.textc78ffe195710')}
               </Badge>
             )}
           </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 /**
  * The first two sections of the agent editor: what the agent IS (Basics) and
  * how it thinks (Model).
@@ -33,6 +33,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { ModelSelector } from '@/features/session/model-selector';
 import { flattenModels } from '@/features/session/session-chat-input';
+import { useLocalizedUiCatalog } from '@/i18n/use-localized-ui-catalog';
 import { storedModelRefToKey } from '@/lib/llm-gateway';
 import { cn } from '@/lib/utils';
 import type { AgentConfigBlock, RuntimeAgentConfig } from '@kortix/sdk';
@@ -72,12 +73,20 @@ export function BasicsSection({
   setOc: SetRuntime;
 }) {
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const agentModeHelp = useLocalizedUiCatalog(AGENT_MODE_HELP);
+  const agentModeLabel = useLocalizedUiCatalog(AGENT_MODE_LABEL);
   return (
-    <EditorSection title="Basics" description={tI18nComplete.raw('text4e420a5186f0')}>
-      <SettingRow label="Enabled" help={tI18nComplete.raw('textbe90a56d29da')}>
+    <EditorSection
+      title={tI18nComplete.raw('text8fdd2ee8475e')}
+      description={tI18nComplete.raw('text4e420a5186f0')}
+    >
+      <SettingRow
+        label={tI18nComplete.raw('text92c1cdfdf4cb')}
+        help={tI18nComplete.raw('textbe90a56d29da')}
+      >
         <div className="flex sm:justify-end">
           <Switch
-            aria-label="Enabled"
+            aria-label={tI18nComplete.raw('text92c1cdfdf4cb')}
             checked={draft.enabled !== false}
             onCheckedChange={(v) => set('enabled', v ? undefined : false)}
           />
@@ -85,15 +94,15 @@ export function BasicsSection({
       </SettingRow>
 
       <SettingBlock
-        label="Description"
+        label={tI18nComplete.raw('text526e0087cc3f')}
         help={
           oc.mode === 'subagent'
-            ? 'Required. This is how other agents decide to call it.'
-            : 'One line on what this agent is for. Other agents read it when picking a subagent.'
+            ? tI18nComplete.raw('text77e2bc11f6ab')
+            : tI18nComplete.raw('text9965df7c3221')
         }
       >
         <Textarea
-          aria-label="Description"
+          aria-label={tI18nComplete.raw('text526e0087cc3f')}
           value={oc.description ?? ''}
           placeholder={tI18nComplete.raw('text446f4eabf99f')}
           minHeight={44}
@@ -103,8 +112,8 @@ export function BasicsSection({
       </SettingBlock>
 
       <SettingRow
-        label="Availability"
-        help={oc.mode ? AGENT_MODE_HELP[oc.mode] : 'Follows the project default.'}
+        label={tI18nComplete.raw('text12f67f8539c4')}
+        help={oc.mode ? agentModeHelp[oc.mode] : tI18nComplete.raw('text64f405e80a8d')}
       >
         <Select
           value={oc.mode ?? INHERIT}
@@ -112,14 +121,14 @@ export function BasicsSection({
             setOc('mode', value === INHERIT ? undefined : (value as typeof oc.mode))
           }
         >
-          <SelectTrigger aria-label="Availability" className="h-9 w-full">
+          <SelectTrigger aria-label={tI18nComplete.raw('text12f67f8539c4')} className="h-9 w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={INHERIT}>{tI18nComplete.raw('texte8cb80e5c5cb')}</SelectItem>
             {AGENT_MODES.map((mode) => (
               <SelectItem key={mode} value={mode}>
-                {AGENT_MODE_LABEL[mode]}
+                {agentModeLabel[mode]}
               </SelectItem>
             ))}
           </SelectContent>
@@ -153,7 +162,7 @@ export function BasicsSection({
               </InlineAction>
             </>
           ) : (
-            "Tints this agent's badge in session lists."
+            tI18nComplete.raw('textc2fd713fbf8f')
           )
         }
       >
@@ -230,8 +239,7 @@ function ColorSwatches({
                 aria-hidden
                 className="pointer-events-none absolute inset-0"
                 style={{
-                  background:
-                    'conic-gradient(from 0deg, red, orange, yellow, lime, cyan, blue, magenta, red)',
+                  background: "conic-gradient(from 0deg, red, orange, yellow, lime, cyan, blue, magenta, red)",
                 }}
               />
             )}
@@ -267,16 +275,19 @@ export function ModelSection({ oc, setOc }: { oc: RuntimeAgentConfig; setOc: Set
     : null;
 
   return (
-    <EditorSection title="Model" description={tI18nComplete.raw('text32398dbb68e2')}>
+    <EditorSection
+      title={tI18nComplete.raw('text5e2c614c23f0')}
+      description={tI18nComplete.raw('text32398dbb68e2')}
+    >
       <SettingRow
-        label="Model"
+        label={tI18nComplete.raw('text5e2c614c23f0')}
         help={
           oc.model ? (
             <InlineAction onClick={() => setOc('model', undefined)}>
               {tI18nComplete.raw('text9db60344e984')}
             </InlineAction>
           ) : (
-            'Follows the project default.'
+            tI18nComplete.raw('text64f405e80a8d')
           )
         }
       >
@@ -290,9 +301,12 @@ export function ModelSection({ oc, setOc }: { oc: RuntimeAgentConfig; setOc: Set
         </div>
       </SettingRow>
 
-      <SettingRow label="Variant" help={tI18nComplete.raw('text768d7200b02c')}>
+      <SettingRow
+        label={tI18nComplete.raw('text3f19fe84a2de')}
+        help={tI18nComplete.raw('text768d7200b02c')}
+      >
         <Input
-          aria-label="Variant"
+          aria-label={tI18nComplete.raw('text3f19fe84a2de')}
           value={oc.variant ?? ''}
           placeholder={tI18nComplete.raw('text352a25678fb9')}
           variant="popover"
@@ -302,7 +316,7 @@ export function ModelSection({ oc, setOc }: { oc: RuntimeAgentConfig; setOc: Set
       </SettingRow>
 
       <SliderRow
-        label="Temperature"
+        label={tI18nComplete.raw('textb958ce8b871a')}
         help={tI18nComplete.raw('textd380d30f3d60')}
         value={oc.temperature}
         fallback={0}
@@ -313,7 +327,7 @@ export function ModelSection({ oc, setOc }: { oc: RuntimeAgentConfig; setOc: Set
       />
 
       <SliderRow
-        label="Top-p"
+        label={tI18nComplete.raw('text714db3dbb0b7')}
         help={tI18nComplete.raw('text4f370db531ba')}
         value={oc.top_p}
         fallback={1}
@@ -354,10 +368,10 @@ export function ModelSection({ oc, setOc }: { oc: RuntimeAgentConfig; setOc: Set
               className="flex w-full items-center justify-between gap-3 rounded-none text-sm font-normal"
             >
               <span className="min-w-0 truncate">
-                {oc.prompt ? firstLine(oc.prompt) : 'Not set — using the default instructions'}
+                {oc.prompt ? firstLine(oc.prompt) : tI18nComplete.raw('textdaaf5ab03267')}
               </span>
               <span className="text-muted-foreground shrink-0 text-xs">
-                {oc.prompt ? 'Edit' : 'Write one'}
+                {oc.prompt ? 'Edit' : tI18nComplete.raw('text47f3fe537320')}
               </span>
             </Button>
           </DisclosureTrigger>

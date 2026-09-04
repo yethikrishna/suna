@@ -11,7 +11,7 @@
  */
 
 import { CheckCircleIcon, SlidersHorizontalIcon, XIcon as X } from '@phosphor-icons/react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { Suspense, lazy, useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';

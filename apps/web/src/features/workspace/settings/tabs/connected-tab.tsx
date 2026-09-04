@@ -59,7 +59,7 @@ import {
 import { usePermission } from '@/lib/use-permission';
 import { deleteGitHubInstallation, listGitHubInstallations } from '@kortix/sdk';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { SettingsTabHeader } from '../settings-tab-header';

@@ -53,7 +53,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from '@/i18n/use-translations';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -300,6 +300,7 @@ export function ProfileTabView({
   isCancelingDeletion = false,
   copy: copyOverrides = {},
 }: ProfileTabViewProps) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const copy: ProfileTabCopy = {
     ...DEFAULT_PROFILE_TAB_COPY,
     ...copyOverrides,
@@ -509,7 +510,7 @@ export function ProfileTabView({
                       id="profile-delete-confirm"
                       value={deleteConfirmText}
                       onChange={(e) => onDeleteConfirmTextChange(e.target.value)}
-                      placeholder="delete"
+                      placeholder={tI18nComplete.raw('text6197595503f0')}
                       autoComplete="off"
                     />
                   </div>
@@ -555,6 +556,7 @@ export function ProfileTabView({
  *  tab is active (`SettingsTabPane` in `settings-panel.tsx` returns `null`
  *  otherwise), so nothing here fetches on panel open. */
 export function ProfileTab() {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('settings.profile');
   const locale = useLocale();
   const copy = useMemo<ProfileTabCopy>(
@@ -662,10 +664,11 @@ export function ProfileTab() {
     },
     onSuccess: () => {
       setNameTouched(false);
-      successToast(t('toasts.nameUpdated'));
+      successToast(tI18nComplete('text84cbdb460e07'));
       queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
     },
-    onError: (error: Error) => errorToast(error.message || t('toasts.nameUpdateFailed')),
+    onError: (error: Error) =>
+      errorToast(error.message || tI18nComplete('textafee7aaea8e6')),
   });
 
   const uploadAvatarMutation = useMutation({
@@ -689,13 +692,13 @@ export function ProfileTab() {
     onSuccess: () => {
       if (avatarPreviewRef.current) URL.revokeObjectURL(avatarPreviewRef.current);
       setAvatarPreview(null);
-      successToast(t('toasts.profilePictureUpdated'));
+      successToast(tI18nComplete('text5f2e85f50ed3'));
       queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
     },
     onError: (error: Error) => {
       if (avatarPreviewRef.current) URL.revokeObjectURL(avatarPreviewRef.current);
       setAvatarPreview(null);
-      errorToast(error.message || t('toasts.profilePictureUploadFailed'));
+      errorToast(error.message || tI18nComplete('text1a495c868b6b'));
     },
   });
 
@@ -705,10 +708,11 @@ export function ProfileTab() {
       if (error) throw error;
     },
     onSuccess: () => {
-      successToast(t('toasts.profilePictureRemoved'));
+      successToast(tI18nComplete('text2fd3b5709d0d'));
       queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
     },
-    onError: (error: Error) => errorToast(error.message || t('toasts.profilePictureRemoveFailed')),
+    onError: (error: Error) =>
+      errorToast(error.message || tI18nComplete('texta505da26f529')),
   });
 
   const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -717,11 +721,11 @@ export function ProfileTab() {
     e.target.value = '';
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      errorToast(t('toasts.chooseImageFile'));
+      errorToast(tI18nComplete('text389e4355c524'));
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      errorToast(t('toasts.imageTooLarge'));
+      errorToast(tI18nComplete('textacfd3b07ddc7'));
       return;
     }
     if (avatarPreviewRef.current) URL.revokeObjectURL(avatarPreviewRef.current);

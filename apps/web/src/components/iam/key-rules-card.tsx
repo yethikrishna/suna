@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 /**
  * The workspace's key rules — what `pat-policy-card.tsx` used to call "CLI
  * token lifecycle".
@@ -146,11 +146,11 @@ function KeyRulesForm({
   const mutation = useMutation({
     mutationFn: (patch: Partial<PatPolicy>) => updatePatPolicy(accountId, patch),
     onSuccess: () => {
-      successToast('Key rules saved');
+      successToast(tI18nComplete.raw('textab71f5ef2ed7'));
       queryClient.invalidateQueries({ queryKey: ['iam-pat-policy', accountId] });
       setError(null);
     },
-    onError: (err: Error) => errorToast(err.message || 'Could not save the key rules'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('text40d2a24cdc95')),
   });
 
   const dirty =
@@ -220,7 +220,7 @@ function KeyRulesForm({
           <Input
             value={idleRevoke}
             onChange={(event) => setIdleRevoke(event.target.value)}
-            placeholder="Never"
+            placeholder={tI18nComplete.raw('text6300ef800bb8')}
             inputMode="numeric"
             disabled={disabled}
             variant="popover"

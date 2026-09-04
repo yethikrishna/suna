@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils';
 import { useConnectorGateStore } from '@/stores/connector-gate-store';
 import type { KortixSendError, KortixSendErrorConnector } from '@kortix/sdk/react';
 import { PlugIcon } from '@phosphor-icons/react';
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from '@/i18n/use-translations';
 
 export interface ConnectorNoticeCopy {
   /** "Gmail" · "Gmail and Slack" · "Gmail, Slack and Notion". */

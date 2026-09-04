@@ -1,6 +1,5 @@
 'use client';
 
-
 import { Badge } from '@/components/ui/badge';
 import { KortixHyperLogo } from '@/components/ui/marketing/kortix-hyper-logo';
 import {
@@ -10,8 +9,13 @@ import {
 import type { MaintenanceLevel } from '@/lib/maintenance-store';
 import { toast } from '@/lib/toast';
 import { ClockIcon as Clock, GearSixIcon as Settings } from '@phosphor-icons/react';
+import { useTranslations } from '@/i18n/use-translations';
 import { useEffect, useState } from 'react';
-import { MAINTENANCE_LEVELS, MaintenanceConfigDialog, MaintenanceLevelCard } from './_components';
+import {
+  localizedMaintenanceLevels,
+  MaintenanceConfigDialog,
+  MaintenanceLevelCard,
+} from './_components';
 
 // Same output as `toLocaleString()` with no options: date + time, numeric fields.
 const updatedAtFormatter = new Intl.DateTimeFormat(undefined, {
@@ -24,6 +28,8 @@ const updatedAtFormatter = new Intl.DateTimeFormat(undefined, {
 });
 
 export default function AdminUtilsPage() {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const maintenanceLevels = localizedMaintenanceLevels(tI18nComplete);
   const { data: config, isLoading } = useMaintenanceAdmin();
   const updateConfig = useUpdateMaintenanceConfig();
 
@@ -55,8 +61,8 @@ export default function AdminUtilsPage() {
     setSelectedLevel(level);
 
     // Pre-fill title from level config if empty
-    if (!title || title === MAINTENANCE_LEVELS.find((l) => l.value === config?.level)?.label) {
-      const levelDef = MAINTENANCE_LEVELS.find((l) => l.value === level);
+    if (!title || title === maintenanceLevels.find((l) => l.value === config?.level)?.label) {
+      const levelDef = maintenanceLevels.find((l) => l.value === level);
       if (levelDef && level !== 'none') {
         setTitle(levelDef.label);
       }
@@ -89,7 +95,7 @@ export default function AdminUtilsPage() {
           affectedServices: services.length > 0 ? services : undefined,
         });
 
-        const levelDef = MAINTENANCE_LEVELS.find((l) => l.value === selectedLevel);
+        const levelDef = maintenanceLevels.find((l) => l.value === selectedLevel);
         toast.success(`${levelDef?.label || 'Maintenance'} activated`);
       }
 
@@ -116,7 +122,7 @@ export default function AdminUtilsPage() {
   }
 
   const currentLevel = config?.level || 'none';
-  const currentLevelDef = MAINTENANCE_LEVELS.find((l) => l.value === currentLevel);
+  const currentLevelDef = maintenanceLevels.find((l) => l.value === currentLevel);
 
   return (
     <div className="flex h-screen flex-col">
@@ -128,10 +134,10 @@ export default function AdminUtilsPage() {
             </div>
             <div className="flex-1">
               <h1 className="text-2xl font-semibold tracking-tight">
-                {'Maintenance Notifications'}
+                {tI18nComplete.raw('text1d027167e9dd')}
               </h1>
               <p className="text-muted-foreground text-sm">
-                {'Control system-wide maintenance banners and access restrictions'}
+                {tI18nComplete.raw('textc0fb0845a0c3')}
               </p>
             </div>
             {currentLevel !== 'none' && currentLevelDef && (
@@ -154,7 +160,7 @@ export default function AdminUtilsPage() {
                 {currentLevelDef && (
                   <currentLevelDef.icon className={`h-4 w-4 ${currentLevelDef.color}`} />
                 )}
-                {'Currently active:'}
+                {tI18nComplete.raw('text124a33c70a13')}
                 {currentLevelDef?.label}
               </div>
               {config.title && <p className="text-sm font-medium">{config.title}</p>}
@@ -176,9 +182,9 @@ export default function AdminUtilsPage() {
           {/* Level selection grid */}
           <div className="space-y-2">
             <p className="text-muted-foreground mb-3 text-sm font-medium">
-              {'Select a notification level to configure'}
+              {tI18nComplete.raw('textc51bc96484b9')}
             </p>
-            {MAINTENANCE_LEVELS.map((level) => (
+            {maintenanceLevels.map((level) => (
               <MaintenanceLevelCard
                 key={level.value}
                 level={level.value}
@@ -191,7 +197,7 @@ export default function AdminUtilsPage() {
           {config?.updatedAt && (
             <p className="text-muted-foreground mt-6 flex items-center gap-1 text-xs">
               <Clock className="h-3 w-3" />
-              {'Last updated:'}
+              {tI18nComplete.raw('textba34a96f2969')}
               {updatedAtFormatter.format(new Date(config.updatedAt))}
             </p>
           )}

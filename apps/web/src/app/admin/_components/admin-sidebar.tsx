@@ -1,6 +1,5 @@
 'use client';
 
-
 import {
   ArrowLeftIcon as ArrowLeft,
   CubeIcon as Boxes,
@@ -11,6 +10,7 @@ import {
   WrenchIcon as Wrench,
   type Icon as LucideIcon,
 } from '@phosphor-icons/react';
+import { useTranslations } from '@/i18n/use-translations';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -34,6 +34,7 @@ interface NavItem {
 }
 
 export function AdminSidebar() {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const pathname = usePathname();
 
   // Only pages that actually exist under app/admin/*. Operations was removed
@@ -43,27 +44,27 @@ export function AdminSidebar() {
   const primaryItems: NavItem[] = [
     {
       href: '/admin/accounts',
-      label: 'Accounts',
+      label: tI18nComplete.raw('text8a7c8b67fe8b'),
       icon: Users,
     },
     {
       href: '/admin/projects',
-      label: 'Projects',
+      label: tI18nComplete.raw('text04e2a9728af7'),
       icon: FolderKanban,
     },
     {
       href: '/admin/analytics',
-      label: 'Analytics',
+      label: tI18nComplete.raw('text94c116ee118a'),
       icon: ChartLineUp,
     },
     {
       href: '/admin/sandboxes',
-      label: 'Sandboxes',
+      label: tI18nComplete.raw('text3f2c01e07be5'),
       icon: Boxes,
     },
     {
       href: '/admin/utils',
-      label: 'Maintenance',
+      label: tI18nComplete.raw('text17ccfa5b681e'),
       icon: Wrench,
     },
   ];
@@ -79,9 +80,11 @@ export function AdminSidebar() {
             <ShieldCheck className="h-4 w-4" />
           </div>
           <div className="flex flex-col leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="text-sm font-semibold tracking-tight">Admin</span>
+            <span className="text-sm font-semibold tracking-tight">
+              {tI18nComplete.raw('textc1c224b03cd9')}
+            </span>
             <span className="text-muted-foreground text-xs">
-              {'Kortix console'}
+              {tI18nComplete.raw('text4e65e85103ec')}
             </span>
           </div>
         </Link>
@@ -102,12 +105,10 @@ export function AdminSidebar() {
       <SidebarFooter className="border-sidebar-border/60 border-t">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip={'Leave admin console'}>
+            <SidebarMenuButton asChild tooltip={tI18nComplete.raw('textd44f5e641157')}>
               <Link href={PROJECT_LANDING_PATH} prefetch>
                 <ArrowLeft />
-                <span>
-                  {'Back to app'}
-                </span>
+                <span>{tI18nComplete.raw('texta6989680b352')}</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

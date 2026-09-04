@@ -74,7 +74,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { SettingsTabHeader } from '@/features/workspace/settings/settings-tab-header';
 import { PROJECT_ACTIONS } from '@/lib/project-actions';
 import { useProjectCan } from '@/lib/use-project-can';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import { useState } from 'react';
 
 import type { ManifestVersion } from './manifest-version';

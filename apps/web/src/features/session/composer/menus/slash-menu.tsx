@@ -16,7 +16,7 @@ import {
 } from '@phosphor-icons/react';
 
 import { ProgressRing } from '@/components/ui/progress-ring';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 
 import { ContextRing } from '../context-ring';
 import { ContextUsageCard } from '../token-progress';

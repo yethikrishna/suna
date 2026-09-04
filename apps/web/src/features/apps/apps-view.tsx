@@ -34,6 +34,10 @@ import { ErrorState } from '@/features/layout/section/error-state';
 import { FeatureGateScreen } from '@/features/workspace/feature-gate-screen';
 import { SidebarToggle } from '@/features/workspace/project-layout/sidebar-toggle';
 import { ShareOption, SubjectPicker } from '@/features/workspace/shared/sharing-picker';
+import { localizeUiCatalog, translateUiCatalogText } from '@/i18n/localize-ui-catalog';
+import { PRODUCT_CATALOG_TRANSLATION_KEYS } from '@/i18n/product-catalog-translation-keys.generated';
+import type { UiTranslator } from '@/i18n/translator';
+import { useTranslations } from '@/i18n/use-translations';
 import { PROJECT_ACTIONS } from '@/lib/project-actions';
 import { relativeTime } from '@/lib/relative-time';
 import {
@@ -66,7 +70,6 @@ import {
   XIcon,
   type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
-import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
@@ -116,10 +119,12 @@ export const DEPLOYMENT_COPY: Record<
  */
 export function deployNotice(
   latest: AppDeployment | undefined,
+  tI18nComplete: UiTranslator,
 ): { label: string; tone: DeploymentTone } | null {
   if (!latest || latest.status === 'ready' || latest.status === 'cancelled') return null;
-  if (latest.status === 'failed') return { label: 'Update failed', tone: 'destructive' };
-  return { label: 'Updating', tone: 'warning' };
+  if (latest.status === 'failed')
+    return { label: tI18nComplete.raw('texte58282fd73fb'), tone: 'destructive' };
+  return { label: tI18nComplete.raw('text0b5260e1b405'), tone: 'warning' };
 }
 
 function appCommand(app: App): string {
@@ -153,13 +158,20 @@ export function appHost(url: string): string {
  * `active_deployment_id` first, and it does so here rather than in each of the
  * three places that used to re-derive it.
  */
-function appStatus(app: App): { deployed: boolean; live: boolean; label: string; dot: string } {
+function appStatus(
+  app: App,
+  tI18nComplete: UiTranslator,
+): { deployed: boolean; live: boolean; label: string; dot: string } {
   const deployed = Boolean(app.active_deployment_id);
   const live = deployed && app.desired_state === 'running';
   return {
     deployed,
     live,
-    label: !deployed ? 'Not deployed' : live ? 'Running' : 'Suspended',
+    label: translateUiCatalogText(
+      !deployed ? 'Not deployed' : live ? 'Running' : 'Suspended',
+      tI18nComplete,
+      PRODUCT_CATALOG_TRANSLATION_KEYS,
+    ),
     // Three states, three weights of the same neutral-vs-green pair: running is
     // the only one that earns colour.
     dot: live ? 'bg-kortix-green' : deployed ? 'bg-muted-foreground/50' : 'bg-muted-foreground/25',
@@ -294,6 +306,7 @@ export function AppPreviewOverlay({
   failed: boolean;
   slow: boolean;
 }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   // A failure is never worth waiting to report — `onError` means the frame is
   // done and it is not going to paint.
   if (!failed && (loaded || !slow)) return null;
@@ -301,7 +314,9 @@ export function AppPreviewOverlay({
     <div className="bg-background/95 absolute inset-0 flex items-center justify-center px-6 text-center backdrop-blur-sm">
       <div className="text-muted-foreground flex items-center gap-2 text-xs">
         {failed ? null : <Loading className="size-4 shrink-0" />}
-        <span>{failed ? 'Preview unavailable. Open the App to retry.' : 'Loading preview'}</span>
+        <span>
+          {failed ? tI18nComplete.raw('texte89cabb62100') : tI18nComplete.raw('text8f624e45d6bf')}
+        </span>
       </div>
     </div>
   );
@@ -446,6 +461,19 @@ export const APP_GRID_COLUMN_OPTIONS: Record<
     icon: GridNineIcon,
   },
 };
+
+function localizedAppCopy(tI18nComplete: UiTranslator) {
+  return localizeUiCatalog(
+    {
+      deployment: DEPLOYMENT_COPY,
+      access: ACCESS_COPY,
+      viewerScope: VIEWER_SCOPE_COPY,
+      grid: APP_GRID_COLUMN_OPTIONS,
+    },
+    tI18nComplete,
+    PRODUCT_CATALOG_TRANSLATION_KEYS,
+  );
+}
 
 /** Left to right in the control: biggest tile first, densest last. */
 export const APP_GRID_COLUMN_ORDER = [3, 4] as const;
@@ -641,7 +669,7 @@ export function AppPreview({
         data-testid={accessError ? 'app-preview-access-denied' : 'app-preview-loading'}
       >
         {accessError ? (
-          'You do not have access to preview this App.'
+          tI18nComplete.raw('texteccce15347a4')
         ) : (
           <span className="flex items-center gap-2">
             <Loading className="size-4 shrink-0" />
@@ -657,7 +685,7 @@ export function AppPreview({
       <iframe
         key={app.active_deployment_id}
         src={url}
-        title={`${app.name} live preview`}
+        title={tI18nComplete('text04132f84d7c3', { value0: app.name })}
         style={
           interactive
             ? undefined
@@ -722,10 +750,11 @@ function AppGridColumnsControl({
   onChange: (next: AppGridColumns) => void;
 }) {
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const appCopy = localizedAppCopy(tI18nComplete);
   return (
     <ButtonGroup aria-label={tI18nComplete.raw('texte39d334ebb3c')}>
       {APP_GRID_COLUMN_ORDER.map((key) => {
-        const option = APP_GRID_COLUMN_OPTIONS[key];
+        const option = appCopy.grid[key];
         const Glyph = option.icon;
         const active = value === key;
         return (
@@ -825,8 +854,10 @@ export function AppsView({ projectId }: { projectId: string }) {
     if (!app) return;
     void createAppAccessSession(projectId, app.app_id)
       .then((session) => window.location.replace(session.url))
-      .catch((error) => errorToast(error instanceof Error ? error.message : 'App access denied'));
-  }, [apps.data, projectId, searchParams]);
+      .catch((error) =>
+        errorToast(error instanceof Error ? error.message : tI18nComplete.raw('texta68c25790cbe')),
+      );
+  }, [apps.data, projectId, searchParams, tI18nComplete]);
 
   return (
     // `h-svh`, for the same reason the `(capabilities)` layout carries it:
@@ -975,6 +1006,7 @@ function AppsEmptyState() {
 }
 
 function AppCard({ projectId, app, onOpen }: { projectId: string; app: App; onOpen: () => void }) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   // SESSION only, and only when the viewer may actually open this App. The
   // access POLICY is an administrative read that 403s for an ordinary member,
   // and the card never renders it — the detail modal asks. The SESSION 403s for
@@ -982,7 +1014,7 @@ function AppCard({ projectId, app, onOpen }: { projectId: string; app: App; onOp
   // reports up front instead of leaving the card to discover it by failing.
   const canAccess = app.viewer_can_access !== false;
   const access = useAppAccess(projectId, app.app_id, { policy: false, session: canAccess });
-  const status = appStatus(app);
+  const status = appStatus(app, tI18nComplete);
 
   return (
     <li>
@@ -1069,8 +1101,8 @@ function AppDetailModal({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [accessOpen, setAccessOpen] = useState(false);
   const latest = deployments.data?.[0];
-  const status = appStatus(app);
-  const notice = deployNotice(latest);
+  const status = appStatus(app, tI18nComplete);
+  const notice = deployNotice(latest, tI18nComplete);
   const running = app.desired_state === 'running';
   const busy = apps.start.isPending || apps.stop.isPending || apps.remove.isPending;
   const liveUrl = access.session.data?.url ?? app.url;
@@ -1080,9 +1112,15 @@ function AppDetailModal({
       await (action === 'start'
         ? apps.start.mutateAsync(app.app_id)
         : apps.stop.mutateAsync(app.app_id));
-      successToast(`${app.name} ${action === 'start' ? 'is ready' : 'suspended'}`);
+      successToast(
+        `${app.name} ${action === 'start' ? tI18nComplete.raw('text61659f74fe37') : tI18nComplete.raw('textde2d423ac039')}`,
+      );
     } catch (error) {
-      errorToast(error instanceof Error ? error.message : `Failed to ${action} App`);
+      errorToast(
+        error instanceof Error
+          ? error.message
+          : tI18nComplete('textdf6cab363226', { value0: action }),
+      );
     }
   };
 
@@ -1150,14 +1188,22 @@ function AppDetailModal({
               <ButtonGroup>
                 {canDeploy ? (
                   <Hint
-                    label={running ? 'Put this App to sleep' : 'Wake this App up'}
+                    label={
+                      running
+                        ? tI18nComplete.raw('text6f50fb1f4f46')
+                        : tI18nComplete.raw('text971ed7129524')
+                    }
                     side="bottom"
                   >
                     <Button
                       size="icon"
                       variant="outline"
                       disabled={busy || !status.deployed}
-                      aria-label={running ? 'Put this App to sleep' : 'Wake this App up'}
+                      aria-label={
+                        running
+                          ? tI18nComplete.raw('text6f50fb1f4f46')
+                          : tI18nComplete.raw('text971ed7129524')
+                      }
                       onClick={() => lifecycle(running ? 'stop' : 'start')}
                     >
                       {busy ? (
@@ -1170,7 +1216,10 @@ function AppDetailModal({
                     </Button>
                   </Hint>
                 ) : null}
-                <Hint label={`Open ${appHost(app.url)} in a new tab`} side="bottom">
+                <Hint
+                  label={tI18nComplete('text06ce842278f6', { value0: appHost(app.url) })}
+                  side="bottom"
+                >
                   <Button asChild size="icon" variant="outline">
                     <a
                       href={liveUrl}
@@ -1204,13 +1253,21 @@ function AppDetailModal({
                         {tI18nComplete.raw('text407951d1c2e0')}
                         {/* The current value, on the row that changes it. */}
                         <span className="text-muted-foreground ml-auto pl-3 text-xs">
-                          {ACCESS_COPY[app.access_mode].label}
+                          {
+                            localizeUiCatalog(
+                              ACCESS_COPY[app.access_mode],
+                              tI18nComplete,
+                              PRODUCT_CATALOG_TRANSLATION_KEYS,
+                            ).label
+                          }
                         </span>
                       </DropdownMenuItem>
                     ) : null}
                     <DropdownMenuItem onClick={() => setVersionsOpen((value) => !value)}>
                       <ClockCounterClockwiseIcon className="size-3.5 shrink-0" />
-                      {versionsOpen ? 'Hide earlier versions' : 'Earlier versions'}
+                      {versionsOpen
+                        ? tI18nComplete.raw('text26b1a7703eac')
+                        : tI18nComplete.raw('text401dc1a55cb9')}
                     </DropdownMenuItem>
                     {canWrite ? (
                       <>
@@ -1225,11 +1282,11 @@ function AppDetailModal({
                 </DropdownMenu>
               </ButtonGroup>
 
-              <Hint label="Close" side="bottom">
+              <Hint label={tI18nComplete.raw('text7d9eb7acb13e')} side="bottom">
                 <Button
                   size="icon"
                   variant="ghost"
-                  aria-label="Close"
+                  aria-label={tI18nComplete.raw('text7d9eb7acb13e')}
                   onClick={() => onOpenChange(false)}
                 >
                   <XIcon className="size-4 shrink-0" />
@@ -1277,9 +1334,15 @@ function AppDetailModal({
                       onRollback={async () => {
                         try {
                           await deployments.rollback.mutateAsync(deployment.deployment_id);
-                          successToast(`Rolled back to version ${deployment.version}`);
+                          successToast(
+                            tI18nComplete('text94c0f4d10610', { value0: deployment.version }),
+                          );
                         } catch (error) {
-                          errorToast(error instanceof Error ? error.message : 'Rollback failed');
+                          errorToast(
+                            error instanceof Error
+                              ? error.message
+                              : tI18nComplete.raw('text147cd182c820'),
+                          );
                         }
                       }}
                     />
@@ -1299,8 +1362,8 @@ function AppDetailModal({
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         title={tI18nComplete.raw('textd1b0a6e3985a')}
-        description={`Delete ${app.name} and every runtime? This action cannot be undone.`}
-        confirmLabel="Delete"
+        description={tI18nComplete('textb7ddab3f7df8', { value0: app.name })}
+        confirmLabel={tI18nComplete.raw('texte2d0a54968ea')}
         confirmVariant="destructive"
         isPending={apps.remove.isPending}
         onConfirm={async () => {
@@ -1310,9 +1373,11 @@ function AppDetailModal({
             // The App this modal is about no longer exists — close it, or the
             // frame keeps rendering a deleted App behind a dead action bar.
             onOpenChange(false);
-            successToast(`${app.name} deleted`);
+            successToast(tI18nComplete('text84a4a73df826', { value0: app.name }));
           } catch (error) {
-            errorToast(error instanceof Error ? error.message : 'Failed to delete App');
+            errorToast(
+              error instanceof Error ? error.message : tI18nComplete.raw('texted3ae8cdf028'),
+            );
           }
         }}
       />
@@ -1423,10 +1488,10 @@ function AppAccessForm({
         ...(mode === 'password' && password ? { password } : {}),
         ...(hasSignedInViewer ? { viewer_token_scope: viewerScope } : {}),
       });
-      successToast('App access updated');
+      successToast(tI18nComplete.raw('text0e76da589934'));
       onSaved();
     } catch (error) {
-      errorToast(error instanceof Error ? error.message : 'Failed to update App access');
+      errorToast(error instanceof Error ? error.message : tI18nComplete.raw('text7df8a0fb4684'));
     }
   };
 
@@ -1442,8 +1507,20 @@ function AppAccessForm({
             <ShareOption
               key={value}
               value={value}
-              label={ACCESS_COPY[value].label}
-              desc={ACCESS_COPY[value].desc}
+              label={
+                localizeUiCatalog(
+                  ACCESS_COPY[value],
+                  tI18nComplete,
+                  PRODUCT_CATALOG_TRANSLATION_KEYS,
+                ).label
+              }
+              desc={
+                localizeUiCatalog(
+                  ACCESS_COPY[value],
+                  tI18nComplete,
+                  PRODUCT_CATALOG_TRANSLATION_KEYS,
+                ).desc
+              }
             />
           ))}
         </RadioGroup>
@@ -1461,7 +1538,13 @@ function AppAccessForm({
         {mode === 'password' ? (
           <div className="space-y-2">
             <Label htmlFor="app-access-password">
-              {policy.password_configured ? 'Replace password' : 'Password'}
+              {policy.password_configured
+                ? tI18nComplete.raw('textd96a37fc02f0')
+                : translateUiCatalogText(
+                    'Password',
+                    tI18nComplete,
+                    PRODUCT_CATALOG_TRANSLATION_KEYS,
+                  )}
             </Label>
             <Input
               id="app-access-password"
@@ -1472,8 +1555,8 @@ function AppAccessForm({
               autoComplete="new-password"
               placeholder={
                 policy.password_configured
-                  ? 'Leave blank to keep the current password'
-                  : 'At least 8 characters'
+                  ? tI18nComplete.raw('text985a580ee200')
+                  : tI18nComplete.raw('text977f3b2676a9')
               }
             />
           </div>
@@ -1491,16 +1574,28 @@ function AppAccessForm({
                 <ShareOption
                   key={value}
                   value={value}
-                  label={VIEWER_SCOPE_COPY[value].label}
-                  desc={VIEWER_SCOPE_COPY[value].desc}
+                  label={
+                    localizeUiCatalog(
+                      VIEWER_SCOPE_COPY[value],
+                      tI18nComplete,
+                      PRODUCT_CATALOG_TRANSLATION_KEYS,
+                    ).label
+                  }
+                  desc={
+                    localizeUiCatalog(
+                      VIEWER_SCOPE_COPY[value],
+                      tI18nComplete,
+                      PRODUCT_CATALOG_TRANSLATION_KEYS,
+                    ).desc
+                  }
                 />
               ))}
             </RadioGroup>
           ) : (
             <p className="text-muted-foreground text-xs">
               {mode === 'public'
-                ? 'A public App has no signed-in Kortix viewer.'
-                : 'A password-protected App has no signed-in Kortix viewer.'}
+                ? tI18nComplete.raw('textd3e9c765c2a3')
+                : tI18nComplete.raw('text44332adbd9d2')}
             </p>
           )}
         </div>
@@ -1545,7 +1640,11 @@ function DeploymentRow({
           rest report their own build outcome. Showing both — a `ready` badge
           and a separate "Live" word on the same row — said one thing twice. */}
       <Badge size="xs" variant={active ? 'success' : DEPLOYMENT_COPY[deployment.status].tone}>
-        {active ? 'Live' : DEPLOYMENT_COPY[deployment.status].label}
+        {translateUiCatalogText(
+          active ? 'Live' : DEPLOYMENT_COPY[deployment.status].label,
+          tI18nComplete,
+          PRODUCT_CATALOG_TRANSLATION_KEYS,
+        )}
       </Badge>
       {/* Age, not `hosting_provider`. That field is the name of the sandbox
           fleet the build landed on ("daytona", "platinum") — infrastructure

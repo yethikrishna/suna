@@ -1,6 +1,7 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useLocalizedUiCatalog } from '@/i18n/use-localized-ui-catalog';
+import { useTranslations } from '@/i18n/use-translations';
 /**
  * Service account tokens: the account's machine identities.
  *
@@ -159,6 +160,7 @@ export interface ApiKeysListProps {
 /** The list itself. The create action is the caller's, so the pane header can own it. */
 export function ApiKeysList({ accountId, canManage }: ApiKeysListProps) {
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const statusBadges = useLocalizedUiCatalog(STATUS_BADGE);
   const queryClient = useQueryClient();
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: SERVICE_ACCOUNTS_KEY(accountId) });
@@ -178,21 +180,21 @@ export function ApiKeysList({ accountId, canManage }: ApiKeysListProps) {
     // audit trail and every request it makes is refused from here on.
     mutationFn: (row: ApiKeyRow) => disableServiceAccountApi(accountId, row.id),
     onSuccess: () => {
-      successToast('Token revoked');
+      successToast(tI18nComplete.raw('text775f96fcc9db'));
       invalidate();
       setPending(null);
     },
-    onError: (err: Error) => errorToast(err.message || 'Could not revoke that token'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('textfe4666578c32')),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (row: ApiKeyRow) => deleteServiceAccountApi(accountId, row.id),
     onSuccess: () => {
-      successToast('Token deleted');
+      successToast(tI18nComplete.raw('text126b835f55e1'));
       invalidate();
       setPending(null);
     },
-    onError: (err: Error) => errorToast(err.message || 'Could not delete that token'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('text3a42e3a0cc79')),
   });
 
   if (serviceAccountsQuery.isLoading) {
@@ -306,7 +308,7 @@ export function ApiKeysList({ accountId, canManage }: ApiKeysListProps) {
                       value={value}
                       description={countLabel(counts[value])}
                     >
-                      {STATUS_BADGE[value].label}
+                      {statusBadges[value].label}
                     </SelectItem>
                   ))}
                 </SelectGroup>
@@ -326,7 +328,7 @@ export function ApiKeysList({ accountId, canManage }: ApiKeysListProps) {
           ) : (
             // Only reachable when the selection goes stale mid-session — revoke
             // the last active token while "Active" is showing.
-            'Nothing left under this filter. Choose “All tokens” to see the rest.'
+            tI18nComplete.raw('text4058739857b7')
           )}
         </p>
       ) : (
@@ -339,7 +341,7 @@ export function ApiKeysList({ accountId, canManage }: ApiKeysListProps) {
               : canRevoke
                 ? [
                     {
-                      label: 'Revoke token',
+                      label: tI18nComplete.raw('text14683b379324'),
                       icon: <ProhibitIcon className="size-3.5 shrink-0" />,
                       variant: 'destructive',
                       onSelect: () => setPending({ row, action: 'revoke' }),
@@ -347,7 +349,7 @@ export function ApiKeysList({ accountId, canManage }: ApiKeysListProps) {
                   ]
                 : [
                     {
-                      label: 'Delete token',
+                      label: tI18nComplete.raw('text8cb21e2a5846'),
                       icon: <TrashIcon className="size-3.5 shrink-0" />,
                       variant: 'destructive',
                       onSelect: () => setPending({ row, action: 'delete' }),
@@ -359,18 +361,22 @@ export function ApiKeysList({ accountId, canManage }: ApiKeysListProps) {
                 leading={<EntityAvatar icon={KeyIcon} label={row.name} size="sm" />}
                 title={row.name}
                 badges={
-                  <Badge variant={STATUS_BADGE[row.status].variant} size="sm">
-                    {STATUS_BADGE[row.status].label}
+                  <Badge variant={statusBadges[row.status].variant} size="sm">
+                    {statusBadges[row.status].label}
                   </Badge>
                 }
                 metaParts={[
                   row.hint,
                   `Created ${relativeTime(row.createdAt)}`,
-                  row.lastUsedAt ? `Last used ${relativeTime(row.lastUsedAt)}` : 'Never used',
-                  row.expiresAt ? `Expires ${relativeTime(row.expiresAt)}` : 'Never expires',
+                  row.lastUsedAt
+                    ? `Last used ${relativeTime(row.lastUsedAt)}`
+                    : tI18nComplete.raw('text24d3236c3ac4'),
+                  row.expiresAt
+                    ? `Expires ${relativeTime(row.expiresAt)}`
+                    : tI18nComplete.raw('text6a9894204cc7'),
                 ]}
                 kebab={kebab}
-                kebabLabel={`Actions for ${row.name}`}
+                kebabLabel={tI18nComplete('text33da220b1a34', { value0: row.name })}
                 pending={busy && pending?.row.id === row.id}
               />
             );
@@ -383,12 +389,16 @@ export function ApiKeysList({ accountId, canManage }: ApiKeysListProps) {
         onOpenChange={(open) => {
           if (!open) setPending(null);
         }}
-        title={pending?.action === 'delete' ? 'Delete this token?' : 'Revoke this token?'}
+        title={
+          pending?.action === 'delete'
+            ? tI18nComplete.raw('text26ecc76c0ce9')
+            : tI18nComplete.raw('text33271bd27f08')
+        }
         description={
           pending
             ? pending.action === 'delete'
-              ? `Removes "${pending.row.name}" from this list for good, along with anything it was allowed to do.`
-              : `"${pending.row.name}" stops working right away. Anything still using it — a script, a CI job — starts getting turned away. This can't be undone.`
+              ? tI18nComplete('textb3fd52fda8e3', { value0: pending.row.name })
+              : tI18nComplete('textca226cefdb63', { value0: pending.row.name })
             : ''
         }
         confirmLabel={pending?.action === 'delete' ? 'Delete' : 'Revoke'}
@@ -439,13 +449,13 @@ export function CreateApiKeyDialog({ accountId, open, onOpenChange }: CreateApiK
     retry: false,
   });
   const policy = policyQuery.data ?? null;
-  const expiryChoices = expiryOptions(policy);
+  const expiryChoices = expiryOptions(policy, tI18nComplete);
   // The policy lands after first paint, and it can remove the option currently
   // selected ("Never", once expiry is required). Re-point at a legal value
   // rather than submitting one the backend will reject.
   const selectedExpiry = expiryChoices.some((o) => o.value === expiry)
     ? expiry
-    : defaultExpiryOption(policy);
+    : defaultExpiryOption(policy, tI18nComplete);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -460,7 +470,7 @@ export function CreateApiKeyDialog({ accountId, open, onOpenChange }: CreateApiK
       queryClient.invalidateQueries({ queryKey: SERVICE_ACCOUNTS_KEY(accountId) });
       setCreated(result);
     },
-    onError: (err: Error) => errorToast(err.message || 'Could not create that token'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('textc85c6ea416c8')),
   });
 
   function close() {

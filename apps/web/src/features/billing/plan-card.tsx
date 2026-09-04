@@ -29,7 +29,7 @@
 
 import { cn } from '@/lib/utils';
 import type { AccountState } from '@kortix/sdk';
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from '@/i18n/use-translations';
 
 import { describePlanStatus, formatUsd } from './account-overview';
 

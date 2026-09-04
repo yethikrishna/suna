@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 // Roles tab on the account page. ONE list: every role the account has,
 // built-in and custom, in the shared `AccessList`/`AccessRow` dialect — plus
 // the capability-matrix create/edit dialog (custom roles deactivate
@@ -193,7 +193,7 @@ function RolesSection({ accountId, canManage, rbacEnabled }: RolesTabProps) {
     <div className="space-y-4">
       <AccessList
         header={{
-          title: 'Roles',
+          title: tI18nComplete.raw('textc25337055464'),
           count: settled ? roles.length : undefined,
           actions: newRoleButton || undefined,
         }}
@@ -348,7 +348,7 @@ function RoleRow({
         actions: perms.actions,
       });
     } catch (err) {
-      errorToast((err as Error)?.message || 'Failed to load role permissions');
+      errorToast((err as Error)?.message || tI18nComplete.raw('textb641eac15b51'));
     } finally {
       setDuplicating(false);
     }
@@ -360,18 +360,22 @@ function RoleRow({
   // backend would 402 (delete is never entitlement-gated — cleanup is always
   // allowed).
   const kebab: KebabItem[] = [
-    { label: 'View capabilities', icon: <Eye className="size-3.5" />, onSelect: onView },
+    {
+      label: tI18nComplete.raw('text08138c207246'),
+      icon: <Eye className="size-3.5" />,
+      onSelect: onView,
+    },
   ];
   if (canManage && isCustom) {
     kebab.push({
-      label: 'Edit',
+      label: tI18nComplete.raw('text464c4ffd019e'),
       icon: <PencilSimpleIcon className="size-3.5" />,
       onSelect: onEdit,
       disabled: !rbacEnabled,
       hint: rbacEnabled ? undefined : RBAC_UPSELL_MESSAGE,
     });
     kebab.push({
-      label: 'Delete role',
+      label: tI18nComplete.raw('textac18d11a2f26'),
       icon: <Trash2 className="size-3.5" />,
       onSelect: onDelete,
       variant: 'destructive',
@@ -381,7 +385,7 @@ function RoleRow({
   if (canManage && !isCustom) {
     // "Duplicate" is the documented path to "manager minus X".
     kebab.push({
-      label: 'Duplicate',
+      label: tI18nComplete.raw('text02cdaabfca80'),
       icon: <Copy className="size-3.5" />,
       onSelect: handleDuplicate,
       disabled: !rbacEnabled,
@@ -404,6 +408,7 @@ function RoleRow({
     : builtinRoleDescriptor(
         role.resource_type === 'account' ? 'account' : 'project',
         (role.key === 'user' ? 'member' : role.key) as AccountRole | ProjectRole,
+        tI18nComplete,
       );
   // Same rule for the NAME: the API calls the project floor role
   // "Member (read + run)", the select and the Help page call it "Member".
@@ -453,7 +458,7 @@ function RoleRow({
         </div>
       }
       kebab={kebab}
-      kebabLabel={`Actions for ${title}`}
+      kebabLabel={tI18nComplete('text33da220b1a34', { value0: title })}
       pending={duplicating}
     />
   );
@@ -552,11 +557,11 @@ function RoleDialog({
         actions: [...selected],
       }),
     onSuccess: () => {
-      successToast('Role created');
+      successToast(tI18nComplete.raw('text4b36ce9864db'));
       queryClient.invalidateQueries({ queryKey: ['iam-roles', accountId] });
       onOpenChange(false);
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to create role'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('textc49c15ddba4b')),
   });
 
   const updateMutation = useMutation({
@@ -572,7 +577,7 @@ function RoleDialog({
       await updateRolePermissions(accountId, role!.role_id, [...selected]);
     },
     onSuccess: () => {
-      successToast('Role updated');
+      successToast(tI18nComplete.raw('texta172f7fb3563'));
       // A role's PERMISSION SET changed, so every verdict for every principal
       // holding it moved. Nothing here can enumerate them — bust the account.
       void invalidatePermissionProbes(queryClient, { accountId });
@@ -582,7 +587,7 @@ function RoleDialog({
       });
       onOpenChange(false);
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to update role'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('texte4143613f121')),
   });
 
   const mutation = isEdit ? updateMutation : createMutation;
@@ -600,11 +605,19 @@ function RoleDialog({
     <Modal open={open} onOpenChange={(o) => !isPending && onOpenChange(o)}>
       <ModalContent className="max-h-[90vh] lg:max-h-[85vh] lg:max-w-2xl">
         <ModalHeader>
-          <ModalTitle>{isView ? 'View role' : isEdit ? 'Edit role' : 'New role'}</ModalTitle>
+          <ModalTitle>
+            {isView
+              ? tI18nComplete.raw('text3dc32dfa31f9')
+              : isEdit
+                ? tI18nComplete.raw('texte2afdd4eef04')
+                : tI18nComplete.raw('text500f2f9d3956')}
+          </ModalTitle>
           <ModalDescription>
             {isView
-              ? `What ${role?.name ?? 'this role'} can do — checked capabilities are granted, everything else is deactivated for anyone assigned it.`
-              : 'Pick the capabilities this role grants. Anything left unchecked is deactivated for principals assigned this role.'}
+              ? tI18nComplete('text749f923c962d', {
+                  value0: role?.name ?? tI18nComplete.raw('texte73679634b64'),
+                })
+              : tI18nComplete.raw('text7c30649a46d8')}
           </ModalDescription>
         </ModalHeader>
 
@@ -630,7 +643,7 @@ function RoleDialog({
                   setKeyTouched(true);
                   setKeyValue(e.target.value);
                 }}
-                placeholder="deploy_operator"
+                placeholder={tI18nComplete.raw('textb96d63115850')}
                 disabled={isPending || isEdit || isView}
                 className="font-mono"
               />
@@ -722,7 +735,9 @@ function RoleDialog({
           {!isView && (
             <Button onClick={() => mutation.mutate()} disabled={submitDisabled} className="gap-1.5">
               {isPending && <Loading className="size-4 shrink-0" />}
-              {isEdit ? 'Save changes' : 'Create role'}
+              {isEdit
+                ? tI18nComplete.raw('textdd0ae7a5cbcf')
+                : tI18nComplete.raw('text221163d6e73f')}
             </Button>
           )}
         </ModalFooter>
@@ -754,12 +769,12 @@ function DeleteRoleConfirm({
   const deleteMutation = useMutation({
     mutationFn: () => deleteRole(accountId, role.role_id),
     onSuccess: () => {
-      successToast('Role deleted');
+      successToast(tI18nComplete.raw('textccc3a7846d02'));
       void invalidatePermissionProbes(queryClient, { accountId });
       queryClient.invalidateQueries({ queryKey: ['iam-roles', accountId] });
       onClose();
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to delete role'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('texta96e1f43f497')),
   });
 
   const count = usageQuery.data?.policy_count ?? 0;
@@ -772,8 +787,8 @@ function DeleteRoleConfirm({
         if (!o) onClose();
       }}
       title={tI18nComplete.raw('textac18d11a2f26')}
-      description={`This role is used by ${count} ${policies}. Deleting it removes those assignments.`}
-      confirmLabel="Delete"
+      description={tI18nComplete('text8295f8601ed8', { value0: count, value1: policies })}
+      confirmLabel={tI18nComplete.raw('texte2d0a54968ea')}
       confirmVariant="destructive"
       isPending={deleteMutation.isPending}
       onConfirm={() => deleteMutation.mutate()}

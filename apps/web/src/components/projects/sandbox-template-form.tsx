@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 /**
  * Create / edit dialog for a project's sandbox template.
  *
@@ -66,6 +66,7 @@ export function SandboxTemplateForm({
   onOpenChange,
   template,
 }: SandboxTemplateFormProps) {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const t = useTranslations('settings.sandbox.form');
   const isEdit = !!template;
   const queryClient = useQueryClient();
@@ -208,7 +209,7 @@ export function SandboxTemplateForm({
               <Label htmlFor="tpl-slug">{t('slug')}</Label>
               <Input
                 id="tpl-slug"
-                placeholder="ml"
+                placeholder={tI18nComplete.raw('text5d58d41913d9')}
                 value={slug}
                 onChange={(e) => {
                   setSlugManuallyEdited(true);
@@ -250,7 +251,7 @@ export function SandboxTemplateForm({
               >
                 <div className="flex items-center gap-2">
                   <FileCode className="size-4" />
-                  <span className="font-medium">Dockerfile</span>
+                  <span className="font-medium">{tI18nComplete.raw('textdd2c0eb6ea5c')}</span>
                 </div>
                 <span className="text-muted-foreground text-xs">{t('pathInsideRepo')}</span>
               </button>
@@ -261,7 +262,7 @@ export function SandboxTemplateForm({
                   <Label htmlFor="tpl-image">{t('image')}</Label>
                   <Input
                     id="tpl-image"
-                    placeholder="python:3.12-slim"
+                    placeholder={tI18nComplete.raw('text1d0447543fac')}
                     value={image}
                     onChange={(e) => setImage(e.target.value)}
                   />
@@ -274,7 +275,7 @@ export function SandboxTemplateForm({
                   <Label htmlFor="tpl-df">{t('dockerfilePath')}</Label>
                   <Input
                     id="tpl-df"
-                    placeholder=".kortix/Dockerfile.ml"
+                    placeholder={tI18nComplete.raw('textf9edcea2223e')}
                     value={dockerfilePath}
                     onChange={(e) => setDockerfilePath(e.target.value)}
                   />
@@ -288,7 +289,14 @@ export function SandboxTemplateForm({
           <div>
             <Label>{t('resources')}</Label>
             <div className="mt-2 grid grid-cols-3 gap-3">
-              <NumericField id="cpu" label="vCPU" value={cpu} onChange={setCpu} min={1} max={32} />
+              <NumericField
+                id="cpu"
+                label={tI18nComplete.raw('text082591a16602')}
+                value={cpu}
+                onChange={setCpu}
+                min={1}
+                max={32}
+              />
               <NumericField
                 id="mem"
                 label={t('memory')}

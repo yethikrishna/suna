@@ -1,6 +1,8 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { APP_REGISTRY_TRANSLATION_KEYS } from '@/i18n/app-registry-translation-keys.generated';
+import { localizeUiCatalog } from '@/i18n/localize-ui-catalog';
+import { useTranslations } from '@/i18n/use-translations';
 // The capability picker for a custom role (§7 of the access unification spec).
 //
 // A role's permission set is a list of ~44 dotted leaf actions. Showing 44
@@ -552,6 +554,10 @@ export function RoleCapabilityMatrix({
     () => foldSelection(scope, permissions, selected),
     [scope, permissions, selected],
   );
+  const localizedAreas = useMemo(
+    () => localizeUiCatalog(fold.areas, tI18nComplete, APP_REGISTRY_TRANSLATION_KEYS),
+    [fold.areas, tI18nComplete],
+  );
 
   // Open Advanced by itself the first time a role arrives with a partial cell
   // or an unmapped grant — otherwise those leaves would be invisible.
@@ -564,15 +570,15 @@ export function RoleCapabilityMatrix({
 
   const query = search.trim().toLowerCase();
   const rows = useMemo(() => {
-    if (!query) return fold.areas;
-    return fold.areas.filter(
+    if (!query) return localizedAreas;
+    return localizedAreas.filter(
       (row) =>
         row.area.label.toLowerCase().includes(query) ||
         row.area.hint?.toLowerCase().includes(query) ||
         row.view.leaves.some((leaf) => leaf.includes(query)) ||
         row.edit.leaves.some((leaf) => leaf.includes(query)),
     );
-  }, [fold.areas, query]);
+  }, [localizedAreas, query]);
 
   const advancedGroups = useMemo(() => {
     const entries = [
@@ -720,7 +726,7 @@ export function RoleCapabilityMatrix({
           >
             <span className="text-sm font-medium">{tI18nComplete.raw('text9f088dbebd6c')}</span>
             <span className="text-muted-foreground text-xs">
-              {advancedOpen ? 'Hide' : 'Every capability, one by one'}
+              {advancedOpen ? 'Hide' : tI18nComplete.raw('textee2682510c82')}
             </span>
           </Button>
         </DisclosureTrigger>

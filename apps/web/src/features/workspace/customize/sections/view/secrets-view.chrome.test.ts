@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync } from '@/i18n/test-source';
 import { join } from 'node:path';
 
 /**
@@ -31,7 +31,7 @@ describe('SecretsView page chrome', () => {
   test('the page is the shared capability shell, not its own column', () => {
     expect(shellStart).toBeGreaterThan(-1);
     expect(childrenStart).toBeGreaterThan(shellStart);
-    expect(shellHeader).toContain('title="Secrets"');
+    expect(shellHeader).toContain("raw('i18nComplete.textd8707d411d99')");
     // The two pieces of the old narrow layout, gone for good. The heading is
     // written here rather than looked up: `secrets` is in neither registry
     // `SettingsTabHeader` reads, and a missed lookup renders nothing at all.
@@ -81,7 +81,7 @@ describe('SecretsView page chrome', () => {
       'filters={<SecretsAccessExplainer showEnforced={showEnforced} />}',
     );
     expect(shellChildren).not.toContain('<SecretsAccessExplainer');
-    expect(code).toContain('secretDeliveryLegend(showEnforced)');
+    expect(code).toContain('secretDeliveryLegend(showEnforced, tI18nComplete)');
     expect(code).toContain("raw('text0d8c9f89b826')");
     expect(code).toContain('<Collapsible open={open} onOpenChange={setOpen}');
     expect(code).toContain('<CollapsibleTrigger');

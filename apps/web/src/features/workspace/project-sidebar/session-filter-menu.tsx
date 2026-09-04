@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
 import type { ComponentType } from 'react';
 
 import {
@@ -25,6 +25,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Slack } from '@/features/icon/icons/slack';
 import { Telegram } from '@/features/icon/icons/telegram';
+import { localizeUiCatalog } from '@/i18n/localize-ui-catalog';
+import { REMAINING_UI_TRANSLATION_KEYS } from '@/i18n/remaining-ui-translation-keys.generated';
+import type { UiTranslator } from '@/i18n/translator';
 import {
   selectGroupMode,
   selectHiddenSections,
@@ -45,8 +48,8 @@ import {
 
 import {
   groupSessions,
-  SESSION_GROUP_MODES,
-  SESSION_ORDER_MODES,
+  localizedSessionGroupModes,
+  localizedSessionOrderModes,
   type SessionGroupMode,
   type SessionOrderMode,
 } from './session-grouping';
@@ -91,13 +94,18 @@ export interface SessionFilterShowOption {
 export function resolveShowOptions(
   sessions: ProjectSession[],
   mode: SessionGroupMode,
+  tI18nComplete: UiTranslator,
   reviewCountBySession: Record<string, number> = {},
 ): SessionFilterShowOption[] {
-  return groupSessions(sessions, {
-    mode,
-    order: 'activity',
-    reviewCountBySession,
-  }).sections.map((section) => ({ id: section.id, label: section.label }));
+  return groupSessions(
+    sessions,
+    {
+      mode,
+      order: 'activity',
+      reviewCountBySession,
+    },
+    tI18nComplete,
+  ).sections.map((section) => ({ id: section.id, label: section.label }));
 }
 
 /** The section ids that would actually render right now — mode, order, review
@@ -109,14 +117,19 @@ export function resolveRenderedSectionIds(
   mode: SessionGroupMode,
   order: SessionOrderMode,
   hiddenSections: readonly string[],
+  tI18nComplete: UiTranslator,
   reviewCountBySession: Record<string, number> = {},
 ): string[] {
-  return groupSessions(sessions, {
-    mode,
-    order,
-    reviewCountBySession,
-    hiddenSections,
-  }).sections.map((section) => section.id);
+  return groupSessions(
+    sessions,
+    {
+      mode,
+      order,
+      reviewCountBySession,
+      hiddenSections,
+    },
+    tI18nComplete,
+  ).sections.map((section) => section.id);
 }
 
 /**
@@ -154,10 +167,13 @@ export function resolveStatusFacetOptions(
   sessions: ProjectSession[],
   statusFilters: readonly SessionStatusFilter[],
   sourceFilters: readonly SessionSourceFilter[],
+  tI18nComplete: UiTranslator,
 ): SessionFilterFacetOption<SessionStatusFilter>[] {
-  const passingSource = sessions.filter((session) => matchesSourceFilters(session, sourceFilters));
+  const passingSource = sessions.filter((session) =>
+    matchesSourceFilters(session, sourceFilters, tI18nComplete),
+  );
   return buildFacetOptions(
-    SESSION_STATUS_FILTERS,
+    localizeUiCatalog(SESSION_STATUS_FILTERS, tI18nComplete, REMAINING_UI_TRANSLATION_KEYS),
     passingSource,
     (session, value) => matchesStatusFilters(session, [value]),
     statusFilters,
@@ -168,12 +184,13 @@ export function resolveSourceFacetOptions(
   sessions: ProjectSession[],
   statusFilters: readonly SessionStatusFilter[],
   sourceFilters: readonly SessionSourceFilter[],
+  tI18nComplete: UiTranslator,
 ): SessionFilterFacetOption<SessionSourceFilter>[] {
   const passingStatus = sessions.filter((session) => matchesStatusFilters(session, statusFilters));
   return buildFacetOptions(
-    SESSION_SOURCE_FILTERS,
+    localizeUiCatalog(SESSION_SOURCE_FILTERS, tI18nComplete, REMAINING_UI_TRANSLATION_KEYS),
     passingStatus,
-    (session, value) => matchesSourceFilters(session, [value]),
+    (session, value) => matchesSourceFilters(session, [value], tI18nComplete),
     sourceFilters,
   );
 }
@@ -224,6 +241,9 @@ export function SessionFilterMenu({
   reviewCountBySession = {},
 }: SessionFilterMenuProps) {
   const t = useTranslations('sidebar.filter');
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const localizedGroupModes = localizedSessionGroupModes(tI18nComplete);
+  const localizedOrderModes = localizedSessionOrderModes(tI18nComplete);
   const groupMode = useSessionFilterStore(selectGroupMode(projectId, surface));
   const orderMode = useSessionFilterStore(selectOrderMode(projectId, surface));
   const statusFilters = useSessionFilterStore(selectStatusFilters(projectId, surface));
@@ -283,9 +303,19 @@ export function SessionFilterMenu({
   const groupLabel = groupLabels[groupMode];
   const orderLabel = orderLabels[orderMode];
 
-  const showOptions = resolveShowOptions(sessions, groupMode, reviewCountBySession);
-  const statusOptions = resolveStatusFacetOptions(sessions, statusFilters, sourceFilters);
-  const sourceOptions = resolveSourceFacetOptions(sessions, statusFilters, sourceFilters);
+  const showOptions = resolveShowOptions(sessions, groupMode, tI18nComplete, reviewCountBySession);
+  const statusOptions = resolveStatusFacetOptions(
+    sessions,
+    statusFilters,
+    sourceFilters,
+    tI18nComplete,
+  );
+  const sourceOptions = resolveSourceFacetOptions(
+    sessions,
+    statusFilters,
+    sourceFilters,
+    tI18nComplete,
+  );
   const showFiltersSection = statusOptions.length > 0 || sourceOptions.length > 0;
   const hasActiveFacets = statusFilters.length > 0 || sourceFilters.length > 0;
   const hiddenSectionSet = new Set(hiddenSections);
@@ -304,7 +334,7 @@ export function SessionFilterMenu({
             value={groupMode}
             onValueChange={(value) => setGroupMode(projectId, value as SessionGroupMode, surface)}
           >
-            {SESSION_GROUP_MODES.map((mode) => (
+            {localizedGroupModes.map((mode) => (
               <DropdownMenuRadioItem
                 key={mode.value}
                 value={mode.value}
@@ -327,7 +357,7 @@ export function SessionFilterMenu({
             value={orderMode}
             onValueChange={(value) => setOrderMode(projectId, value as SessionOrderMode, surface)}
           >
-            {SESSION_ORDER_MODES.map((mode) => (
+            {localizedOrderModes.map((mode) => (
               <DropdownMenuRadioItem
                 key={mode.value}
                 value={mode.value}
@@ -446,6 +476,7 @@ export function SessionFilterMenu({
               groupMode,
               orderMode,
               hiddenSections,
+              tI18nComplete,
               reviewCountBySession,
             ),
             surface,

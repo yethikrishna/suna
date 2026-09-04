@@ -9,11 +9,14 @@ import {
   KanbanIcon as FolderKanban,
   ArrowClockwiseIcon as RefreshCw,
 } from '@phosphor-icons/react';
+import { useTranslations } from '@/i18n/use-translations';
+import { useLocalizedUiCatalog } from '@/i18n/use-localized-ui-catalog';
 import Link from 'next/link';
 import { useCallback, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { IconInbox } from '@/components/ui/kortix-icons';
+import Loading from '@/components/ui/loading';
 import { PageSearchBar } from '@/components/ui/page-search-bar';
 import {
   Select,
@@ -68,6 +71,8 @@ function shortDate(value: string | null): string {
 }
 
 export default function AdminProjectsPage() {
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const statusOptions = useLocalizedUiCatalog(STATUS_OPTIONS);
   const [searchInput, setSearchInput] = useState('');
   const search = useDebounce(searchInput);
   const [status, setStatus] = useState<StatusFilter>('all');
@@ -111,7 +116,9 @@ export default function AdminProjectsPage() {
   // (newest / most sessions first, which is what an operator wants to see).
   const setSort = useCallback((column: AdminProjectsSortBy) => {
     setSortState((s) =>
-      s.by === column ? { by: column, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { by: column, dir: 'desc' },
+      s.by === column
+        ? { by: column, dir: s.dir === 'asc' ? 'desc' : 'asc' }
+        : { by: column, dir: 'desc' },
     );
     setPage(1);
   }, []);
@@ -133,8 +140,8 @@ export default function AdminProjectsPage() {
     <SectionContainer>
       <SectionHeader
         icon={FolderKanban}
-        title="Projects"
-        description="Every project across every account, most-active first. Activity is the newest session on the project, not the last row edit."
+        title={tI18nComplete.raw('text04e2a9728af7')}
+        description={tI18nComplete.raw('text396b656e8564')}
         actions={
           <Button
             variant="outline"
@@ -143,20 +150,26 @@ export default function AdminProjectsPage() {
             disabled={isFetching}
             className="gap-1.5"
           >
-            <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} />
-            Refresh
+            {isFetching ? (
+              <Loading className="h-3.5 w-3.5" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            {tI18nComplete.raw('text0e9161011702')}
           </Button>
         }
       />
 
       <StatRow className="sm:grid-cols-2 lg:grid-cols-2">
         <StatPill
-          label="Total filtered"
+          label={tI18nComplete.raw('text5871c99664b2')}
           value={total.toLocaleString()}
-          hint={filtered ? 'Matches current filters' : 'All projects'}
+          hint={
+            filtered ? tI18nComplete.raw('text0350dc45fdbb') : tI18nComplete.raw('text4b87271b6b81')
+          }
         />
         <StatPill
-          label="Live sessions"
+          label={tI18nComplete.raw('text366487a11e4c')}
           value={liveOnPage.toLocaleString()}
           tone={liveOnPage > 0 ? 'success' : 'default'}
           hint={`On this page (${projects.length} of ${total.toLocaleString()})`}
@@ -167,14 +180,14 @@ export default function AdminProjectsPage() {
         <PageSearchBar
           value={searchInput}
           onChange={setSearchInput}
-          placeholder="Search by project name, account name, or owner email"
+          placeholder={tI18nComplete.raw('textfa75c1ed206e')}
         />
         <Select value={status} onValueChange={(v) => applyStatus(v as StatusFilter)}>
           <SelectTrigger className="h-9 w-[170px]">
-            <SelectValue placeholder="Status" />
+            <SelectValue placeholder={tI18nComplete.raw('text920e413c7d41')} />
           </SelectTrigger>
           <SelectContent align="end">
-            {STATUS_OPTIONS.map((option) => (
+            {statusOptions.map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}
               </SelectItem>
@@ -186,21 +199,23 @@ export default function AdminProjectsPage() {
       {isLoading ? (
         <div className="space-y-2">
           {[...Array(8)].map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full rounded-2xl" />
+            <Skeleton key={i} className="h-12 w-full rounded-md" />
           ))}
         </div>
       ) : projects.length === 0 ? (
-        <div className="border-border/60 bg-card rounded-2xl border">
+        <div className="border-border/60 bg-card rounded-md border">
           <EmptyState
             icon={IconInbox}
-            title={filtered ? 'No projects match your filters' : 'No projects yet'}
-            description={
-              filtered ? 'Try adjusting the status filter or clearing the search.' : undefined
+            title={
+              filtered
+                ? tI18nComplete.raw('text32f69946e3c3')
+                : tI18nComplete.raw('textf83c80652286')
             }
+            description={filtered ? tI18nComplete.raw('text59c2c8f63734') : undefined}
             action={
               filtered ? (
                 <Button variant="outline" size="sm" onClick={resetFilters}>
-                  Clear filters
+                  {tI18nComplete.raw('text7179ea0035fc')}
                 </Button>
               ) : undefined
             }
@@ -209,17 +224,17 @@ export default function AdminProjectsPage() {
       ) : (
         <div
           className={cn(
-            'border-border/60 overflow-hidden rounded-2xl border transition-opacity',
+            'border-border/60 overflow-hidden rounded-md border transition-opacity',
             isFetching && 'opacity-70',
           )}
         >
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead>Project</TableHead>
-                <TableHead>Account</TableHead>
+                <TableHead>{tI18nComplete.raw('text985959785319')}</TableHead>
+                <TableHead>{tI18nComplete.raw('text7e1b0d5641f2')}</TableHead>
                 <SortHeader
-                  label="Sessions"
+                  label={tI18nComplete.raw('text6fa3cbf451b2')}
                   column="sessions"
                   sortBy={sortBy}
                   sortDir={sortDir}
@@ -227,14 +242,14 @@ export default function AdminProjectsPage() {
                   align="right"
                 />
                 <SortHeader
-                  label="Last activity"
+                  label={tI18nComplete.raw('text06475633ed3e')}
                   column="activity"
                   sortBy={sortBy}
                   sortDir={sortDir}
                   onSort={setSort}
                 />
                 <SortHeader
-                  label="Created"
+                  label={tI18nComplete.raw('textd70b9e24bca2')}
                   column="created"
                   sortBy={sortBy}
                   sortDir={sortDir}
@@ -252,7 +267,7 @@ export default function AdminProjectsPage() {
                         className="group inline-flex max-w-full items-center gap-1.5 text-sm font-medium"
                       >
                         <span className="truncate group-hover:underline">
-                          {project.name || 'Unnamed project'}
+                          {project.name || tI18nComplete.raw('textedba1e383471')}
                         </span>
                         <ExternalLink className="text-muted-foreground h-3 w-3 shrink-0" />
                       </Link>
@@ -261,7 +276,7 @@ export default function AdminProjectsPage() {
                         {project.status === 'archived' && (
                           <>
                             <span className="mx-1.5 opacity-50">·</span>
-                            <span>Archived</span>
+                            <span>{tI18nComplete.raw('textbdb86505f806')}</span>
                           </>
                         )}
                       </div>
@@ -277,10 +292,12 @@ export default function AdminProjectsPage() {
                           {project.ownerEmail}
                         </Link>
                       ) : (
-                        <span className="text-muted-foreground text-sm">No owner email</span>
+                        <span className="text-muted-foreground text-sm">
+                          {tI18nComplete.raw('textaca82dbb8ef0')}
+                        </span>
                       )}
                       <div className="text-muted-foreground truncate text-xs">
-                        {project.accountName || 'Unnamed account'}
+                        {project.accountName || tI18nComplete.raw('textefeba8456698')}
                       </div>
                     </div>
                   </TableCell>
@@ -288,7 +305,7 @@ export default function AdminProjectsPage() {
                     <span
                       className={cn(
                         project.activeSessionCount > 0
-                          ? 'text-emerald-600 dark:text-emerald-400'
+                          ? 'text-kortix-green'
                           : 'text-muted-foreground',
                       )}
                     >
@@ -298,7 +315,9 @@ export default function AdminProjectsPage() {
                     <span>{project.sessionCount}</span>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-xs">
-                    {project.lastSessionAt ? relativeTime(project.lastSessionAt) : 'Never run'}
+                    {project.lastSessionAt
+                      ? relativeTime(project.lastSessionAt)
+                      : tI18nComplete.raw('text3d40a69d3160')}
                   </TableCell>
                   <TableCell className="text-muted-foreground text-xs">
                     {shortDate(project.createdAt)}
@@ -313,7 +332,8 @@ export default function AdminProjectsPage() {
       {pages > 1 && (
         <div className="text-muted-foreground flex items-center justify-between text-sm">
           <span>
-            Page {page} of {pages} · {total.toLocaleString()} projects
+            {tI18nComplete.raw('text0a30a815d67d')} {page} {tI18nComplete.raw('text28391d3bc64e')}{' '}
+            {pages} · {total.toLocaleString()} {tI18nComplete.raw('text2577c0f557b2')}
           </span>
           <div className="flex gap-1">
             <Button
@@ -324,7 +344,7 @@ export default function AdminProjectsPage() {
               disabled={page === 1}
             >
               <ChevronLeft className="h-3.5 w-3.5" />
-              Prev
+              {tI18nComplete.raw('text73912999faf4')}
             </Button>
             <Button
               variant="outline"
@@ -333,7 +353,7 @@ export default function AdminProjectsPage() {
               onClick={() => setPage((p) => Math.min(pages, p + 1))}
               disabled={page === pages}
             >
-              Next
+              {tI18nComplete.raw('text1ff57a29d7c9')}
               <ChevronRight className="h-3.5 w-3.5" />
             </Button>
           </div>
@@ -365,7 +385,7 @@ function SortHeader({
         type="button"
         onClick={() => onSort(column)}
         className={cn(
-          'inline-flex items-center gap-1 text-xs font-medium tracking-wider uppercase transition-colors',
+          'inline-flex items-center gap-1 text-xs font-medium transition-colors',
           active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
         )}
       >

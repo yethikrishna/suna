@@ -1,6 +1,7 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/i18n/use-translations';
+import { useLocalizedUiCatalog } from '@/i18n/use-localized-ui-catalog';
 // Self-host: one coherent "managed-git" setup card covering all three ways
 // to configure it — create a GitHub App in-app (manifest flow, recommended),
 // paste in credentials for an App that already exists, or a personal/
@@ -159,6 +160,7 @@ interface GitHubAppSetupCardProps {
 
 export function GitHubAppSetupCard({ canManage }: GitHubAppSetupCardProps) {
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const setupMethods = useLocalizedUiCatalog(SETUP_METHODS);
   const queryClient = useQueryClient();
   const router = useRouter();
   const pathname = usePathname();
@@ -189,7 +191,7 @@ export function GitHubAppSetupCard({ canManage }: GitHubAppSetupCardProps) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally only reacts to the `github` flag — re-running on every searchParams/queryClient identity change (incl. our own replace() below) would loop.
   useEffect(() => {
     if (githubReturnFlag !== 'connected') return;
-    successToast('GitHub connected');
+    successToast(tI18nComplete.raw('text62cbe80fb119'));
     const next = new URLSearchParams(searchParams.toString());
     next.delete('github');
     const qs = next.toString();
@@ -206,9 +208,8 @@ export function GitHubAppSetupCard({ canManage }: GitHubAppSetupCardProps) {
       if (!manifest || typeof manifest.url !== 'string' || !manifest.url.startsWith('http')) {
         // eslint-disable-next-line no-console
         console.error('[github-app] manifest is malformed, not submitting:', manifest);
-        errorToast('GitHub setup failed', {
-          description:
-            'The app manifest came back without a valid homepage URL. Retry, or use the token option below.',
+        errorToast(tI18nComplete.raw('textf2c3996c2fc5'), {
+          description: tI18nComplete.raw('text378665754d2d'),
         });
         return;
       }
@@ -216,7 +217,7 @@ export function GitHubAppSetupCard({ canManage }: GitHubAppSetupCardProps) {
       console.debug('[github-app] submitting manifest to GitHub:', manifest);
       submitManifestForm(github_create_url, state, manifest);
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to start GitHub App setup'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('text1db8b5fa8eb7')),
   });
 
   function onSetupSuccess(message: string) {
@@ -242,7 +243,7 @@ export function GitHubAppSetupCard({ canManage }: GitHubAppSetupCardProps) {
       setAppClientSecret('');
       onSetupSuccess('GitHub App connected');
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to connect the GitHub App'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('text66caa493b364')),
   });
 
   const patMutation = useMutation({
@@ -252,18 +253,18 @@ export function GitHubAppSetupCard({ canManage }: GitHubAppSetupCardProps) {
       setPatOwner('');
       onSetupSuccess('GitHub token connected');
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to connect the token'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('text6b4d673c26ae')),
   });
 
   const disconnectMutation = useMutation({
     mutationFn: () => disconnectGitHubApp(),
     onSuccess: () => {
-      successToast('GitHub disconnected');
+      successToast(tI18nComplete.raw('text06993786f49e'));
       setConfirmDisconnectOpen(false);
       setReconfiguring(false);
       queryClient.invalidateQueries({ queryKey: GITHUB_APP_STATUS_KEY });
     },
-    onError: (err: Error) => errorToast(err.message || 'Failed to disconnect GitHub'),
+    onError: (err: Error) => errorToast(err.message || tI18nComplete.raw('text6e9715f4f2a9')),
   });
 
   if (!canManage) return null;
@@ -344,8 +345,8 @@ export function GitHubAppSetupCard({ canManage }: GitHubAppSetupCardProps) {
         }
         description={
           status.configured
-            ? 'Powers repository creation and pushes for every project on this instance.'
-            : 'Every Kortix project is a git repository the server creates and pushes to on your behalf. Connect GitHub once here to enable projects.'
+            ? tI18nComplete.raw('texta08beb1fae8b')
+            : tI18nComplete.raw('textf4a0f0ba4a27')
         }
         action={
           reconfiguring ? (
@@ -385,7 +386,7 @@ export function GitHubAppSetupCard({ canManage }: GitHubAppSetupCardProps) {
             aria-label={tI18nComplete.raw('text0a53eddc090c')}
             className="bg-popover divide-border gap-0 divide-y overflow-hidden rounded-md border"
           >
-            {SETUP_METHODS.map((entry) => (
+            {setupMethods.map((entry) => (
               // Controlled with no `onOpenChange` on purpose: the radio owns
               // `method`, and `method` owns every row's open state. A toggle
               // here would be a second source of truth for the same fact.
@@ -448,7 +449,9 @@ export function GitHubAppSetupCard({ canManage }: GitHubAppSetupCardProps) {
                         ) : (
                           <Github className="size-4" />
                         )}
-                        {startMutation.isPending ? 'Redirecting to GitHub' : 'Create GitHub App'}
+                        {startMutation.isPending
+                          ? tI18nComplete.raw('text608ed1284584')
+                          : tI18nComplete.raw('textd1b4e98ecd9b')}
                       </Button>
                     </div>
                   ) : null}
@@ -519,7 +522,7 @@ export function GitHubAppSetupCard({ canManage }: GitHubAppSetupCardProps) {
                           id={`${fieldId}-client-id`}
                           value={appClientId}
                           onChange={(e) => setAppClientId(e.target.value)}
-                          placeholder="Iv1.xxxxxxxxxxxxxxxx"
+                          placeholder={tI18nComplete.raw('text8a8dc78e312d')}
                           disabled={appMutation.isPending}
                           autoComplete="off"
                           spellCheck={false}
@@ -563,7 +566,9 @@ export function GitHubAppSetupCard({ canManage }: GitHubAppSetupCardProps) {
                         ) : (
                           <FileCode2 className="size-4" />
                         )}
-                        {appMutation.isPending ? 'Connecting' : 'Connect App'}
+                        {appMutation.isPending
+                          ? 'Connecting'
+                          : tI18nComplete.raw('textf4ea27b929c2')}
                       </Button>
                     </div>
                   ) : null}
@@ -619,7 +624,7 @@ export function GitHubAppSetupCard({ canManage }: GitHubAppSetupCardProps) {
                             type="password"
                             value={patToken}
                             onChange={(e) => setPatToken(e.target.value)}
-                            placeholder="github_pat_..."
+                            placeholder={tI18nComplete.raw('text94238580b1b0')}
                             disabled={patMutation.isPending}
                             autoComplete="off"
                             spellCheck={false}
@@ -656,7 +661,9 @@ export function GitHubAppSetupCard({ canManage }: GitHubAppSetupCardProps) {
                           ) : (
                             <KeyRound className="size-4" />
                           )}
-                          {patMutation.isPending ? 'Connecting' : 'Connect token'}
+                          {patMutation.isPending
+                            ? 'Connecting'
+                            : tI18nComplete.raw('textcc37009888e3')}
                         </Button>
                       </div>
                     </div>
@@ -678,12 +685,12 @@ export function GitHubAppSetupCard({ canManage }: GitHubAppSetupCardProps) {
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-foreground truncate text-sm font-medium">
-                {status.owner ?? 'Managed GitHub'}
+                {status.owner ?? tI18nComplete.raw('text5387a784de3a')}
               </p>
               <p className="text-muted-foreground text-xs leading-relaxed text-pretty">
                 {status.source === 'pat'
-                  ? 'New project repositories are created under this owner with the stored access token.'
-                  : 'New project repositories are created under this account by the GitHub App.'}
+                  ? tI18nComplete.raw('text438e8341dabf')
+                  : tI18nComplete.raw('text6f51d7ca1b48')}
               </p>
             </div>
           </div>
@@ -773,7 +780,7 @@ export function GitHubAppSetupCard({ canManage }: GitHubAppSetupCardProps) {
         onOpenChange={setConfirmDisconnectOpen}
         title={tI18nComplete.raw('text45380e17ca1a')}
         description={tI18nComplete.raw('text78d14cc87b89')}
-        confirmLabel="Disconnect"
+        confirmLabel={tI18nComplete.raw('textacfc5be785a9')}
         confirmVariant="destructive"
         onConfirm={() => disconnectMutation.mutate()}
         isPending={disconnectMutation.isPending}

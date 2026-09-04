@@ -92,6 +92,36 @@ function isLikelyUntranslatedProse(key, sourceValue, targetValue, locale) {
   return true;
 }
 
+function isTechnicalLiteral(key, sourceValue) {
+  if (!/DesignSystemPage/.test(key)) return false;
+  return (
+    /^(?:@|const\s|globals\.css|tone=|Badge variant=)/.test(sourceValue) ||
+    /^(?:List & ListRow|SectionCard flush)$/.test(sourceValue) ||
+    /^(?:bg-card border border-border\/50|max-w-\[1000px\] · px-6 lg:px-10 · py-10)$/.test(
+      sourceValue,
+    )
+  );
+}
+
+function designSystemTokens(key, sourceValue) {
+  if (!/DesignSystemPage/.test(key)) return [];
+  const knownTokens = [
+    'ConfirmDialog',
+    'DiffStat',
+    'EntityAvatar',
+    'InlineMeta',
+    'ListRow',
+    'SectionCard',
+    'UserAvatar',
+    'class-variance-authority',
+  ];
+  const tokens = knownTokens.filter((token) => sourceValue.includes(token));
+  for (const match of sourceValue.matchAll(/\b(?:bg-card|rounded-2xl)\b/g)) {
+    tokens.push(match[0]);
+  }
+  return [...new Set(tokens)];
+}
+
 const ignoredPathParts = [
   '/.next/',
   '/node_modules/',
@@ -344,6 +374,19 @@ function messageIssues(english, messages, locale) {
 
     if (isLikelyUntranslatedProse(key, sourceValue, targetValue, locale)) {
       issues.push(`${key}: likely untranslated English prose`);
+    }
+
+    if (isTechnicalLiteral(key, sourceValue) && targetValue !== sourceValue) {
+      issues.push(`${key}: translated a technical literal`);
+    }
+
+    const missingDesignSystemTokens = designSystemTokens(key, sourceValue).filter(
+      (token) => !targetValue.includes(token),
+    );
+    if (missingDesignSystemTokens.length > 0) {
+      issues.push(
+        `${key}: translated technical token(s): ${missingDesignSystemTokens.join(', ')}`,
+      );
     }
 
     const sourceTemplates = templateVariables(sourceValue);

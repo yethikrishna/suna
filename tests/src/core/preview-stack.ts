@@ -76,7 +76,7 @@ export function buildPreviewCaddyfile(publicHost: string): string {
   // \`frontend\` and \`kortix-api\` while \`preview-edge\` keeps running. For the
   // ~10-30s that takes, Caddy's dial to the upstream is refused and every
   // request — the browser's own document included — answers 502. Observed on
-  // pi.kortix.com repeatedly: the edge started 19:08:58, the app containers
+  // the pi-worker branch environment repeatedly: the edge started 19:08:58, the app containers
   // were recreated at 22:12:45, and the 502 screenshot is stamped 22:12:52.
   //
   // \`lb_try_duration\` makes Caddy hold the request and re-dial until the new
@@ -210,7 +210,7 @@ export function buildPreviewComposeOverlay(
   # \`POST /sessions\` answers 500 \`could not read Username for
   # 'https://github.com'\` because the re-clone has no upstream to clone from.
   #
-  # Measured on pi.kortix.com 2026-09-01: container restarted 10:14:06, and
+  # Measured on the pi-worker branch environment 2026-09-01: container restarted 10:14:06, and
   # every session create for the branch's own test project failed from 10:12
   # onward with that exact error; \`ls /tmp/kortix/git-cache\` -> no such
   # directory, and the managed org held none of the preview's repos.

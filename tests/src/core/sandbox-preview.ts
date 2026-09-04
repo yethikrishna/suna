@@ -155,7 +155,7 @@ printf 'stack\n' > "$PHASE"
 # ~2.5 GB of images that nothing else removes. \`image prune -af\` spares any
 # image a container references (running, created or exited), so the stack
 # standing here keeps everything it needs; only superseded deploys go.
-# Measured on pi.kortix.com 2026-09-04: 34 GB of images, 25 GB unreferenced,
+# Measured on the pi-worker branch environment 2026-09-04: 34 GB of images, 25 GB unreferenced,
 # 0 bytes free, every container in Created.
 used="$(df --output=pcent / | tail -1 | tr -dc '0-9')"
 echo "disk before pull: \${used:-?}%" >&2

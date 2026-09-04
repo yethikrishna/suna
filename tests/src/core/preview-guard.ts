@@ -4,7 +4,7 @@
  * A branch environment (`previewSandboxIdentity` with `branchEnv`) is one
  * sandbox reused across every push, fronted by a stable public name. Between
  * deploys nothing on that box watches it, and three failure modes each took
- * pi.kortix.com dark for hours, all observed on 2026-09-04:
+ * the pi-worker branch environment dark for hours, all observed on 2026-09-04:
  *
  *   1. DISK. Every deploy pulls ~2.5 GB of new images and nothing pruned the
  *      superseded ones; at 100% supabase-db crash-loops on `postmaster.pid`

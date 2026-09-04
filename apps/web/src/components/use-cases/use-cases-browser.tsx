@@ -20,6 +20,7 @@ const ALL = 'All';
  */
 export function UseCasesBrowser({ posts }: { posts: Post[] }) {
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const allLabel = tI18nComplete.raw('texta52ace420f21');
   const filters = useMemo(() => {
     const counts = new Map<string, number>();
     for (const post of posts) {
@@ -54,7 +55,7 @@ export function UseCasesBrowser({ posts }: { posts: Post[] }) {
               className="rounded-full border capitalize shadow-none"
               onClick={() => setActive(tag)}
             >
-              {tag}
+              {tag === ALL ? allLabel : tag}
               {isActive && <span className={cn('tabular-nums')}>{count}</span>}
             </Button>
           );

@@ -384,9 +384,7 @@ function messageIssues(english, messages, locale) {
       (token) => !targetValue.includes(token),
     );
     if (missingDesignSystemTokens.length > 0) {
-      issues.push(
-        `${key}: translated technical token(s): ${missingDesignSystemTokens.join(', ')}`,
-      );
+      issues.push(`${key}: translated technical token(s): ${missingDesignSystemTokens.join(', ')}`);
     }
 
     const sourceTemplates = templateVariables(sourceValue);
@@ -661,7 +659,8 @@ function scanFile(file) {
       ts.isCallExpression(node) &&
       ((ts.isPropertyAccessExpression(node.expression) &&
         ['raw', 'rich'].includes(node.expression.name.text)) ||
-        (ts.isIdentifier(node.expression) && /^(?:t|t[A-Z][A-Za-z0-9]*)$/.test(node.expression.text)))
+        (ts.isIdentifier(node.expression) &&
+          /^(?:t|t[A-Z][A-Za-z0-9]*)$/.test(node.expression.text)))
     ) {
       let cursor = node.parent;
       while (cursor && !ts.isJsxExpression(cursor) && !ts.isSourceFile(cursor)) {
@@ -1118,6 +1117,55 @@ function scanFile(file) {
   return findings;
 }
 
+function scanHardcodedTranslationReferences(file, messages) {
+  const source = fs.readFileSync(file, 'utf8');
+  const sourceFile = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  const findings = [];
+
+  function hasMessage(key) {
+    let value = messages.hardcodedUi;
+    for (const part of key.split('.')) {
+      if (!value || typeof value !== 'object' || !Object.hasOwn(value, part)) return false;
+      value = value[part];
+    }
+    return true;
+  }
+
+  function visit(node) {
+    if (
+      ts.isCallExpression(node) &&
+      node.arguments[0] &&
+      ts.isStringLiteralLike(node.arguments[0])
+    ) {
+      const expression = node.expression;
+      const isHardcodedTranslator =
+        (ts.isIdentifier(expression) && expression.text === 'tI18nHardcoded') ||
+        (ts.isPropertyAccessExpression(expression) &&
+          ts.isIdentifier(expression.expression) &&
+          expression.expression.text === 'tI18nHardcoded' &&
+          ['raw', 'rich'].includes(expression.name.text));
+      const key = node.arguments[0].text;
+      if (isHardcodedTranslator && !hasMessage(key)) {
+        findings.push({
+          file: path.relative(root, file),
+          line: getLine(sourceFile, node.arguments[0].getStart(sourceFile)),
+          key,
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return findings;
+}
+
 function auditTranslations() {
   const english = flatten(readJson(path.join(translationsDir, `${defaultLocale}.json`)));
   const report = [];
@@ -1150,7 +1198,12 @@ function auditTranslations() {
 }
 
 const translationAudit = auditTranslations();
-const hardcodedFindings = walkFiles(srcDir).flatMap(scanFile);
+const sourceFiles = walkFiles(srcDir);
+const hardcodedFindings = sourceFiles.flatMap(scanFile);
+const defaultMessages = readJson(path.join(translationsDir, `${defaultLocale}.json`));
+const missingTranslationReferences = sourceFiles.flatMap((file) =>
+  scanHardcodedTranslationReferences(file, defaultMessages),
+);
 const byFile = new Map();
 
 for (const finding of hardcodedFindings) {
@@ -1181,6 +1234,12 @@ for (const [file, count] of topFiles) {
   console.log(`- ${file}: ${count}`);
 }
 
+console.log('\ntranslation reference audit');
+console.log(`- unresolved: ${missingTranslationReferences.length}`);
+for (const finding of missingTranslationReferences.slice(0, 30)) {
+  console.log(`- ${finding.file}:${finding.line}: ${finding.key}`);
+}
+
 if (args.get('json')) {
   const outputFile = path.resolve(root, args.get('json'));
   fs.writeFileSync(
@@ -1189,6 +1248,7 @@ if (args.get('json')) {
       {
         translations: translationAudit.report,
         hardcoded: hardcodedFindings,
+        missingTranslationReferences,
         topFiles: Object.fromEntries(topFiles),
       },
       null,
@@ -1199,6 +1259,7 @@ if (args.get('json')) {
 }
 
 let failed = translationAudit.failures > 0;
+if (missingTranslationReferences.length > 0) failed = true;
 if (hardcodedFindings.length > maxHardcoded) {
   console.error(
     `\nHardcoded UI text findings (${hardcodedFindings.length}) exceed --max-hardcoded=${maxHardcoded}.`,

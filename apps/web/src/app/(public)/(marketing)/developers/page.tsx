@@ -10,6 +10,7 @@ import { KortixLetterField } from '@/components/ui/marketing/kortix-letter-field
 import { useCopy } from '@/hooks/use-copy';
 import { APP_REGISTRY_TRANSLATION_KEYS } from '@/i18n/app-registry-translation-keys.generated';
 import { localizeUiCatalog } from '@/i18n/localize-ui-catalog';
+import { useTranslations } from '@/i18n/use-translations';
 import { KORTIX_CLI_INSTALL_COMMAND } from '@/lib/kortix-cli';
 import { cn } from '@/lib/utils';
 import {
@@ -29,7 +30,6 @@ import {
   TerminalIcon,
   FlowArrowIcon as Workflow,
 } from '@phosphor-icons/react';
-import { useTranslations } from '@/i18n/use-translations';
 import Link from 'next/link';
 import { useCallback } from 'react';
 
@@ -103,11 +103,7 @@ function Working({ children }: { children: React.ReactNode }) {
   return (
     <Line className="items-center justify-start gap-2">
       <span className={C.s}>
-        <KortixAsterisk
-          parentClass={"animate-spin mt-0 size-3"}
-          index={0}
-          variant="solid"
-        />
+        <KortixAsterisk parentClass={'animate-spin mt-0 size-3'} index={0} variant="solid" />
       </span>
       <span className={C.f}>{children}</span>
     </Line>
@@ -543,6 +539,7 @@ export default function DevelopersPage() {
   );
   const { copied, copy } = useCopy();
   const tHardcodedUi = useTranslations('hardcodedUi');
+  const tDevelopers = useTranslations('developers');
   const tHome = useCallback(
     (key: string) => tHardcodedUi.raw(`appHomePage.${key}`),
     [tHardcodedUi],
@@ -571,9 +568,7 @@ export default function DevelopersPage() {
               </span>
             </h1>
             <p className="text-muted-foreground mt-6 max-w-xl text-lg leading-relaxed">
-              {tI18nHardcoded.raw(
-                'autoAppPublicMarketingDevelopersPageJsxTextAgentsSkillsTools813c489d',
-              )}
+              {tDevelopers('heroDescription')}
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <div className="bg-card flex items-center gap-4 rounded-sm border p-3 px-5">
@@ -705,9 +700,7 @@ export default function DevelopersPage() {
             title={tI18nHardcoded.raw(
               'autoAppPublicMarketingDevelopersPageJsxAttrTitleBuildIte194e7c4',
             )}
-            body={tI18nHardcoded.raw(
-              'autoAppPublicMarketingDevelopersPageJsxAttrBodyAnAgentd3ac5ad4',
-            )}
+            body={tDevelopers('agentBody')}
             flip
           >
             <CodeFile
@@ -734,9 +727,7 @@ export default function DevelopersPage() {
             title={tI18nHardcoded.raw(
               'autoAppPublicMarketingDevelopersPageJsxAttrTitleShipItfb312d97',
             )}
-            body={tI18nHardcoded.raw(
-              'autoAppPublicMarketingDevelopersPageJsxAttrBodyKortixShipef9c33ee',
-            )}
+            body={tDevelopers('shipBody')}
             flip
           >
             <Terminal
@@ -773,9 +764,7 @@ export default function DevelopersPage() {
             title={tI18nHardcoded.raw(
               'autoAppPublicMarketingDevelopersPageJsxAttrTitleItRuns79baead9',
             )}
-            body={tI18nHardcoded.raw(
-              'autoAppPublicMarketingDevelopersPageJsxAttrBodyEverySession6d5c7d97',
-            )}
+            body={tDevelopers('fleetBody')}
           >
             <Terminal>
               <Line>
@@ -849,9 +838,7 @@ export default function DevelopersPage() {
             title={tI18nHardcoded.raw(
               'autoAppPublicMarketingDevelopersPageJsxAttrTitleBringYourc9b3722b',
             )}
-            body={tI18nHardcoded.raw(
-              'autoAppPublicMarketingDevelopersPageJsxAttrBodySessionsRund6d02c3d',
-            )}
+            body={tDevelopers('runtimeBody')}
             flip
           >
             <Terminal>
@@ -912,9 +899,7 @@ export default function DevelopersPage() {
               )}
             </h2>
             <p className="text-muted-foreground mt-4 text-base leading-relaxed">
-              {tI18nHardcoded.raw(
-                'autoAppPublicMarketingDevelopersPageJsxTextScaffoldShipRunb35564e3',
-              )}
+              {tDevelopers('lifecycleDescription')}
             </p>
           </div>
         </Reveal>
@@ -970,9 +955,7 @@ export default function DevelopersPage() {
               {tI18nHardcoded.raw('autoAppPublicMarketingDevelopersPageJsxText1Session1543175ef')}
             </h2>
             <p className="text-muted-foreground mt-4 max-w-md text-base leading-relaxed">
-              {tI18nHardcoded.raw(
-                'autoAppPublicMarketingDevelopersPageJsxTextEverySessionRuns6dd000d3',
-              )}
+              {tDevelopers('scaleDescription')}
             </p>
             <ul className="mt-6 max-w-md space-y-2.5">
               {[
@@ -1059,9 +1042,7 @@ export default function DevelopersPage() {
               )}
             </h2>
             <p className="text-muted-foreground mt-4 max-w-md text-base leading-relaxed">
-              {tI18nHardcoded.raw(
-                'autoAppPublicMarketingDevelopersPageJsxTextKortixConnectorsPut612736c1',
-              )}
+              {tDevelopers('connectorsDescription')}
             </p>
             <ul className="mt-6 max-w-md space-y-2.5">
               {[
@@ -1095,9 +1076,7 @@ export default function DevelopersPage() {
               )}
             </h2>
             <p className="text-muted-foreground mt-4 text-base leading-relaxed">
-              {tI18nHardcoded.raw(
-                'autoAppPublicMarketingDevelopersPageJsxTextBecauseEverythingIsd6715079',
-              )}
+              {tDevelopers('codeDescription')}
             </p>
           </div>
         </Reveal>

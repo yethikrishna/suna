@@ -23,7 +23,7 @@ import { siteMetadata } from '@/lib/site-metadata';
 import { cn } from '@/lib/utils';
 import { featureFlags } from '@kortix/sdk';
 import type { Metadata, Viewport } from 'next';
-import { getTranslations } from '@/i18n/get-translations';
+import { getLocale, getMessages, getTranslations } from '@/i18n/get-translations';
 import { headers } from 'next/headers';
 import { connection } from 'next/server';
 import { Suspense, lazy } from 'react';
@@ -214,9 +214,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
 
   // Locale-routed marketing pages (/de, /fr, …) are rewritten onto the
   // unprefixed route by the middleware, which records the locale in x-locale.
-  const requestLocale = requestHeaders.get('x-locale');
+  const resolvedLocale = await getLocale();
   const htmlLang =
-    requestLocale && locales.includes(requestLocale as Locale) ? requestLocale : 'en';
+    resolvedLocale && locales.includes(resolvedLocale as Locale) ? (resolvedLocale as Locale) : 'en';
+  const resolvedMessages = await getMessages();
 
   return (
     <html
@@ -243,7 +244,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         {/* Prevent browser auto-translate (Google Translate, Chrome, etc.) from
             mutating the DOM. When translators modify text nodes, React's reconciler
             crashes with "Failed to execute 'insertBefore' on 'Node'".
-            The app ships its own i18n via next-intl (en, de, it, zh, ja, pt, fr, es)
+            The app ships its own i18n via next-intl (en, de, it, zh, ja, pt, fr, es, sr)
             so browser translation is unnecessary and actively harmful. */}
         <meta name="google" content="notranslate" />
 
@@ -382,7 +383,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <IconProvider>
               <TooltipProvider delayDuration={300}>
                 <AuthProvider>
-                  <I18nProvider>
+                  <I18nProvider initialLocale={htmlLang} initialMessages={resolvedMessages}>
                     <WebMcpTools />
                     {/* Publishes the App Router to lib/navigation/router-bridge so
                     stores and error handlers navigate softly instead of

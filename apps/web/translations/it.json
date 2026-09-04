@@ -1,4 +1,18 @@
 {
+  "useCases": {
+    "headline": "I processi che fanno funzionare un'azienda"
+  },
+  "developers": {
+    "heroDescription": "Agenti, skill, strumenti, connettori e pianificazioni sono tutti file in un repository. Modificali nel tuo IDE, eseguili in locale e distribuiscili nel cloud con un solo comando. Open source, self-hosted e sotto il tuo controllo.",
+    "agentBody": "Un agente è un file Markdown: una persona, il suo modello e i suoi strumenti. Le skill sono cartelle che carica quando servono. Modificale a mano oppure descrivi ciò che vuoi e lascia che il tuo agente di coding le scriva.",
+    "shipBody": "kortix ship crea il commit, esegue il push, costruisce la sandbox e richiede i secret mancanti. Trigger e canali diventano subito attivi, senza infrastruttura separata da configurare.",
+    "fleetBody": "Ogni sessione è una VM separata sul proprio branch e avvia il runtime con il tuo repository. Puoi eseguirne migliaia in parallelo senza interferenze. Il lavoro raggiunge main solo tramite una richiesta di modifica, quindi ogni modifica è verificabile e reversibile.",
+    "runtimeBody": "Le sessioni usano un runtime aperto. Porta le tue chiavi per Anthropic, OpenAI o modelli locali, oppure usa il calcolo Kortix. Nessuna parte del runtime è nascosta.",
+    "lifecycleDescription": "Crea, distribuisci, esegui, automatizza, connetti e verifica: una sola CLI gestisce tutto. Lo stesso binario è già autenticato in ogni sandbox, quindi gli agenti usano gli stessi comandi Kortix che usi tu.",
+    "scaleDescription": "Ogni sessione viene eseguita nella propria sandbox isolata, con risorse di calcolo reali e isolate, sul proprio branch Git derivato da main. Avviane milioni in parallelo: non si verificano conflitti.",
+    "connectorsDescription": "I connettori Kortix rendono disponibili più di 3.000 app e qualsiasi endpoint MCP, OpenAPI, GraphQL o HTTP tramite un'unica interfaccia Executor. Gli agenti li usano come qualsiasi altro strumento.",
+    "codeDescription": "Poiché tutto è codice in un repository, il sistema può leggere il proprio progetto, estendersi e restare stabile mentre cresce. È completamente estendibile, controllabile e self-hosted. Nulla è una scatola nera."
+  },
   "common": {
     "cancel": "Annulla",
     "save": "Salva",
@@ -2610,6 +2624,8 @@
     }
   },
   "hardcodedUi": {
+    "autoFeaturesBillingClaimPerSeatCardJsxTextMoveOff58e07c8d": "Passa dalla fatturazione per macchina al nuovo piano da 40 $ per postazione. Annulliamo gli abbonamenti delle macchine, usiamo il saldo residuo per la prima postazione e restituiamo il resto come ",
+    "autoAppAppAccountsIdTokensTokenIdPageJsxTextTokensf8e918bc": "A ogni richiesta, i token ereditano il ruolo dell'account e le appartenenze ai gruppi del loro creatore. Per limitare l'accesso di un token, associalo a un solo progetto quando lo crei.",
     "projectAccessBoundary": {
       "privateHeading": "Chiedi l'accesso.",
       "privateBody": "Solo i membri possono aprire questo progetto. Invia una nota e un project manager potrà aggiungerti.",

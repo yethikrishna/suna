@@ -972,8 +972,12 @@ These contracts use product IDs. They replace the old route-coverage bucket IDs.
 
 ## 30. Browser localization
 
-Playwright journey `26-i18n-settings.spec.ts` verifies that the language-and-shortcuts settings surface lists all supported
-locales, including Serbian. Selecting each locale writes that exact locale to
-Supabase user metadata. The page then sets the matching HTML language and
-renders the localized modal title, navigation, rail, breadcrumb, section
-headings, modifier label, and every shortcut label without a page error.
+Playwright journey `26-i18n-settings.spec.ts` verifies all nine supported locales,
+including Serbian. Selecting each locale writes that exact locale to Supabase
+user metadata. A new authenticated session then reads the persisted locale.
+The journey verifies every Settings tab and all five onboarding steps. It also
+loads 24 public routes and 18 authenticated product routes for each locale.
+These 378 route loads must return a document below `400`, retain the matching
+HTML language, avoid corrupt Unicode, render visible content, and include a
+catalog value for the selected locale. Authenticated routes must not redirect to
+`/auth`.

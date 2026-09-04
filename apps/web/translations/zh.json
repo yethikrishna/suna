@@ -1,4 +1,18 @@
 {
+  "useCases": {
+    "headline": "驱动公司运转的循环"
+  },
+  "developers": {
+    "heroDescription": "代理、技能、工具、连接器和计划全都是仓库中的文件。你可以在 IDE 中编辑它们，在本地运行，并用一条命令部署到云端。开源、可自行托管，并完全由你掌控。",
+    "agentBody": "代理是一个 Markdown 文件，其中定义了角色、模型和工具。技能是代理按需加载的文件夹。你可以手动编辑，也可以描述目标，让编码代理完成编写。",
+    "shipBody": "kortix ship 会提交并推送更改、构建沙箱，并提示补充缺少的密钥。触发器和渠道会立即上线，无需另行搭建基础设施。",
+    "fleetBody": "每个会话都在独立分支上的独立虚拟机中运行，并启动运行时和你的仓库。数千个会话可以并行运行且互不干扰。工作只能通过变更请求进入 main，因此所有更改都可审查、可撤销。",
+    "runtimeBody": "会话运行在开放运行时上。你可以使用自己的 Anthropic、OpenAI 或本地模型密钥，也可以使用 Kortix 计算资源。运行时没有隐藏部分。",
+    "lifecycleDescription": "搭建、发布、运行、自动化、连接和审查，全都由一套 CLI 完成。每个沙箱中都预先认证了同一个二进制文件，因此代理使用的 Kortix 命令与你完全相同。",
+    "scaleDescription": "每个会话都在自己的隔离沙箱中运行，使用真实且隔离的计算资源，并基于 main 创建独立 Git 分支。即使并行启动数百万个会话，也不会发生冲突。",
+    "connectorsDescription": "Kortix 连接器通过统一的 Executor 接口提供 3,000 多个应用，以及任意 MCP、OpenAPI、GraphQL 或 HTTP 端点。代理可以像调用其他工具一样调用它们。",
+    "codeDescription": "由于一切都是仓库中的代码，系统可以读取自己的蓝图、自行扩展，并在增长过程中保持稳定。系统可完全扩展、可控且可自行托管，没有任何黑箱。"
+  },
   "common": {
     "cancel": "取消",
     "save": "保存",
@@ -2610,6 +2624,8 @@
     }
   },
   "hardcodedUi": {
+    "autoFeaturesBillingClaimPerSeatCardJsxTextMoveOff58e07c8d": "从按机器计费切换到每席位 40 美元的新方案。我们会取消你的机器订阅，将未使用的余额抵扣第一个席位，并将其余金额退还为",
+    "autoAppAppAccountsIdTokensTokenIdPageJsxTextTokensf8e918bc": "令牌会在每次请求时继承创建者的账户角色和群组成员资格。创建令牌时将其限定到单个项目，即可限制令牌的访问范围。",
     "projectAccessBoundary": {
       "privateHeading": "请求访问权限。",
       "privateBody": "只有成员才能打开这个项目。发送一条说明，项目经理就能把你添加进来。",

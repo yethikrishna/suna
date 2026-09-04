@@ -92,7 +92,7 @@ function formatDate(value: string | null): string {
 export function CreditTransactionsTable({ rows }: { rows: CreditTransactionRow[] }) {
   // Two headers are translated (the rest of this table was never localized).
   // Keeping the same keys keeps the customer surface byte-identical in all
-  // eight locales; the admin console renders under the same I18nProvider.
+  // nine locales; the admin console renders under the same I18nProvider.
   const tHardcodedUi = useTranslations('hardcodedUi');
   const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const transactionBadges = localizeUiCatalog(

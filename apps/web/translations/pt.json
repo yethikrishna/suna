@@ -1,4 +1,18 @@
 {
+  "useCases": {
+    "headline": "Os ciclos que mantêm uma empresa em funcionamento"
+  },
+  "developers": {
+    "heroDescription": "Agentes, habilidades, ferramentas, conectores e agendamentos são apenas arquivos em um repositório. Edite-os no seu IDE, execute-os localmente e publique-os na nuvem com um comando. Código aberto, auto-hospedável e sob seu controle.",
+    "agentBody": "Um agente é um arquivo Markdown que define uma persona, seu modelo e suas ferramentas. Habilidades são pastas carregadas sob demanda. Edite-as manualmente ou descreva o que deseja e deixe seu agente de programação escrevê-las.",
+    "shipBody": "kortix ship cria o commit, envia as mudanças, constrói o sandbox e solicita os segredos ausentes. Gatilhos e canais entram em operação imediatamente, sem infraestrutura separada para configurar.",
+    "fleetBody": "Cada sessão é uma VM própria em um branch próprio e inicia o runtime com seu repositório. Execute milhares em paralelo sem interferência. O trabalho só chega à main por uma solicitação de mudança, portanto tudo pode ser revisado e revertido.",
+    "runtimeBody": "As sessões usam um runtime aberto. Use suas próprias chaves da Anthropic, OpenAI ou de modelos locais, ou use a computação da Kortix. Nenhuma parte do runtime fica oculta.",
+    "lifecycleDescription": "Crie, publique, execute, automatize, conecte e revise: uma única CLI faz tudo. O mesmo binário já está autenticado em cada sandbox, então os agentes usam exatamente os mesmos comandos Kortix que você.",
+    "scaleDescription": "Cada sessão é executada em seu próprio sandbox isolado, com computação real e isolada, em um branch Git próprio criado a partir da main. Inicie milhões em paralelo sem colisões.",
+    "connectorsDescription": "Os conectores Kortix disponibilizam mais de 3.000 aplicativos e qualquer endpoint MCP, OpenAPI, GraphQL ou HTTP por meio de uma única interface Executor. Seus agentes os chamam como qualquer outra ferramenta.",
+    "codeDescription": "Como tudo é código em um repositório, o sistema pode ler a própria arquitetura, ampliar seus recursos e permanecer estável enquanto cresce. Ele é totalmente extensível, controlável e auto-hospedável. Nada é uma caixa-preta."
+  },
   "common": {
     "cancel": "Cancelar",
     "save": "Salvar",
@@ -2610,6 +2624,8 @@
     }
   },
   "hardcodedUi": {
+    "autoFeaturesBillingClaimPerSeatCardJsxTextMoveOff58e07c8d": "Troque a cobrança por máquina pelo novo plano de US$ 40 por licença. Cancelamos suas assinaturas de máquinas, usamos o saldo não utilizado na primeira licença e devolvemos o restante como ",
+    "autoAppAppAccountsIdTokensTokenIdPageJsxTextTokensf8e918bc": "Os tokens herdam a função da conta e os grupos de seu criador no momento de cada solicitação. Para limitar o acesso de um token, restrinja-o a um projeto ao criá-lo.",
     "projectAccessBoundary": {
       "privateHeading": "Peça acesso.",
       "privateBody": "Somente membros podem abrir este projeto. Envie uma mensagem e um gerente de projeto poderá adicionar você.",

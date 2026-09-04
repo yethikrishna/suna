@@ -1,4 +1,18 @@
 {
+  "useCases": {
+    "headline": "Los ciclos que hacen funcionar una empresa"
+  },
+  "developers": {
+    "heroDescription": "Agentes, habilidades, herramientas, conectores y programaciones son archivos en un repositorio. Edítalos en tu IDE, ejecútalos localmente y despliega en la nube con un comando. Código abierto, autoalojable y bajo tu control.",
+    "agentBody": "Un agente es un archivo Markdown que define una persona, su modelo y sus herramientas. Las habilidades son carpetas que carga cuando las necesita. Edítalas manualmente o describe el objetivo y deja que tu agente de programación las escriba.",
+    "shipBody": "kortix ship crea el commit, envía los cambios, construye el entorno aislado y solicita los secretos que faltan. Los activadores y canales se habilitan de inmediato, sin infraestructura separada que configurar.",
+    "fleetBody": "Cada sesión es una máquina virtual independiente en su propia rama e inicia el runtime con tu repositorio. Ejecuta miles en paralelo sin interferencias. El trabajo solo llega a main mediante una solicitud de cambio, por lo que todo se puede revisar y revertir.",
+    "runtimeBody": "Las sesiones se ejecutan en un runtime abierto. Usa tus propias claves de Anthropic, OpenAI o modelos locales, o utiliza la capacidad de cómputo de Kortix. Ninguna parte del runtime está oculta.",
+    "lifecycleDescription": "Crea, despliega, ejecuta, automatiza, conecta y revisa: una sola CLI se encarga de todo. El mismo binario está preautenticado en cada entorno aislado, por lo que los agentes usan exactamente los mismos comandos Kortix que tú.",
+    "scaleDescription": "Cada sesión se ejecuta en su propio entorno aislado, con capacidad de cómputo real y separada, en su propia rama Git creada desde main. Inicia millones en paralelo sin colisiones.",
+    "connectorsDescription": "Los conectores Kortix ofrecen más de 3.000 aplicaciones y cualquier endpoint MCP, OpenAPI, GraphQL o HTTP mediante una única interfaz Executor. Tus agentes los invocan como cualquier otra herramienta.",
+    "codeDescription": "Como todo es código en un repositorio, el sistema puede leer su propio diseño, ampliarse y mantenerse estable a medida que crece. Es totalmente extensible, controlable y autoalojable. Nada es una caja negra."
+  },
   "common": {
     "cancel": "Cancelar",
     "save": "Guardar",
@@ -2610,6 +2624,8 @@
     }
   },
   "hardcodedUi": {
+    "autoFeaturesBillingClaimPerSeatCardJsxTextMoveOff58e07c8d": "Cambia la facturación por máquina al nuevo plan de 40 $ por puesto. Cancelamos tus suscripciones de máquinas, aplicamos el saldo no utilizado al primer puesto y devolvemos el resto como ",
+    "autoAppAppAccountsIdTokensTokenIdPageJsxTextTokensf8e918bc": "Los tokens heredan el rol de cuenta y los grupos de su creador en cada solicitud. Para limitar el acceso de un token, restríngelo a un solo proyecto cuando lo crees.",
     "projectAccessBoundary": {
       "privateHeading": "Pide acceso.",
       "privateBody": "Solo los miembros pueden abrir este proyecto. Envía una nota y un gestor del proyecto podrá añadirte.",

@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Response } from "@playwright/test";
 
 import { resolvePersonalAccountId } from "../helpers/accounts";
 import { queryDatabaseRows, runDatabaseSql } from "../helpers/database";
+import { clearCookiesPreservingBypass } from "../helpers/deployment-bypass";
 import { createApiJsonClient, createApiResultClient } from "../helpers/http";
 import {
   createManifestProject,
@@ -17,8 +18,15 @@ import {
   signIn,
 } from "../helpers/session-auth";
 
-const locales = ["de", "it", "zh", "ja", "pt", "fr", "es", "sr", "en"] as const;
-type Locale = (typeof locales)[number];
+const supportedLocales = ["de", "it", "zh", "ja", "pt", "fr", "es", "sr", "en"] as const;
+type Locale = (typeof supportedLocales)[number];
+const requestedLocale = process.env.E2E_I18N_LOCALE;
+if (requestedLocale && !supportedLocales.includes(requestedLocale as Locale)) {
+  throw new Error(`Unsupported E2E_I18N_LOCALE: ${requestedLocale}`);
+}
+const locales: readonly Locale[] = requestedLocale
+  ? [requestedLocale as Locale]
+  : supportedLocales;
 
 const nativeLocaleNames: Record<Locale, string> = {
   en: "English",
@@ -31,6 +39,56 @@ const nativeLocaleNames: Record<Locale, string> = {
   es: "Español",
   sr: "Српски",
 };
+
+const publicSurfaceRoutes = [
+  "/",
+  "/about",
+  "/agent-computer",
+  "/agents-and-skills",
+  "/automations",
+  "/blog",
+  "/careers",
+  "/channels",
+  "/changelog",
+  "/company-as-code",
+  "/connectors",
+  "/contact",
+  "/design-system",
+  "/developers",
+  "/download",
+  "/enterprise",
+  "/legal",
+  "/marketplace",
+  "/pricing",
+  "/security",
+  "/self-hosted",
+  "/solutions",
+  "/support",
+  "/use-cases",
+] as const;
+
+function productSurfaceRoutes(projectId: string, accountId: string): string[] {
+  return [
+    "/new",
+    "/connections",
+    "/accounts",
+    `/accounts/${accountId}`,
+    `/projects/${projectId}`,
+    `/projects/${projectId}/agent`,
+    `/projects/${projectId}/channels`,
+    `/projects/${projectId}/connectors`,
+    `/projects/${projectId}/customize`,
+    `/projects/${projectId}/members`,
+    `/projects/${projectId}/models`,
+    `/projects/${projectId}/review`,
+    `/projects/${projectId}/secrets`,
+    `/projects/${projectId}/skills`,
+    `/projects/${projectId}/triggers`,
+    `/projects/${projectId}/apps`,
+    `/projects/${projectId}/files`,
+    `/projects/${projectId}/sessions`,
+  ];
+}
 
 interface LocaleMessages {
   common: { close: string };
@@ -188,7 +246,99 @@ function messages(locale: Locale): LocaleMessages {
   ) as LocaleMessages;
 }
 
-async function chooseLocale(page: Page, locale: Locale): Promise<void> {
+function flattenStrings(value: unknown, output: string[] = []): string[] {
+  if (typeof value === "string") {
+    const normalized = value.replace(/<\/?[a-z][^>]*>/gi, "").trim();
+    if (
+      normalized.length >= 5 &&
+      !/[{}]/.test(normalized) &&
+      !normalized.includes("://")
+    ) {
+      output.push(normalized);
+    }
+    return output;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) flattenStrings(item, output);
+    return output;
+  }
+  if (value && typeof value === "object") {
+    for (const item of Object.values(value)) flattenStrings(item, output);
+  }
+  return output;
+}
+
+const englishMessages = messages("en");
+const englishValues = new Set(flattenStrings(englishMessages));
+const localizedWitnesses = Object.fromEntries(
+  locales.map((locale) => [
+    locale,
+    locale === "en"
+      ? [...englishValues]
+      : flattenStrings(messages(locale)).filter(
+          (value) => !englishValues.has(value),
+        ),
+  ]),
+) as Record<Locale, string[]>;
+
+async function assertLocalizedRoute(
+  page: Page,
+  route: string,
+  locale: Locale,
+  navigationResponse?: Response | null,
+): Promise<void> {
+  const response =
+    navigationResponse ??
+    (await page.goto(route, { waitUntil: "commit" }));
+  expect(
+    response,
+    `${locale} ${route} did not return a document`,
+  ).not.toBeNull();
+  expect(
+    response!.status(),
+    `${locale} ${route} returned ${response!.status()}`,
+  ).toBeLessThan(400);
+  await page.waitForLoadState("domcontentloaded", { timeout: 180_000 });
+  await expect(page.locator("html"), `${locale} ${route}`).toHaveAttribute(
+    "lang",
+    locale,
+  );
+  expect(
+    new URL(page.url()).pathname,
+    `${locale} ${route} redirected to auth`,
+  ).not.toBe("/auth");
+
+  const content = page.locator("main").first();
+  const localizedContent =
+    (await content.count()) > 0 ? content : page.locator("body");
+  await expect(
+    localizedContent,
+    `${locale} ${route} has no visible content`,
+  ).not.toBeEmpty();
+  await expect(
+    localizedContent,
+    `${locale} ${route} contains corrupt Unicode`,
+  ).not.toContainText("�");
+  await expect
+    .poll(
+      async () => {
+        const text = await localizedContent.innerText();
+        return localizedWitnesses[locale].some((candidate) =>
+          text.includes(candidate),
+        );
+      },
+      {
+        message: `${locale} ${route} did not render any catalog text for that locale`,
+        timeout: 30_000,
+      },
+    )
+    .toBe(true);
+}
+
+async function chooseLocale(
+  page: Page,
+  locale: Locale,
+): Promise<void> {
   const responsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === "PUT" &&
@@ -208,13 +358,15 @@ async function chooseLocale(page: Page, locale: Locale): Promise<void> {
     user_metadata?: { locale?: string };
   };
   expect(body.user_metadata?.locale).toBe(locale);
+
+  await expect(page.locator("html")).toHaveAttribute("lang", locale);
 }
 
 test.describe("26 — Settings localization", () => {
-  test("each supported locale persists and renders the complete language-and-shortcuts surface", async ({
+  test("each supported locale persists and renders settings, onboarding, and the complete route census", async ({
     page,
   }) => {
-    test.setTimeout(600_000);
+    test.setTimeout(2_700_000);
 
     const runId = Date.now().toString(36);
     const email = `e2e-i18n-settings-${runId}@example.test`;
@@ -266,10 +418,20 @@ test.describe("26 — Settings localization", () => {
         authOptions,
       );
       await expect(page.getByRole("combobox").first()).toBeVisible();
+      expect(publicSurfaceRoutes).toHaveLength(24);
+      expect(productSurfaceRoutes(projectId, accountId)).toHaveLength(18);
 
       for (const locale of locales) {
         await test.step(`${locale} persists through Supabase and renders every visible settings string`, async () => {
           const copy = messages(locale);
+          const settingsSession = await signIn(email, authOptions);
+          await installBrowserSessionDirect(
+            page,
+            settingsSession,
+            `/projects/${projectId}/settings/preferences`,
+            authOptions,
+          );
+          await expect(page.getByRole("combobox").first()).toBeVisible();
           await chooseLocale(page, locale);
 
           await expect(page.locator("html")).toHaveAttribute("lang", locale);
@@ -724,7 +886,13 @@ test.describe("26 — Settings localization", () => {
             ).toBeVisible();
           }
 
-          await page.goto(`/projects/${projectId}?onboarding-reset`);
+          const onboardingSession = await signIn(email, authOptions);
+          await installBrowserSessionDirect(
+            page,
+            onboardingSession,
+            `/projects/${projectId}?onboarding-reset`,
+            authOptions,
+          );
           const wizard = page.getByRole("dialog");
           await expect(
             wizard.getByRole("heading", {
@@ -822,6 +990,37 @@ test.describe("26 — Settings localization", () => {
           await expect(openProjectButton).toBeVisible();
           await openProjectButton.click();
           await expect(wizard).toBeHidden();
+
+          await page.goto("about:blank");
+          await clearCookiesPreservingBypass(page.context());
+          const publicPage = await page.context().newPage();
+          publicPage.on("pageerror", (error) => pageErrors.push(error.message));
+          try {
+            for (const route of publicSurfaceRoutes) {
+              await test.step(`${locale} renders ${route}`, async () => {
+                const localizedRoute =
+                  locale === "en"
+                    ? route
+                    : `/${locale}${route === "/" ? "" : route}`;
+                await assertLocalizedRoute(publicPage, localizedRoute, locale);
+              });
+            }
+          } finally {
+            await publicPage.close();
+          }
+
+          for (const route of productSurfaceRoutes(projectId, accountId)) {
+            await test.step(`${locale} renders ${route}`, async () => {
+              const persistedSession = await signIn(email, authOptions);
+              const response = await installBrowserSessionDirect(
+                page,
+                persistedSession,
+                route,
+                authOptions,
+              );
+              await assertLocalizedRoute(page, route, locale, response);
+            });
+          }
 
           await page.goto(`/projects/${projectId}/settings/preferences`);
           await expect(page.getByRole("combobox").first()).toBeVisible();

@@ -1,4 +1,18 @@
 {
+  "useCases": {
+    "headline": "The loops that run a company"
+  },
+  "developers": {
+    "heroDescription": "Agents, skills, tools, connectors, schedules — all just files in a repo. Edit them in your IDE, run them locally, ship to the cloud with one command. Open source, self-hostable, yours.",
+    "agentBody": "An agent is Markdown — a persona, its model, and its tools. Skills are folders it loads on demand. Edit them by hand, or describe what you want and let your coding agent write them.",
+    "shipBody": "kortix ship commits, pushes, builds the sandbox, and prompts for missing secrets. Triggers and channels go live immediately — no separate infrastructure to set up.",
+    "fleetBody": "Every session is its own VM on its own branch, booting the runtime and your repo. Spawn thousands in parallel with zero interference. A change request is the only way work reaches main, so everything is reviewable and reversible.",
+    "runtimeBody": "Sessions run on an open runtime. Bring your own keys — Anthropic, OpenAI, or local — or use Kortix compute. Nothing about the runtime is hidden.",
+    "lifecycleDescription": "Scaffold, ship, run, automate, connect, and review — one CLI does it all. The same binary is pre-authenticated inside every sandbox, so agents drive Kortix with the exact commands you use.",
+    "scaleDescription": "Every session runs in its own isolated sandbox — real, isolated compute — on its own Git branch off main. Start millions in parallel; nothing collides.",
+    "connectorsDescription": "Kortix connectors put 3,000+ apps — plus any MCP, OpenAPI, GraphQL, or raw HTTP endpoint — behind one Executor interface that your agents call like any other tool.",
+    "codeDescription": "Because everything is code in a repo, the system can read its own blueprint, extend itself, and stay healthy as it grows. It is 100% extensible, controllable, and self-hostable — nothing is a black box."
+  },
   "common": {
     "cancel": "Cancel",
     "save": "Save",
@@ -2610,6 +2624,8 @@
     }
   },
   "hardcodedUi": {
+    "autoFeaturesBillingClaimPerSeatCardJsxTextMoveOff58e07c8d": "Move off per-machine billing to the new $40/seat plan. We cancel your machine subscriptions, put your unused balance toward your first seat, and return the rest as ",
+    "autoAppAppAccountsIdTokensTokenIdPageJsxTextTokensf8e918bc": "Tokens inherit their creator's account role and group memberships at request time. To limit what a token can access, scope it to one project when you create it.",
     "projectAccessBoundary": {
       "privateHeading": "Ask for access.",
       "privateBody": "Only members can open this project. Send a note and a project manager can add you.",

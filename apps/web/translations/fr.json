@@ -1,4 +1,18 @@
 {
+  "useCases": {
+    "headline": "Les boucles qui font fonctionner une entreprise"
+  },
+  "developers": {
+    "heroDescription": "Agents, compétences, outils, connecteurs et planifications sont de simples fichiers dans un dépôt. Modifiez-les dans votre IDE, exécutez-les en local et déployez-les dans le cloud avec une commande. Open source, auto-hébergeable et sous votre contrôle.",
+    "agentBody": "Un agent est un fichier Markdown qui définit un persona, son modèle et ses outils. Les compétences sont des dossiers chargés à la demande. Modifiez-les manuellement ou décrivez votre objectif et laissez votre agent de programmation les rédiger.",
+    "shipBody": "kortix ship crée le commit, pousse les modifications, construit le bac à sable et demande les secrets manquants. Les déclencheurs et les canaux sont immédiatement actifs, sans infrastructure distincte à configurer.",
+    "fleetBody": "Chaque session dispose de sa propre machine virtuelle sur sa propre branche et démarre le runtime avec votre dépôt. Exécutez-en des milliers en parallèle sans interférence. Le travail atteint main uniquement par une demande de modification. Tout reste donc vérifiable et réversible.",
+    "runtimeBody": "Les sessions utilisent un runtime ouvert. Utilisez vos propres clés Anthropic, OpenAI ou de modèles locaux, ou utilisez la puissance de calcul Kortix. Aucune partie du runtime n'est masquée.",
+    "lifecycleDescription": "Créez, déployez, exécutez, automatisez, connectez et vérifiez : une seule CLI gère tout. Le même binaire est préauthentifié dans chaque bac à sable. Les agents utilisent donc exactement les mêmes commandes Kortix que vous.",
+    "scaleDescription": "Chaque session s'exécute dans son propre bac à sable isolé, avec une puissance de calcul réelle et isolée, sur sa propre branche Git issue de main. Lancez-en des millions en parallèle sans collision.",
+    "connectorsDescription": "Les connecteurs Kortix rendent disponibles plus de 3 000 applications et tout point de terminaison MCP, OpenAPI, GraphQL ou HTTP derrière une interface Executor unique. Vos agents les appellent comme n'importe quel autre outil.",
+    "codeDescription": "Comme tout est du code dans un dépôt, le système peut lire son propre plan, s'étendre et rester stable pendant sa croissance. Il est entièrement extensible, contrôlable et auto-hébergeable. Rien n'est une boîte noire."
+  },
   "common": {
     "cancel": "Annuler",
     "save": "Enregistrer",
@@ -2610,6 +2624,8 @@
     }
   },
   "hardcodedUi": {
+    "autoFeaturesBillingClaimPerSeatCardJsxTextMoveOff58e07c8d": "Passez de la facturation par machine au nouveau forfait à 40 $ par siège. Nous annulons vos abonnements aux machines, appliquons votre solde inutilisé au premier siège et restituons le reste sous forme de ",
+    "autoAppAppAccountsIdTokensTokenIdPageJsxTextTokensf8e918bc": "Les jetons héritent du rôle de compte et des appartenances aux groupes de leur créateur lors de chaque requête. Pour limiter l'accès d'un jeton, restreignez-le à un seul projet lors de sa création.",
     "projectAccessBoundary": {
       "privateHeading": "Demandez l’accès.",
       "privateBody": "Seuls les membres peuvent ouvrir ce projet. Envoyez un mot et un chef de projet pourra vous ajouter.",

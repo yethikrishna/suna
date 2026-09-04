@@ -1,4 +1,18 @@
 {
+  "useCases": {
+    "headline": "Die Abläufe, die ein Unternehmen am Laufen halten"
+  },
+  "developers": {
+    "heroDescription": "Agenten, Skills, Tools, Konnektoren und Zeitpläne sind Dateien in einem Repository. Bearbeite sie in deiner IDE, führe sie lokal aus und stelle sie mit einem Befehl in der Cloud bereit. Open Source, selbst hostbar und unter deiner Kontrolle.",
+    "agentBody": "Ein Agent ist Markdown: eine Persona, ihr Modell und ihre Tools. Skills sind Ordner, die der Agent bei Bedarf lädt. Bearbeite sie manuell oder beschreibe das Ziel und lasse deinen Coding-Agenten sie erstellen.",
+    "shipBody": "kortix ship erstellt einen Commit, pusht ihn, baut die Sandbox und fragt nach fehlenden Secrets. Trigger und Kanäle gehen sofort live. Es ist keine separate Infrastruktur erforderlich.",
+    "fleetBody": "Jede Sitzung ist eine eigene VM auf einem eigenen Branch. Sie startet die Runtime und dein Repository. Tausende Sitzungen können ohne gegenseitige Beeinflussung parallel laufen. Arbeit erreicht main nur über einen Change Request. Dadurch bleibt alles prüfbar und umkehrbar.",
+    "runtimeBody": "Sitzungen laufen auf einer offenen Runtime. Verwende eigene Schlüssel für Anthropic, OpenAI oder lokale Modelle, oder nutze Kortix Compute. Kein Teil der Runtime ist verborgen.",
+    "lifecycleDescription": "Erstellen, bereitstellen, ausführen, automatisieren, verbinden und prüfen: Eine CLI erledigt den gesamten Ablauf. Dieselbe Binärdatei ist in jeder Sandbox vorab authentifiziert. Agenten verwenden daher dieselben Kortix-Befehle wie du.",
+    "scaleDescription": "Jede Sitzung läuft in einer eigenen isolierten Sandbox mit echter, isolierter Rechenleistung und einem eigenen Git-Branch von main. Starte Millionen parallel. Es gibt keine Konflikte.",
+    "connectorsDescription": "Kortix-Konnektoren stellen mehr als 3.000 Apps sowie beliebige MCP-, OpenAPI-, GraphQL- oder HTTP-Endpunkte über eine Executor-Schnittstelle bereit. Agenten rufen sie wie jedes andere Tool auf.",
+    "codeDescription": "Da alles Code in einem Repository ist, kann das System seinen eigenen Bauplan lesen, sich erweitern und beim Wachstum stabil bleiben. Es ist vollständig erweiterbar, kontrollierbar und selbst hostbar. Nichts ist eine Blackbox."
+  },
   "common": {
     "cancel": "Abbrechen",
     "save": "Speichern",
@@ -2610,6 +2624,8 @@
     }
   },
   "hardcodedUi": {
+    "autoFeaturesBillingClaimPerSeatCardJsxTextMoveOff58e07c8d": "Wechsle von der Abrechnung pro Maschine zum neuen Tarif für 40 $ pro Sitzplatz. Wir kündigen deine Maschinenabonnements, verrechnen dein ungenutztes Guthaben mit dem ersten Sitzplatz und erstatten den Rest als ",
+    "autoAppAppAccountsIdTokensTokenIdPageJsxTextTokensf8e918bc": "Token übernehmen bei jeder Anfrage die Kontorolle und Gruppenmitgliedschaften ihres Erstellers. Begrenze den Zugriff eines Tokens auf ein einzelnes Projekt, wenn du es erstellst.",
     "projectAccessBoundary": {
       "privateHeading": "Bitten Sie um Zugriff.",
       "privateBody": "Nur Mitglieder können dieses Projekt öffnen. Senden Sie eine Nachricht, dann kann ein Projektmanager Sie hinzufügen.",

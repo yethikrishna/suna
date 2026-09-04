@@ -159,7 +159,7 @@ export function useSlides(): SlideDef[] {
             title={tI18nHardcoded.raw(
               'autoAppPresentationSlidesEngJsxAttrTitleApril2025We5a8b8958',
             )}
-            lead={tI18nHardcoded.raw('autoAppPresentationSlidesEngJsxAttrLeadTheFirstOpen5ca53ab1')}
+            lead={tI18nHardcoded.raw('autoAppPresentationSlidesEngJsxAttrLeadTheFirstOpen3002ec16')}
           />
           <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatBlock
@@ -306,7 +306,7 @@ export function useSlides(): SlideDef[] {
                 {tI18nHardcoded.raw('autoAppPresentationSlidesEngJsxTextAnAgentForEvery428d6526')}
               </h3>
               <Lead className="text-[15px]">
-                {tI18nHardcoded.raw('autoAppPresentationSlidesEngJsxTextOnTopOfThisc9248b98')}
+                {tI18nHardcoded.raw('autoAppPresentationSlidesEngJsxTextOnTopOfThisfa9706fd')}
               </Lead>
             </Panel>
           </div>
@@ -336,7 +336,7 @@ export function useSlides(): SlideDef[] {
                 'autoAppPresentationSlidesEngJsxAttrTitleYouConnectCompany944f7b6f',
               )}
               body={tI18nHardcoded.raw(
-                'autoAppPresentationSlidesEngJsxAttrBodyEmailCRMERP925457da',
+                'autoAppPresentationSlidesEngJsxAttrBodyEmailCRMERP153082eb',
               )}
             />
             <IconFeature
@@ -378,7 +378,7 @@ export function useSlides(): SlideDef[] {
               'autoAppPresentationSlidesEngJsxAttrTitleNoModelLock5cbe3d84',
             )}
             lead={tI18nHardcoded.raw(
-              'autoAppPresentationSlidesEngJsxAttrLeadTheCompanyChoosesd934d520',
+              'autoAppPresentationSlidesEngJsxAttrLeadTheCompanyChooses2dee2da2',
             )}
           />
           <div className="mt-10 grid gap-4 md:grid-cols-3">
@@ -445,7 +445,7 @@ export function useSlides(): SlideDef[] {
                 )}
               </h2>
               <Lead>
-                {tI18nHardcoded.raw('autoAppPresentationSlidesEngJsxTextInstallKortixAsA355cd3e1')}
+                {tI18nHardcoded.raw('autoAppPresentationSlidesEngJsxTextInstallKortixAsA60d3eb87')}
               </Lead>
               <div className="flex flex-wrap gap-2">
                 <Pill>{tI18nHardcoded.raw('i18nComplete.textb27fb38ba323')}</Pill>

@@ -228,7 +228,7 @@ export function useSlides(): SlideDef[] {
             </h2>
             <Lead className="max-w-2xl text-lg">
               {tI18nHardcoded.raw(
-                'autoAppPresentationSlidesPlatformJsxTextNotAMetaphorLiterallyfe00d18c',
+                'autoAppPresentationSlidesPlatformJsxTextNotAMetaphorLiterally9692a187',
               )}
             </Lead>
             <div className="grid max-w-3xl gap-4 sm:grid-cols-2">
@@ -274,7 +274,7 @@ export function useSlides(): SlideDef[] {
               'autoAppPresentationSlidesPlatformJsxAttrTitleTheModelsGot3c57220a',
             )}
             lead={tI18nHardcoded.raw(
-              'autoAppPresentationSlidesPlatformJsxAttrLeadYouCanHandbb3ac5b5',
+              'autoAppPresentationSlidesPlatformJsxAttrLeadYouCanHandd5adb800',
             )}
           />
           <div className="mt-12 grid gap-4 md:grid-cols-3">
@@ -343,7 +343,7 @@ export function useSlides(): SlideDef[] {
               </h2>
               <Lead>
                 {tI18nHardcoded.raw(
-                  'autoAppPresentationSlidesPlatformJsxTextOnePlaceWhereYourb6eb078d',
+                  'autoAppPresentationSlidesPlatformJsxTextOnePlaceWhereYour1521a0b5',
                 )}
               </Lead>
             </div>
@@ -564,7 +564,7 @@ export function useSlides(): SlideDef[] {
           </div>
           <Lead className="mt-10 max-w-3xl">
             {tI18nHardcoded.raw(
-              'autoAppPresentationSlidesPlatformJsxTextASyncEngineMirrors849c4a89',
+              'autoAppPresentationSlidesPlatformJsxTextASyncEngineMirrors66aaf7a1',
             )}
           </Lead>
         </Slide>
@@ -596,7 +596,7 @@ export function useSlides(): SlideDef[] {
             </h2>
             <Lead className="max-w-2xl text-lg">
               {tI18nHardcoded.raw(
-                'autoAppPresentationSlidesPlatformJsxTextRunThousandsOfAgents14f1f102',
+                'autoAppPresentationSlidesPlatformJsxTextRunThousandsOfAgents9a3f93e4',
               )}
             </Lead>
             <div className="grid max-w-3xl gap-4 sm:grid-cols-3">
@@ -684,7 +684,7 @@ export function useSlides(): SlideDef[] {
           )}
           title={tI18nHardcoded.raw('i18nComplete.text279b44d2ab4b')}
           lead={tI18nHardcoded.raw(
-            'autoAppPresentationSlidesPlatformJsxAttrLeadMarkdownPersonasWithb049eae2',
+            'autoAppPresentationSlidesPlatformJsxAttrLeadMarkdownPersonasWith298b95be',
           )}
           bullets={[
             tI18nHardcoded.raw('i18nComplete.textf08a83aac6c4'),
@@ -708,7 +708,7 @@ export function useSlides(): SlideDef[] {
           )}
           title={tI18nHardcoded.raw('i18nComplete.text66d0f523a379')}
           lead={tI18nHardcoded.raw(
-            'autoAppPresentationSlidesPlatformJsxAttrLeadThePartThate3f9d8d9',
+            'autoAppPresentationSlidesPlatformJsxAttrLeadThePartThat99be6c94',
           )}
           bullets={[
             tI18nHardcoded.raw('i18nComplete.text07331645370f'),
@@ -733,7 +733,7 @@ export function useSlides(): SlideDef[] {
             'autoAppPresentationSlidesPlatformJsxAttrTitleConnectEverythingOnce90dc9225',
           )}
           lead={tI18nHardcoded.raw(
-            'autoAppPresentationSlidesPlatformJsxAttrLead1ClickConnect89e2184c',
+            'autoAppPresentationSlidesPlatformJsxAttrLead1ClickConnectbd49b095',
           )}
           bullets={[
             tI18nHardcoded.raw('i18nComplete.text449992e55737'),
@@ -765,7 +765,7 @@ export function useSlides(): SlideDef[] {
               </h2>
               <Lead>
                 {tI18nHardcoded.raw(
-                  'autoAppPresentationSlidesPlatformJsxTextKeysOAuthAndModel515700d5',
+                  'autoAppPresentationSlidesPlatformJsxTextKeysOAuthAndModel44974f3c',
                 )}
               </Lead>
               <Bullets
@@ -824,7 +824,7 @@ export function useSlides(): SlideDef[] {
             'autoAppPresentationSlidesPlatformJsxAttrTitleWhereYourPeople5a92eefb',
           )}
           lead={tI18nHardcoded.raw(
-            'autoAppPresentationSlidesPlatformJsxAttrLeadSlackTeamsTelegram921f192a',
+            'autoAppPresentationSlidesPlatformJsxAttrLeadSlackTeamsTelegram3e7973c3',
           )}
           bullets={[
             tI18nHardcoded.raw('i18nComplete.textcf885bfcd8a4'),
@@ -850,7 +850,7 @@ export function useSlides(): SlideDef[] {
               'autoAppPresentationSlidesPlatformJsxAttrTitleItRunsWithout0222686a',
             )}
             lead={tI18nHardcoded.raw(
-              'autoAppPresentationSlidesPlatformJsxAttrLeadCronAndSignedef829b40',
+              'autoAppPresentationSlidesPlatformJsxAttrLeadCronAndSignedc7137017',
             )}
           />
           <div className="mt-10 grid gap-6 lg:grid-cols-2">
@@ -891,7 +891,7 @@ export function useSlides(): SlideDef[] {
             'autoAppPresentationSlidesPlatformJsxAttrTitleChangeRequests6e5aad55',
           )}
           lead={tI18nHardcoded.raw(
-            'autoAppPresentationSlidesPlatformJsxAttrLeadTheReviewedMerge6e1bf5c5',
+            'autoAppPresentationSlidesPlatformJsxAttrLeadTheReviewedMerge785e3799',
           )}
           bullets={[
             tI18nHardcoded.raw('i18nComplete.text9a1ffabd3658'),
@@ -923,7 +923,7 @@ export function useSlides(): SlideDef[] {
               </h2>
               <Lead>
                 {tI18nHardcoded.raw(
-                  'autoAppPresentationSlidesPlatformJsxTextFilesForNowAnd3cce010d',
+                  'autoAppPresentationSlidesPlatformJsxTextFilesForNowAndf51cbec0',
                 )}
               </Lead>
               <Bullets
@@ -966,7 +966,7 @@ export function useSlides(): SlideDef[] {
             'autoAppPresentationSlidesPlatformJsxAttrTitleAWorkforceYou8e9267ec',
           )}
           lead={tI18nHardcoded.raw(
-            'autoAppPresentationSlidesPlatformJsxAttrLeadARealAccount68e2c515',
+            'autoAppPresentationSlidesPlatformJsxAttrLeadARealAccountc271c3da',
           )}
           bullets={[
             tI18nHardcoded.raw('i18nComplete.textb9b2cc46e71e'),
@@ -1068,7 +1068,7 @@ export function useSlides(): SlideDef[] {
               'autoAppPresentationSlidesPlatformJsxAttrTitleAgentsReturnFinished8d0f12c2',
             )}
             lead={tI18nHardcoded.raw(
-              'autoAppPresentationSlidesPlatformJsxAttrLeadNotATranscriptb68e5a86',
+              'autoAppPresentationSlidesPlatformJsxAttrLeadNotATranscript07b7fc10',
             )}
           />
           <div className="mt-12 grid grid-cols-2 gap-4 md:grid-cols-5">
@@ -1230,7 +1230,7 @@ export function useSlides(): SlideDef[] {
               'autoAppPresentationSlidesPlatformJsxAttrTitleChatSlackTeams59488d51',
             )}
             lead={tI18nHardcoded.raw(
-              'autoAppPresentationSlidesPlatformJsxAttrLeadYourTeamTalkse1fe3252',
+              'autoAppPresentationSlidesPlatformJsxAttrLeadYourTeamTalkse4dd114d',
             )}
           />
           <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -1268,7 +1268,7 @@ export function useSlides(): SlideDef[] {
             title={tI18nHardcoded.raw(
               'autoAppPresentationSlidesPlatformJsxAttrTitleBuiltOnFiles64c977e2',
             )}
-            lead={tI18nHardcoded.raw('autoAppPresentationSlidesPlatformJsxAttrLeadNoSDKTo91b0c136')}
+            lead={tI18nHardcoded.raw('autoAppPresentationSlidesPlatformJsxAttrLeadNoSDKToca0b7d2f')}
           />
           <div className="mt-10 grid gap-4 lg:grid-cols-2">
             <Terminal
@@ -1341,7 +1341,7 @@ export function useSlides(): SlideDef[] {
               'autoAppPresentationSlidesPlatformJsxAttrTitleSameProductEverywhere41c9494d',
             )}
             lead={tI18nHardcoded.raw(
-              'autoAppPresentationSlidesPlatformJsxAttrLeadRunKortixOn275c3486',
+              'autoAppPresentationSlidesPlatformJsxAttrLeadRunKortixOn048c2e1e',
             )}
           />
           <div className="mt-10 grid items-center gap-6 lg:grid-cols-2">
@@ -1501,7 +1501,7 @@ export function useSlides(): SlideDef[] {
               'autoAppPresentationSlidesPlatformJsxAttrTitleThePlatformIsfa2254a2',
             )}
             lead={tI18nHardcoded.raw(
-              'autoAppPresentationSlidesPlatformJsxAttrLeadWeBuildOur02b8fdeb',
+              'autoAppPresentationSlidesPlatformJsxAttrLeadWeBuildOur3a652ae7',
             )}
           />
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">

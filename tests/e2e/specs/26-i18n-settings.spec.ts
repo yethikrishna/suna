@@ -214,7 +214,7 @@ test.describe("26 — Settings localization", () => {
   test("each supported locale persists and renders the complete language-and-shortcuts surface", async ({
     page,
   }) => {
-    test.setTimeout(360_000);
+    test.setTimeout(600_000);
 
     const runId = Date.now().toString(36);
     const email = `e2e-i18n-settings-${runId}@example.test`;

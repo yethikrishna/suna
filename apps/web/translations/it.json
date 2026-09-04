@@ -1260,6 +1260,7 @@
     },
     "workspace": {
       "switch": "Cambia area di lavoro",
+      "switchMenu": "Cambia area di lavoro",
       "create": "Crea spazio di lavoro…",
       "settings": "Impostazioni",
       "downloadApp": "Scarica l'app",
@@ -10209,7 +10210,7 @@
       "text62e2514edc8d": "Conflitti di merge in",
       "text0ffc4db692f7": "Avvia una sessione dell’agente da questa modifica. L’agente unisce l’ultimo branch di base, risolve i conflitti, esegue i controlli e apre una modifica sostitutiva.",
       "text30afafe4c16e": "Risolvi con l'agente",
-      "text3b9453dad42b": "&bull;",
+      "text3b9453dad42b": "•",
       "textf42e280577fb": "Visualizza nella sessione",
       "text91273d498d36": "Queste",
       "text9a24d7803caa": "azioni vengono risolte insieme — una decisione vale per tutte.",

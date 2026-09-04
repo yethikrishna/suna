@@ -1260,6 +1260,7 @@
     },
     "workspace": {
       "switch": "Cambiar espacio de trabajo",
+      "switchMenu": "Cambiar espacio de trabajo",
       "create": "Crear espacio de trabajo…",
       "settings": "Ajustes",
       "downloadApp": "Descargar aplicación",
@@ -10209,7 +10210,7 @@
       "text62e2514edc8d": "Conflictos de fusión en",
       "text0ffc4db692f7": "Inicia una sesión del agente desde este cambio. El agente fusiona la rama base más reciente, resuelve los conflictos, ejecuta las comprobaciones y abre un cambio de reemplazo.",
       "text30afafe4c16e": "Resolver con el agente",
-      "text3b9453dad42b": "&bull;",
+      "text3b9453dad42b": "•",
       "textf42e280577fb": "Verlo en la sesión",
       "text91273d498d36": "Estas",
       "text9a24d7803caa": "acciones se resuelven juntas; una decisión cubre todas.",

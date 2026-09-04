@@ -1260,7 +1260,8 @@
     },
     "workspace": {
       "switch": "Switch workspace",
-      "create": "Create workspace…",
+      "switchMenu": "Switch Workspace",
+      "create": "Create a workspace…",
       "settings": "Settings",
       "downloadApp": "Download app",
       "logOut": "Log out",
@@ -10209,7 +10210,7 @@
       "text62e2514edc8d": "Merge conflicts in",
       "text0ffc4db692f7": "Start an agent session from this change. The agent merges the latest base branch, resolves the conflicts, runs checks, and opens a replacement change.",
       "text30afafe4c16e": "Solve with agent",
-      "text3b9453dad42b": "&bull;",
+      "text3b9453dad42b": "•",
       "textf42e280577fb": "See it in the session",
       "text91273d498d36": "These",
       "text9a24d7803caa": "actions resolve together — one decision covers all of them.",

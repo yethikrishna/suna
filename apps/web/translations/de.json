@@ -1260,6 +1260,7 @@
     },
     "workspace": {
       "switch": "Arbeitsbereich wechseln",
+      "switchMenu": "Arbeitsbereich wechseln",
       "create": "Arbeitsbereich erstellen…",
       "settings": "Einstellungen",
       "downloadApp": "App herunterladen",
@@ -10209,7 +10210,7 @@
       "text62e2514edc8d": "Zusammenführungskonflikte in",
       "text0ffc4db692f7": "Starte über diese Änderung eine Agentensitzung. Der Agent führt den neuesten Basis-Branch zusammen, löst die Konflikte, führt Prüfungen aus und öffnet eine Ersatzänderung.",
       "text30afafe4c16e": "Mit Agent lösen",
-      "text3b9453dad42b": "&bull;",
+      "text3b9453dad42b": "•",
       "textf42e280577fb": "In der Sitzung anzeigen",
       "text91273d498d36": "Diese",
       "text9a24d7803caa": "Aktionen werden gemeinsam aufgelöst — eine Entscheidung gilt für alle.",

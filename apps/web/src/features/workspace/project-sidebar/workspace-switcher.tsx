@@ -185,7 +185,7 @@ export function WorkspaceSwitcher({ projectId }: { projectId: string }) {
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
                   <ArrowsLeftRightIcon weight="fill" />
-                  {t('workspace.switch')}
+                  {t('workspace.switchMenu')}
                 </DropdownMenuSubTrigger>
                 <DropdownMenuPortal>
                   <DropdownMenuSubContent className="w-[264px] space-y-0.5" sideOffset={6}>

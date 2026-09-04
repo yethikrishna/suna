@@ -1260,6 +1260,7 @@
     },
     "workspace": {
       "switch": "Alternar espaço de trabalho",
+      "switchMenu": "Alternar espaço de trabalho",
       "create": "Criar espaço de trabalho…",
       "settings": "Configurações",
       "downloadApp": "Transferir aplicação",
@@ -10209,7 +10210,7 @@
       "text62e2514edc8d": "Conflitos de mesclagem em",
       "text0ffc4db692f7": "Inicie uma sessão do agente a partir desta alteração. O agente mescla a branch base mais recente, resolve os conflitos, executa as verificações e abre uma alteração substituta.",
       "text30afafe4c16e": "Resolver com o agente",
-      "text3b9453dad42b": "&bull;",
+      "text3b9453dad42b": "•",
       "textf42e280577fb": "Ver na sessão",
       "text91273d498d36": "Estas",
       "text9a24d7803caa": "ações são resolvidas juntas — uma decisão abrange todas elas.",

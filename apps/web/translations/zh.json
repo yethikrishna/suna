@@ -1260,6 +1260,7 @@
     },
     "workspace": {
       "switch": "切换工作空间",
+      "switchMenu": "切换工作空间",
       "create": "创建工作区…",
       "settings": "设置",
       "downloadApp": "下载应用",
@@ -10209,7 +10210,7 @@
       "text62e2514edc8d": "合并冲突：",
       "text0ffc4db692f7": "从此变更启动代理会话。代理会合并最新基础分支、解决冲突、运行检查，并创建替代变更。",
       "text30afafe4c16e": "让代理解决",
-      "text3b9453dad42b": "&bull;",
+      "text3b9453dad42b": "•",
       "textf42e280577fb": "在会话中查看",
       "text91273d498d36": "这些",
       "text9a24d7803caa": "项操作会一起解决 — 一个决定将涵盖全部操作。",

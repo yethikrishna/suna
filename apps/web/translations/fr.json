@@ -1260,6 +1260,7 @@
     },
     "workspace": {
       "switch": "Changer d'espace de travail",
+      "switchMenu": "Changer d'espace de travail",
       "create": "Créer un espace de travail…",
       "settings": "Paramètres",
       "downloadApp": "Télécharger l’application",
@@ -10209,7 +10210,7 @@
       "text62e2514edc8d": "Conflits de fusion dans",
       "text0ffc4db692f7": "Démarrez une session d’agent depuis cette modification. L’agent fusionne la dernière branche de base, résout les conflits, exécute les vérifications et ouvre une modification de remplacement.",
       "text30afafe4c16e": "Résoudre avec l’agent",
-      "text3b9453dad42b": "&bull;",
+      "text3b9453dad42b": "•",
       "textf42e280577fb": "Voir dans la session",
       "text91273d498d36": "Ces",
       "text9a24d7803caa": "actions sont résolues ensemble — une seule décision les couvre toutes.",

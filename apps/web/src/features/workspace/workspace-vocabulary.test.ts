@@ -105,7 +105,7 @@ describe('workspace vocabulary: each surface actually renders its Workspace copy
       readFileSync(join(import.meta.dir, 'project-sidebar/workspace-switcher.tsx'), 'utf8'),
     );
     expect(code).toContain("t('workspace.create')");
-    expect(code).toContain("t('workspace.switch')");
+    expect(code).toContain("t('workspace.switchMenu')");
   });
 
   /**

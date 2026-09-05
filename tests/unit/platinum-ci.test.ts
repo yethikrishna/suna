@@ -46,7 +46,7 @@ describe('Platinum CI worker plan', () => {
   test('uses one content-addressed template for one lockfile', () => {
     expect(PLATINUM_CI_TEMPLATE_VERSION).toBe('v14');
     expect(platinumTemplateName(lockHash)).toBe('kortix-ci-v14-bbbbbbbbbbbbbbbb');
-    expect(platinumBaseTemplateName(lockHash)).toBe('kortix-ci-v11-bbbbbbbbbbbbbbbb-base');
+    expect(platinumBaseTemplateName(lockHash)).toBe('kortix-ci-v12-bbbbbbbbbbbbbbbb-base');
     const spec = buildPlatinumTemplateSpec({
       lockHash,
       repository: 'kortix-ai/suna',

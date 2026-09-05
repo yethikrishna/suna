@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
-import { appendFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { appendFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 
 import {
   type SandboxPreviewProvider,
   branchEnvSandboxName,
   runSandboxPreview,
-} from "../src/core/sandbox-preview";
+} from '../src/core/sandbox-preview';
 import {
   type SandboxPreviewDeploymentInput,
   deployDaytonaPreview,
@@ -15,10 +15,10 @@ import {
   reconcilePlatinumPreviews,
   teardownDaytonaPreview,
   teardownPlatinumPreview,
-} from "../src/core/sandbox-preview-providers";
-import { readPreviewRuntimeSecrets } from "../src/core/preview-stack";
+} from '../src/core/sandbox-preview-providers';
+import { readPreviewRuntimeSecrets } from '../src/core/preview-stack';
 
-function value(name: string, fallback = ""): string {
+function value(name: string, fallback = ''): string {
   return process.env[name]?.trim() || fallback;
 }
 
@@ -36,9 +36,8 @@ function positiveInteger(name: string): number {
 }
 
 function provider(): SandboxPreviewProvider {
-  const selected = value("PREVIEW_SANDBOX_PROVIDER", "auto").toLowerCase();
-  if (selected === "auto" || selected === "platinum" || selected === "daytona")
-    return selected;
+  const selected = value('PREVIEW_SANDBOX_PROVIDER', 'auto').toLowerCase();
+  if (selected === 'auto' || selected === 'platinum' || selected === 'daytona') return selected;
   throw new Error(
     `PREVIEW_SANDBOX_PROVIDER must be auto, platinum, or daytona; received ${selected}`,
   );
@@ -61,25 +60,23 @@ async function activePreviewPullRequests(
       {
         headers: {
           authorization: `Bearer ${token}`,
-          accept: "application/vnd.github+json",
-          "x-github-api-version": "2022-11-28",
+          accept: 'application/vnd.github+json',
+          'x-github-api-version': '2022-11-28',
         },
         signal: AbortSignal.timeout(30_000),
       },
     );
-    if (!response.ok)
-      throw new Error(`GitHub pull request list returned ${response.status}`);
+    if (!response.ok) throw new Error(`GitHub pull request list returned ${response.status}`);
     const pulls = (await response.json()) as Array<{
       number: number;
       labels?: Array<{ name?: string }>;
       head?: { sha?: string; repo?: { full_name?: string } };
     }>;
     for (const pull of pulls) {
-      const approved = pull.labels?.some((label) => label.name === "preview");
+      const approved = pull.labels?.some((label) => label.name === 'preview');
       const sameRepository = pull.head?.repo?.full_name === repository;
-      const sha = pull.head?.sha ?? "";
-      if (approved && sameRepository && /^[0-9a-f]{40}$/.test(sha))
-        active.set(pull.number, sha);
+      const sha = pull.head?.sha ?? '';
+      if (approved && sameRepository && /^[0-9a-f]{40}$/.test(sha)) active.set(pull.number, sha);
     }
     if (pulls.length < 100) return active;
   }
@@ -93,10 +90,7 @@ async function activePreviewPullRequests(
  * pull requests. Slugging both sides is what makes the lossy
  * `branchEnvSandboxName` mapping comparable.
  */
-async function liveBranchNames(
-  repository: string,
-  token: string,
-): Promise<Set<string>> {
+async function liveBranchNames(repository: string, token: string): Promise<Set<string>> {
   const names = new Set<string>();
   for (let page = 1; ; page += 1) {
     const response = await fetch(
@@ -104,16 +98,15 @@ async function liveBranchNames(
       {
         headers: {
           authorization: `Bearer ${token}`,
-          accept: "application/vnd.github+json",
-          "x-github-api-version": "2022-11-28",
+          accept: 'application/vnd.github+json',
+          'x-github-api-version': '2022-11-28',
         },
         signal: AbortSignal.timeout(30_000),
       },
     );
     // Failing OPEN here would make every branch look deleted and the sweep would
     // delete every branch environment at once.
-    if (!response.ok)
-      throw new Error(`GitHub branch list returned ${response.status}`);
+    if (!response.ok) throw new Error(`GitHub branch list returned ${response.status}`);
     const branches = (await response.json()) as Array<{ name?: string }>;
     for (const branch of branches) {
       if (branch.name) names.add(branchEnvSandboxName(branch.name));
@@ -122,24 +115,21 @@ async function liveBranchNames(
   }
 }
 
-const action = process.argv[2] ?? "deploy";
-const repository = value("GITHUB_REPOSITORY", "kortix-ai/suna");
+const action = process.argv[2] ?? 'deploy';
+const repository = value('GITHUB_REPOSITORY', 'kortix-ai/suna');
 const platinum = {
-  apiUrl: value("PLATINUM_API_URL", "https://api.platinum.dev"),
-  apiKey: value("PLATINUM_API_KEY"),
+  apiUrl: value('PLATINUM_API_URL', 'https://api.platinum.dev'),
+  apiKey: value('PLATINUM_API_KEY'),
 };
 const daytona = {
-  apiUrl: value(
-    "DAYTONA_API_URL",
-    value("DAYTONA_SERVER_URL", "https://app.daytona.io/api"),
-  ),
-  apiKey: value("DAYTONA_API_KEY"),
-  target: value("DAYTONA_CI_TARGET", value("DAYTONA_TARGET", "us")),
+  apiUrl: value('DAYTONA_API_URL', value('DAYTONA_SERVER_URL', 'https://app.daytona.io/api')),
+  apiKey: value('DAYTONA_API_KEY'),
+  target: value('DAYTONA_CI_TARGET', value('DAYTONA_TARGET', 'us')),
 };
 
-if (action === "deploy") {
-  const prNumber = positiveInteger("PREVIEW_PR_NUMBER");
-  const sha = required("PREVIEW_SHA");
+if (action === 'deploy') {
+  const prNumber = positiveInteger('PREVIEW_PR_NUMBER');
+  const sha = required('PREVIEW_SHA');
   // PREVIEW_BRANCH_ENV turns this deploy into a PERSISTENT per-branch
   // environment: the sandbox is reused instead of replaced, so the URL is
   // stable across pushes (see branchEnvSandboxName).
@@ -148,7 +138,7 @@ if (action === "deploy") {
   // place to work: the suite is ~10 of the ~14 minutes a deploy takes and
   // proves nothing the stack health check has not, so it is off by default
   // there. PREVIEW_RUN_TESTS=1 forces it back on for a deliberate full run.
-  const runTests = process.env.PREVIEW_RUN_TESTS?.trim() === "1" || !branchEnv;
+  const runTests = process.env.PREVIEW_RUN_TESTS?.trim() === '1' || !branchEnv;
   // PREVIEW_PUBLIC_ORIGIN is the stable name a proxy serves the environment at.
   // The stack is configured with it; the provider's own hostname stays the
   // proxy's target and comes back as `sandboxOrigin`. It is supplied by the
@@ -160,13 +150,13 @@ if (action === "deploy") {
     ...(publicOrigin ? { publicOrigin } : {}),
     runTests,
     repository,
-    ref: value("PREVIEW_REF", sha),
+    ref: value('PREVIEW_REF', sha),
     sha,
     prNumber,
-    runId: value("GITHUB_RUN_ID", `local-${Date.now()}`),
-    runAttempt: value("GITHUB_RUN_ATTEMPT", "1"),
-    root: resolve(value("PREVIEW_ROOT", resolve(import.meta.dir, "../.."))),
-    lockfileHash: required("PREVIEW_LOCKFILE_SHA256"),
+    runId: value('GITHUB_RUN_ID', `local-${Date.now()}`),
+    runAttempt: value('GITHUB_RUN_ATTEMPT', '1'),
+    root: resolve(value('PREVIEW_ROOT', resolve(import.meta.dir, '../..'))),
+    lockfileHash: required('PREVIEW_LOCKFILE_SHA256'),
     secrets: readPreviewRuntimeSecrets(process.env),
     platinum,
     daytona,
@@ -178,24 +168,20 @@ if (action === "deploy") {
       daytona: () => deployDaytonaPreview(deployment),
     },
   );
-  const staleProviderCleanup =
-    result.provider === "platinum"
-      ? teardownDaytonaPreview({ ...daytona, prNumber })
-      : teardownPlatinumPreview({ ...platinum, prNumber });
+  const staleProviderCleanup = result.provider === 'platinum'
+    ? teardownDaytonaPreview({ ...daytona, prNumber })
+    : teardownPlatinumPreview({ ...platinum, prNumber });
   await staleProviderCleanup.catch((error) => {
     console.warn(
       `[sandbox-preview] stale provider cleanup failed; scheduled reconciliation will retry: ${String(error)}`,
     );
   });
-  await writeOutput("provider", result.provider);
-  await writeOutput("sandbox_id", result.sandboxId ?? "");
-  await writeOutput("preview_url", result.previewUrl ?? "");
-  await writeOutput(
-    "report_url",
-    result.previewUrl ? `${result.previewUrl}/_tests/` : "",
-  );
+  await writeOutput('provider', result.provider);
+  await writeOutput('sandbox_id', result.sandboxId ?? '');
+  await writeOutput('preview_url', result.previewUrl ?? '');
+  await writeOutput('report_url', result.previewUrl ? `${result.previewUrl}/_tests/` : '');
   process.exitCode = result.exitCode;
-} else if (action === "teardown") {
+} else if (action === 'teardown') {
   // A persistent environment's sandbox is named after the BRANCH, so teardown
   // has to be told which branch or it deletes nothing and the box runs forever.
   // A branch-deleted event carries the branch and no pull request, so the number
@@ -204,32 +190,24 @@ if (action === "deploy") {
   const prNumber =
     branchEnv && !process.env.PREVIEW_PR_NUMBER?.trim()
       ? undefined
-      : positiveInteger("PREVIEW_PR_NUMBER");
+      : positiveInteger('PREVIEW_PR_NUMBER');
   const [platinumDeleted, daytonaDeleted] = await Promise.all([
     teardownPlatinumPreview({
       ...platinum,
       ...(prNumber === undefined ? {} : { prNumber }),
       ...(branchEnv ? { branchEnv } : {}),
     }),
-    prNumber === undefined
-      ? Promise.resolve(0)
-      : teardownDaytonaPreview({ ...daytona, prNumber }),
+    prNumber === undefined ? Promise.resolve(0) : teardownDaytonaPreview({ ...daytona, prNumber }),
   ]);
-  console.log(
-    `[sandbox-preview] teardown platinum=${platinumDeleted} daytona=${daytonaDeleted}`,
-  );
-} else if (action === "reconcile") {
-  const token = required("GITHUB_TOKEN");
+  console.log(`[sandbox-preview] teardown platinum=${platinumDeleted} daytona=${daytonaDeleted}`);
+} else if (action === 'reconcile') {
+  const token = required('GITHUB_TOKEN');
   const active = await activePreviewPullRequests(repository, token);
   // A branch environment is retired by its BRANCH disappearing, not by its pull
   // request closing, so the sweep needs to know which branches still exist.
   const liveBranchSandboxNames = await liveBranchNames(repository, token);
   const [platinumDeleted, daytonaDeleted] = await Promise.all([
-    reconcilePlatinumPreviews({
-      ...platinum,
-      activePullRequests: active,
-      liveBranchSandboxNames,
-    }),
+    reconcilePlatinumPreviews({ ...platinum, activePullRequests: active, liveBranchSandboxNames }),
     reconcileDaytonaPreviews({ ...daytona, activePullRequests: active }),
   ]);
   console.log(

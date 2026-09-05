@@ -237,7 +237,8 @@ export function applyPreviewEnvironment(
   rawSecrets: Record<string, string>,
 ): { runtimeEnv: string; testEnv: string } {
   validatePreviewRuntimeSecrets(rawSecrets);
-  if (!/^[0-9a-f]{40}$/.test(input.sha)) throw new Error('preview SHA must contain 40 hex characters');
+  if (!/^[0-9a-f]{40}$/.test(input.sha))
+    throw new Error('preview SHA must contain 40 hex characters');
   const origin = validatedOrigin(input.origin);
   const runtime = parseEnvironment(baseEnvironmentText);
   const postgresPassword = runtime.POSTGRES_PASSWORD;

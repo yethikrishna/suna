@@ -21,6 +21,15 @@ linked, not inlined.
 
 ## Register
 
+### Edge middleware imports locale constants from a leaf module (2026-09-05)
+
+**When:** adding locale routing or other i18n behavior to Next.js middleware.
+Import locale constants from `i18n/catalog.mjs`. Do not import `i18n/config.ts`,
+because its dynamic message loader makes every translation catalog reachable
+from the Edge bundle. *Near-miss:* PR #7109 built locally, but Vercel rejected
+the 4.76 MB middleware above its 4.02 MB plan limit. *Enforcer:*
+`middleware-public-routes.test.ts`; verify the production middleware manifest.
+
 ### Preview bootstrap secrets must derive from the runtime allowlist (2026-09-05)
 
 **When:** adding a preview runtime secret. Build the forwarded secret object from
@@ -46,6 +55,33 @@ reading an untrusted status discriminator. *Incident:* the pi worker emitted
 `running`; the SDK converted it to `idle`, so the composer and sidebar hid their
 busy indicators while parts continued to stream. *Enforcer:*
 `session-status.test.ts` and `use-session-working.test.ts`.
+
+### Do not co-schedule process-heavy Bun package suites (2026-09-05)
+
+**When:** scheduling package tests in the root gate. Run the CLI and sandbox-agent
+suites as separate bounded steps. Their concurrent isolated Bun workers can spin at
+100% CPU and stall the gate. *Near-miss:* two full runs exceeded 9 minutes in the CLI
+worker; the same CLI suite passed alone in 40.80 seconds. *Enforcer:*
+`test-runner-contract.test.ts` and the serialized `package-quality.ts` wave.
+
+### Preview fixtures must use installed libraries and forwarded secrets (2026-09-04)
+
+**When:** adding preview browser setup or a runtime secret allowlist. Use the shared `pg`
+client with parameterized SQL. Do not spawn a host CLI that the test image does not install.
+Build the runtime-secret object from the allowlist so an allowlisted workflow secret cannot be
+silently omitted. *Incident:* PR #7109 target-full stopped at `spawnSync psql ENOENT`; managed
+Git calls also returned `403` because `MANAGED_GIT_GITHUB_TOKEN` never entered the runtime
+object. *Enforcers:* `preview-stack.test.ts` and the preview target-full browser census.
+
+### A green synchronize preview does not prove that target-full ran (2026-09-04)
+
+**When:** using a persistent branch preview as deployed-test evidence. Push-triggered
+preview runs set `PREVIEW_RUN_TESTS=0`; inspect the log for the executed test command,
+not the green job name or sticky comment. Trigger `deploy-preview.yml` with
+`workflow_dispatch` for the final SHA, then require an actual `[test] PASS target-full`
+line. *Near-miss:* PR #7109 published “target-full passed” while its bootstrap printed
+“suite skipped”; caught before merge. *Enforcer TODO:* make the workflow result and
+sticky comment distinguish a skipped suite from a passed suite.
 
 ### A durable FIFO has one order key and advances at one boundary (2026-09-03)
 

@@ -4,12 +4,23 @@ import {
   applyPreviewEnvironment,
   buildPreviewCaddyfile,
   buildPreviewComposeOverlay,
+  readPreviewRuntimeSecrets,
   validatePreviewRuntimeSecrets,
 } from '../src/core/preview-stack';
 
 const SHA = 'a'.repeat(40);
 
 describe('ephemeral self-host preview stack', () => {
+  it('reads every allowlisted runtime secret from the workflow environment', () => {
+    const environment = Object.fromEntries(
+      PREVIEW_RUNTIME_SECRET_ALLOWLIST.map((key) => [key, ` ${key} `]),
+    );
+
+    expect(readPreviewRuntimeSecrets(environment)).toEqual(
+      Object.fromEntries(PREVIEW_RUNTIME_SECRET_ALLOWLIST.map((key) => [key, key])),
+    );
+  });
+
   it('routes every public surface through one origin', () => {
     const caddy = buildPreviewCaddyfile('preview.example.test');
     expect(caddy).toContain(':8080');

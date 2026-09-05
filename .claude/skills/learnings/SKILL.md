@@ -4202,3 +4202,58 @@ preview-parity ports. *Enforcer:* `tests/unit/preview-guard.test.ts`
 (`sh -n` on the guard, never `-v`, deploy-in-flight gate, hash-keyed install)
 and `tests/unit/sandbox-preview.test.ts` (prune before pull, fallback install,
 rollback after the health check, guard before configure).
+
+## A failed content-addressed template must change the next create idempotency key (2026-09-05)
+
+PR #7109 could not deploy its branch preview. Platinum returned two failed
+records for `kortix-ci-v11-03a0eb30070ddb14-base`. The controller correctly
+rejected both records as reusable, but retried `POST /v1/templates/from-spec`
+with the original idempotency key. Platinum returned the same failed create
+result. The branch environment could not fall back to Daytona because that
+would change its stable origin.
+
+**The rule.** A content-addressed resource can reuse its normal idempotency key
+until the provider records a terminal failure. The next create key must include
+a deterministic fingerprint of the known failed resource IDs. Concurrent
+retries for the same failure set still deduplicate. A newly failed retry changes
+the failure set and therefore changes the next create key.
+
+*Fix:* `platinumTemplateCreateIdempotencyKey()` fingerprints failed template
+IDs for base and warm template creation. *Enforcer:*
+`tests/unit/platinum-ci.test.ts` verifies stable concurrent retry keys and a new
+key after another terminal failure.
+
+## An explicit fallback preview must not inherit the persistent provider identity (2026-09-05)
+
+PR #7109 needed Daytona after Platinum failed twice while building its base
+template. The manual dispatch selected `daytona`, but the workflow still set
+`PREVIEW_BRANCH_ENV` to the pull request branch. The provider guard rejected
+Daytona before sandbox creation because that value reserves the stable branch
+origin for Platinum.
+
+**The rule.** A manual Daytona fallback verifies the exact pull request SHA on
+an ephemeral provider origin. It must leave `PREVIEW_BRANCH_ENV` empty. Normal
+automatic and Platinum runs must keep the persistent branch identity.
+
+*Fix:* `deploy-preview.yml` emits an empty `persistent_branch` only for an
+explicit workflow-dispatch Daytona run. *Enforcer:*
+`tests/unit/web-ecs-workflow.test.ts` asserts both the selection condition and
+the deploy environment output.
+
+## A dependency engine floor must invalidate the preview base image (2026-09-05)
+
+PR #7109 failed to build both Platinum and Daytona base caches. The preview
+base image pinned Node `22.22.0`. The resolved `write-file-atomic@8.0.0`
+package requires Node `^22.22.2 || ^24.15.0 || >=26.0.0`. The exact provider
+command exited at `pnpm install --frozen-lockfile` with
+`ERR_PNPM_UNSUPPORTED_ENGINE`.
+
+**The rule.** The preview base image Node version must satisfy every resolved
+package engine. A Node image change must also increment the Platinum and
+Daytona base-cache versions. Failed caches must never retain the old runtime.
+
+*Fix:* the shared preview image now pins the multi-platform digest for Node
+`22.22.2-bookworm`. Platinum base cache `v12` and Daytona base cache `v4`
+force fresh builds. *Enforcer:* `tests/unit/platinum-ci.test.ts` and
+`tests/unit/daytona-ci.test.ts` assert both new cache names and the exact image
+digest.

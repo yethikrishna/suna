@@ -15,7 +15,9 @@
  * logic, because the destination is an external URL that needs no session.
  */
 
-import { locales, type Locale } from '@/i18n/config';
+import { locales } from '@/i18n/catalog.mjs';
+
+type Locale = (typeof locales)[number];
 
 /**
  * Canonical public Google Drive file that owns the Terms of Service

@@ -1,4 +1,4 @@
-import { locales, type Locale } from '@/i18n/config';
+import { locales } from '@/i18n/catalog.mjs';
 import {
   authorizeEnvironment,
   deriveEnvironmentAccessCookie,
@@ -22,6 +22,8 @@ import { redirectPreservingCookies } from '@/lib/supabase/redirect-preserving-se
 import { createServerClient } from '@supabase/ssr';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
+
+type Locale = (typeof locales)[number];
 
 // Public application surfaces that support explicit locale routing for SEO
 // and unauthenticated language verification (/de/about, /sr/pricing, etc.).

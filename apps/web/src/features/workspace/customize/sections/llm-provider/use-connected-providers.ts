@@ -99,12 +99,12 @@ export function useConnectedProviders(projectId: string, enabled: boolean) {
       helpUrl: null,
       // Synthetic entry: no models.dev row, so no vendor API host.
       apiHost: null,
-      hint: 'Included with your plan',
+      hint: tI18nComplete.raw('texte0a770200f93'),
       models,
       featured: true,
       managed: true,
     };
-  }, [llmGatewayEnabled, ocProviders]);
+  }, [llmGatewayEnabled, ocProviders, tI18nComplete]);
 
   const connectedProviders = useMemo(() => {
     const hasCodexSubscription =

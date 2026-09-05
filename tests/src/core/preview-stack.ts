@@ -1,18 +1,32 @@
 export const PREVIEW_RUNTIME_SECRET_ALLOWLIST = [
-  'DAYTONA_API_KEY',
-  'KE2E_STRIPE_SECRET_KEY',
-  'KE2E_STRIPE_WEBHOOK_SECRET',
-  'KORTIX_GITHUB_APP_ID',
-  'KORTIX_GITHUB_APP_PRIVATE_KEY',
-  'KORTIX_GITHUB_APP_SLUG',
-  'MANAGED_GIT_GITHUB_INSTALL_ID',
-  'MANAGED_GIT_GITHUB_OWNER',
-  'MANAGED_GIT_GITHUB_TOKEN',
-  'OPENROUTER_API_KEY',
+  "DAYTONA_API_KEY",
+  "KE2E_STRIPE_SECRET_KEY",
+  "KE2E_STRIPE_WEBHOOK_SECRET",
+  "KORTIX_GITHUB_APP_ID",
+  "KORTIX_GITHUB_APP_PRIVATE_KEY",
+  "KORTIX_GITHUB_APP_SLUG",
+  "MANAGED_GIT_GITHUB_INSTALL_ID",
+  "MANAGED_GIT_GITHUB_OWNER",
+  "MANAGED_GIT_GITHUB_TOKEN",
+  "OPENROUTER_API_KEY",
 ] as const;
 
-export type PreviewRuntimeSecretName = (typeof PREVIEW_RUNTIME_SECRET_ALLOWLIST)[number];
-export type PreviewRuntimeSecrets = Partial<Record<PreviewRuntimeSecretName, string>>;
+export type PreviewRuntimeSecretName =
+  (typeof PREVIEW_RUNTIME_SECRET_ALLOWLIST)[number];
+export type PreviewRuntimeSecrets = Partial<
+  Record<PreviewRuntimeSecretName, string>
+>;
+
+export function readPreviewRuntimeSecrets(
+  environment: Readonly<Record<string, string | undefined>>,
+): PreviewRuntimeSecrets {
+  return Object.fromEntries(
+    PREVIEW_RUNTIME_SECRET_ALLOWLIST.map((key) => [
+      key,
+      environment[key]?.trim() ?? "",
+    ]),
+  );
+}
 
 export interface PreviewStackInput {
   origin: string;
@@ -24,22 +38,28 @@ export interface PreviewStackInput {
 
 function validatedOrigin(value: string): string {
   const url = new URL(value);
-  if (url.protocol !== 'https:' || url.pathname !== '/' || url.search || url.hash) {
-    throw new Error('preview origin must be an HTTPS origin without a path');
+  if (
+    url.protocol !== "https:" ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error("preview origin must be an HTTPS origin without a path");
   }
   return url.origin;
 }
 
 function validatedValue(value: string, key: string): string {
-  if (/[\r\n\0]/.test(value)) throw new Error(`${key} contains an invalid control character`);
+  if (/[\r\n\0]/.test(value))
+    throw new Error(`${key} contains an invalid control character`);
   return value;
 }
 
 function parseEnvironment(text: string): Record<string, string> {
   const environment: Record<string, string> = {};
   for (const raw of text.split(/\r?\n/)) {
-    if (!raw || raw.startsWith('#') || !raw.includes('=')) continue;
-    const separator = raw.indexOf('=');
+    if (!raw || raw.startsWith("#") || !raw.includes("=")) continue;
+    const separator = raw.indexOf("=");
     environment[raw.slice(0, separator)] = raw.slice(separator + 1);
   }
   return environment;
@@ -49,7 +69,7 @@ function renderEnvironment(environment: Record<string, string>): string {
   return `${Object.entries(environment)
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([key, value]) => `${key}=${validatedValue(value, key)}`)
-    .join('\n')}\n`;
+    .join("\n")}\n`;
 }
 
 export function validatePreviewRuntimeSecrets(
@@ -58,11 +78,14 @@ export function validatePreviewRuntimeSecrets(
   const allowed = new Set<string>(PREVIEW_RUNTIME_SECRET_ALLOWLIST);
   const unexpected = Object.keys(secrets).filter((key) => !allowed.has(key));
   if (unexpected.length > 0) {
-    throw new Error(`preview runtime secret is not allowlisted: ${unexpected.sort().join(', ')}`);
+    throw new Error(
+      `preview runtime secret is not allowlisted: ${unexpected.sort().join(", ")}`,
+    );
   }
   for (const [key, value] of Object.entries(secrets)) {
-    if (key === 'KORTIX_GITHUB_APP_PRIVATE_KEY') {
-      if (value.includes('\0')) throw new Error(`${key} contains an invalid control character`);
+    if (key === "KORTIX_GITHUB_APP_PRIVATE_KEY") {
+      if (value.includes("\0"))
+        throw new Error(`${key} contains an invalid control character`);
     } else {
       validatedValue(value, key);
     }
@@ -70,7 +93,28 @@ export function validatePreviewRuntimeSecrets(
 }
 
 export function buildPreviewCaddyfile(publicHost: string): string {
-  return `:8080 {
+  // Ride out a redeploy instead of 502ing through it.
+  //
+  // A branch environment is REUSED in place: \`compose up -d\` recreates
+  // \`frontend\` and \`kortix-api\` while \`preview-edge\` keeps running. For the
+  // ~10-30s that takes, Caddy's dial to the upstream is refused and every
+  // request — the browser's own document included — answers 502. Observed on
+  // the pi-worker branch environment repeatedly: the edge started 19:08:58, the app containers
+  // were recreated at 22:12:45, and the 502 screenshot is stamped 22:12:52.
+  //
+  // \`lb_try_duration\` makes Caddy hold the request and re-dial until the new
+  // container listens, so a deploy costs latency rather than an error page. It
+  // retries CONNECTION failures only — a 502 the app itself returns is passed
+  // straight through, so this cannot mask a real upstream fault.
+  //
+  // A snippet is a TOP-LEVEL form: declaring it inside the site block fails the
+  // adapter with \`File to import not found: swap_tolerant\`.
+  return `(swap_tolerant) {
+  lb_try_duration 30s
+  lb_try_interval 250ms
+}
+
+:8080 {
   encode zstd gzip
 
   # A deployed environment gives the API a host of its own, so EVERY path it
@@ -80,16 +124,22 @@ export function buildPreviewCaddyfile(publicHost: string): string {
   # with the non-\`/v1\` mounts in \`apps/api/src/index.ts\`.
   @api path /v1* /health /health/* /metrics /scim/v2/* /internal/* /.well-known/oauth-authorization-server
   handle @api {
-    reverse_proxy kortix-api:8008
+    reverse_proxy kortix-api:8008 {
+      import swap_tolerant
+    }
   }
 
   @supabase path /auth/v1* /rest/v1* /storage/v1* /realtime/v1* /functions/v1* /graphql/v1*
   handle @supabase {
-    reverse_proxy supabase-kong:8000
+    reverse_proxy supabase-kong:8000 {
+      import swap_tolerant
+    }
   }
 
   handle_path /_gateway/* {
-    reverse_proxy llm-gateway:8090
+    reverse_proxy llm-gateway:8090 {
+      import swap_tolerant
+    }
   }
 
   handle_path /_tests/* {
@@ -98,7 +148,18 @@ export function buildPreviewCaddyfile(publicHost: string): string {
   }
 
   handle_path /_mailpit/* {
-    reverse_proxy mailpit:8025
+    reverse_proxy mailpit:8025 {
+      import swap_tolerant
+    }
+  }
+
+  # Only reached when the retry budget above is exhausted — i.e. the upstream is
+  # really gone, not merely restarting. A plain page beats the provider's raw
+  # 502, and \`Retry-After\` tells a client this is transient.
+  handle_errors {
+    header Retry-After 15
+    header Cache-Control "no-store"
+    respond "Deploying. This environment is restarting - retry in a few seconds." {http.error.status_code}
   }
 
   handle {
@@ -112,6 +173,7 @@ export function buildPreviewCaddyfile(publicHost: string): string {
       # host so the guard compares like with like.
       header_up X-Forwarded-Host ${publicHost}
       header_up X-Forwarded-Proto https
+      import swap_tolerant
     }
   }
 }
@@ -120,13 +182,13 @@ export function buildPreviewCaddyfile(publicHost: string): string {
 
 export function buildPreviewComposeOverlay(
   reportPath: string,
-  caddyfilePath = '/workspace/kortix-preview/Caddyfile.preview',
+  caddyfilePath = "/workspace/kortix-preview/Caddyfile.preview",
 ): string {
-  if (!reportPath.startsWith('/') || !caddyfilePath.startsWith('/')) {
-    throw new Error('preview bind mounts require absolute paths');
+  if (!reportPath.startsWith("/") || !caddyfilePath.startsWith("/")) {
+    throw new Error("preview bind mounts require absolute paths");
   }
-  validatedValue(reportPath, 'reportPath');
-  validatedValue(caddyfilePath, 'caddyfilePath');
+  validatedValue(reportPath, "reportPath");
+  validatedValue(caddyfilePath, "caddyfilePath");
   return `services:
   preview-edge:
     image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
@@ -159,6 +221,28 @@ export function buildPreviewComposeOverlay(
   supabase-db:
     ports:
       - "127.0.0.1:15432:5432"
+  # The git mirror must outlive the container.
+  #
+  # \`cacheRoot()\` (apps/api/src/projects/git/mirror.ts) is
+  # \`/tmp/kortix/git-cache\`, and kortix-api runs with NO volumes — so every
+  # redeploy recreates the container and deletes every project's mirror. On a
+  # deployment whose managed repos exist on GitHub that is only a slow re-clone.
+  # On a PREVIEW it is data loss: the preview's GitHub App cannot create repos
+  # (403 \`Resource not accessible by integration\`), so a seeded project's
+  # history lives ONLY in that cache. Losing it leaves the project unopenable —
+  # \`POST /sessions\` answers 500 \`could not read Username for
+  # 'https://github.com'\` because the re-clone has no upstream to clone from.
+  #
+  # Measured on the pi-worker branch environment 2026-09-01: container restarted 10:14:06, and
+  # every session create for the branch's own test project failed from 10:12
+  # onward with that exact error; \`ls /tmp/kortix/git-cache\` -> no such
+  # directory, and the managed org held none of the preview's repos.
+  kortix-api:
+    volumes:
+      - "kortix-git-cache:/tmp/kortix"
+
+volumes:
+  kortix-git-cache:
 `;
 }
 
@@ -168,7 +252,8 @@ export function applyPreviewEnvironment(
   rawSecrets: Record<string, string>,
 ): { runtimeEnv: string; testEnv: string } {
   validatePreviewRuntimeSecrets(rawSecrets);
-  if (!/^[0-9a-f]{40}$/.test(input.sha)) throw new Error('preview SHA must contain 40 hex characters');
+  if (!/^[0-9a-f]{40}$/.test(input.sha))
+    throw new Error("preview SHA must contain 40 hex characters");
   const origin = validatedOrigin(input.origin);
   const runtime = parseEnvironment(baseEnvironmentText);
   const postgresPassword = runtime.POSTGRES_PASSWORD;
@@ -176,7 +261,9 @@ export function applyPreviewEnvironment(
   const serviceRoleKey = runtime.SUPABASE_SERVICE_ROLE_KEY;
   const internalServiceKey = runtime.INTERNAL_SERVICE_KEY;
   if (!postgresPassword || !anonKey || !serviceRoleKey || !internalServiceKey) {
-    throw new Error('self-host environment is missing generated preview credentials');
+    throw new Error(
+      "self-host environment is missing generated preview credentials",
+    );
   }
   // Managed git has two supported shapes, and the API prefers the PAT when both
   // are present (see managedGithubToken in projects/git-backends/github.ts):
@@ -201,7 +288,7 @@ export function applyPreviewEnvironment(
   const managedGitEnabled = Boolean(owner) && (managedGitApp || managedGitPat);
   if (!managedGitEnabled) {
     throw new Error(
-      'preview target-full requires MANAGED_GIT_GITHUB_OWNER plus either the complete GitHub App configuration or MANAGED_GIT_GITHUB_TOKEN',
+      "preview target-full requires MANAGED_GIT_GITHUB_OWNER plus either the complete GitHub App configuration or MANAGED_GIT_GITHUB_TOKEN",
     );
   }
 
@@ -211,8 +298,8 @@ export function applyPreviewEnvironment(
     FRONTEND_IMAGE: input.frontendImage,
     KORTIX_VERSION: `pr-${input.sha}`,
     KORTIX_COMMIT: input.sha,
-    INTERNAL_KORTIX_ENV: 'preview',
-    ENV_MODE: 'local',
+    INTERNAL_KORTIX_ENV: "preview",
+    ENV_MODE: "local",
     PUBLIC_URL: origin,
     API_PUBLIC_URL: origin,
     SUPABASE_PUBLIC_URL: origin,
@@ -223,48 +310,49 @@ export function applyPreviewEnvironment(
     ADDITIONAL_REDIRECT_URLS: `${origin}/auth/callback`,
     CORS_ALLOWED_ORIGINS: origin,
     KORTIX_PUBLIC_APP_URL: origin,
-    KORTIX_PUBLIC_AUTH_METHODS: 'magic,password',
-    KORTIX_PUBLIC_DISABLE_LANDING_PAGE: 'true',
-    KORTIX_RESTRICT_ACCOUNT_CREATION: 'false',
-    KORTIX_PUBLIC_RESTRICT_ACCOUNT_CREATION: 'false',
+    KORTIX_PUBLIC_AUTH_METHODS: "magic,password",
+    KORTIX_PUBLIC_DISABLE_LANDING_PAGE: "true",
+    KORTIX_RESTRICT_ACCOUNT_CREATION: "false",
+    KORTIX_PUBLIC_RESTRICT_ACCOUNT_CREATION: "false",
     // Billing ON, with the Stripe SANDBOX (test-mode) keys below — the same
     // posture as dev, so the subscribe -> entitlement -> managed-models path is
     // exercised here rather than bypassed. An account that has not subscribed
     // is free-tier and therefore NOT entitled to managed models, which is what
     // makes an agent fall back to the faux provider: subscribe with a Stripe
     // test card (or connect a BYOK key) to get real model answers.
-    KORTIX_BILLING_INTERNAL_ENABLED: 'true',
-    KORTIX_PUBLIC_BILLING_ENABLED: 'true',
-    KORTIX_WORKERS_ENABLED: 'false',
-    SCHEDULER_ENABLED: 'false',
-    KORTIX_TRIGGER_SCHEDULER_ENABLED: 'false',
-    EMAIL_PROVIDER_ORDER: 'mailpit',
-    MAILPIT_API_URL: 'http://mailpit:8025',
-    SMTP_HOST: 'mailpit',
-    SMTP_PORT: '1025',
-    SMTP_USER: 'unused',
-    SMTP_PASS: 'unused',
-    ENABLE_EMAIL_AUTOCONFIRM: 'false',
-    ALLOWED_SANDBOX_PROVIDERS: 'daytona',
+    KORTIX_BILLING_INTERNAL_ENABLED: "true",
+    KORTIX_PUBLIC_BILLING_ENABLED: "true",
+    KORTIX_WORKERS_ENABLED: "false",
+    SCHEDULER_ENABLED: "false",
+    KORTIX_TRIGGER_SCHEDULER_ENABLED: "false",
+    EMAIL_PROVIDER_ORDER: "mailpit",
+    MAILPIT_API_URL: "http://mailpit:8025",
+    SMTP_HOST: "mailpit",
+    SMTP_PORT: "1025",
+    SMTP_USER: "unused",
+    SMTP_PASS: "unused",
+    ENABLE_EMAIL_AUTOCONFIRM: "false",
+    ALLOWED_SANDBOX_PROVIDERS: "daytona",
     DATABASE_URL: `postgresql://postgres:${postgresPassword}@supabase-db:5432/postgres`,
-    DAYTONA_API_KEY: rawSecrets.DAYTONA_API_KEY ?? '',
-    MANAGED_GIT_PROVIDER: 'github',
-    MANAGED_GIT_GITHUB_OWNER: rawSecrets.MANAGED_GIT_GITHUB_OWNER ?? '',
-    MANAGED_GIT_GITHUB_INSTALL_ID: rawSecrets.MANAGED_GIT_GITHUB_INSTALL_ID ?? '',
-    MANAGED_GIT_GITHUB_TOKEN: rawSecrets.MANAGED_GIT_GITHUB_TOKEN ?? '',
-    KORTIX_GITHUB_APP_ID: rawSecrets.KORTIX_GITHUB_APP_ID ?? '',
+    DAYTONA_API_KEY: rawSecrets.DAYTONA_API_KEY ?? "",
+    MANAGED_GIT_PROVIDER: "github",
+    MANAGED_GIT_GITHUB_OWNER: rawSecrets.MANAGED_GIT_GITHUB_OWNER ?? "",
+    MANAGED_GIT_GITHUB_INSTALL_ID:
+      rawSecrets.MANAGED_GIT_GITHUB_INSTALL_ID ?? "",
+    MANAGED_GIT_GITHUB_TOKEN: rawSecrets.MANAGED_GIT_GITHUB_TOKEN ?? "",
+    KORTIX_GITHUB_APP_ID: rawSecrets.KORTIX_GITHUB_APP_ID ?? "",
     KORTIX_GITHUB_APP_PRIVATE_KEY:
-      rawSecrets.KORTIX_GITHUB_APP_PRIVATE_KEY?.replace(/\r?\n/g, '\\n') ?? '',
-    KORTIX_GITHUB_APP_SLUG: rawSecrets.KORTIX_GITHUB_APP_SLUG ?? '',
-    OPENROUTER_API_KEY: rawSecrets.OPENROUTER_API_KEY ?? '',
-    STRIPE_SECRET_KEY: rawSecrets.KE2E_STRIPE_SECRET_KEY ?? '',
-    STRIPE_WEBHOOK_SECRET: rawSecrets.KE2E_STRIPE_WEBHOOK_SECRET ?? '',
+      rawSecrets.KORTIX_GITHUB_APP_PRIVATE_KEY?.replace(/\r?\n/g, "\\n") ?? "",
+    KORTIX_GITHUB_APP_SLUG: rawSecrets.KORTIX_GITHUB_APP_SLUG ?? "",
+    OPENROUTER_API_KEY: rawSecrets.OPENROUTER_API_KEY ?? "",
+    STRIPE_SECRET_KEY: rawSecrets.KE2E_STRIPE_SECRET_KEY ?? "",
+    STRIPE_WEBHOOK_SECRET: rawSecrets.KE2E_STRIPE_WEBHOOK_SECRET ?? "",
   });
 
   const testEnvironment: Record<string, string> = {
-    CI: '1',
-    KE2E_TARGET: 'preview',
-    KE2E_LIVE_CONFIRM: 'preview',
+    CI: "1",
+    KE2E_TARGET: "preview",
+    KE2E_LIVE_CONFIRM: "preview",
     KE2E_PREVIEW_ORIGIN: origin,
     KE2E_PREVIEW_AUTHORIZATION: `approved:${input.sha}`,
     KE2E_EXPECT_SHA: input.sha,
@@ -283,13 +371,13 @@ export function applyPreviewEnvironment(
     KE2E_SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey,
     SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey,
     KE2E_INTERNAL_SERVICE_KEY: internalServiceKey,
-    KE2E_STRIPE_SECRET_KEY: rawSecrets.KE2E_STRIPE_SECRET_KEY ?? '',
-    KE2E_STRIPE_WEBHOOK_SECRET: rawSecrets.KE2E_STRIPE_WEBHOOK_SECRET ?? '',
-    E2E_AGENTMAIL_API_KEY: '',
-    KE2E_CAP_DAYTONA: rawSecrets.DAYTONA_API_KEY ? '1' : '0',
-    KE2E_CAP_MANAGED_GIT: managedGitEnabled ? '1' : '0',
-    KE2E_CAP_MANAGED_GIT_PUSH: managedGitEnabled ? '1' : '0',
-    KE2E_DEFAULT_FLOW_ATTEMPTS: '1',
+    KE2E_STRIPE_SECRET_KEY: rawSecrets.KE2E_STRIPE_SECRET_KEY ?? "",
+    KE2E_STRIPE_WEBHOOK_SECRET: rawSecrets.KE2E_STRIPE_WEBHOOK_SECRET ?? "",
+    E2E_AGENTMAIL_API_KEY: "",
+    KE2E_CAP_DAYTONA: rawSecrets.DAYTONA_API_KEY ? "1" : "0",
+    KE2E_CAP_MANAGED_GIT: managedGitEnabled ? "1" : "0",
+    KE2E_CAP_MANAGED_GIT_PUSH: managedGitEnabled ? "1" : "0",
+    KE2E_DEFAULT_FLOW_ATTEMPTS: "1",
   };
 
   return {

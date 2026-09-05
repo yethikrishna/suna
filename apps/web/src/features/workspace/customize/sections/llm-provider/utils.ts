@@ -79,7 +79,7 @@ export function buildCodexProvider(
     helpUrl: null,
     // Synthetic entry: no models.dev row, so no vendor API host.
     apiHost: null,
-    hint: 'ChatGPT Plus or Pro subscription',
+    hint: tI18nComplete.raw('texta527a1778404'),
     models,
     featured: true,
   };

@@ -195,7 +195,7 @@ describe('isInheritedFromGroupOnly', () => {
 });
 
 describe('inheritedFromGroupSummary', () => {
-  test('single group: "Inherited Member via Users"', () => {
+  test('single group: "Inherited Project member via Users"', () => {
     expect(
       inheritedFromGroupSummary({
         has_implicit_access: false,
@@ -203,7 +203,7 @@ describe('inheritedFromGroupSummary', () => {
         effective_project_role: 'member',
         group_sources: [{ group_name: 'Users', role: 'member' }],
       }),
-    ).toBe('Inherited Member via Users');
+    ).toBe('Inherited Project member via Users');
   });
 
   test('multiple groups: head + "+ N more"', () => {
@@ -217,7 +217,7 @@ describe('inheritedFromGroupSummary', () => {
           { group_name: 'Users', role: 'member' },
         ],
       }),
-    ).toBe('Inherited Manager via Engineering + 1 more');
+    ).toBe('Inherited Project admin via Engineering + 1 more');
   });
 
   test('three groups: "+ 2 more"', () => {
@@ -232,7 +232,7 @@ describe('inheritedFromGroupSummary', () => {
           { group_name: 'C', role: 'member' },
         ],
       }),
-    ).toBe('Inherited Manager via A + 2 more');
+    ).toBe('Inherited Project admin via A + 2 more');
   });
 
   test('null when the row is not group-inherited', () => {

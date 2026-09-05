@@ -1,8 +1,10 @@
 'use client';
 
+import { useTranslations as useI18nTranslations } from '@/i18n/use-translations';
 /**
  * The Experimental tab — one row per `experimental_features` catalog entry
- * with its stability badge, each with an on/off switch. Split off
+ * each with an on/off switch. No stability badge: Experimental / Beta /
+ * Stable labels were removed 2026-09-03 (Marko) — a flag is on or off. Split off
  * `settings-view.tsx`'s `ExperimentalCard` (Task 18's brief); the
  * sandbox-provider pin that used to render as the LAST row inside that same
  * disclosure moved to `general-tab.tsx` instead — see that file's header
@@ -54,7 +56,6 @@
 
 import { useMemo, useState } from 'react';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   InputGroupSearch,
@@ -81,25 +82,7 @@ import {
 import { contract, invalidateProject, qk, refreshProjectProviderState } from '@kortix/sdk/react';
 import { FlagIcon, MagnifyingGlassIcon as Search } from '@phosphor-icons/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useTranslations } from '@/i18n/use-translations';
 import { SettingsTabHeader } from '../settings-tab-header';
-
-/**
- * Every stability the API can serve, each with its own badge. Ported verbatim
- * from `main`'s `feature-flags-view.tsx` (#6279), which added the third arm:
- * `FeatureFlagStability` is `experimental | beta | stable`, and the old
- * two-way ternary rendered a `stable` flag as "Experimental" — a wrong label,
- * not a compile error.
- *
- * `beta` and `highlight` are the same token pair today; they are kept distinct
- * so the two stabilities can diverge without touching call sites.
- */
-const STABILITY_BADGE: Record<FeatureFlagStability, { variant: 'beta' | 'highlight' | 'outline' }> =
-  {
-    experimental: { variant: 'highlight' },
-    beta: { variant: 'beta' },
-    stable: { variant: 'outline' },
-  };
 
 /**
  * The origin line under a flag: inherited platform default, or this project's
@@ -108,11 +91,6 @@ const STABILITY_BADGE: Record<FeatureFlagStability, { variant: 'beta' | 'highlig
  * an overridden flag says only that, rather than guessing a default it cannot
  * see.
  */
-function originLabel(feature: FeatureFlagView, copy = DEFAULT_EXPERIMENTAL_COPY): string {
-  if (feature.overridden) return copy.overridden;
-  return feature.enabled ? copy.defaultOn : copy.defaultOff;
-}
-
 export interface ExperimentalCopy {
   stability: Record<FeatureFlagStability, string>;
   overridden: string;
@@ -140,6 +118,11 @@ export const DEFAULT_EXPERIMENTAL_COPY: ExperimentalCopy = {
   emptyDescription: 'This deployment exposes no per-project feature flags.',
   permission: "You need the project's customize-write permission to change a feature flag.",
 };
+
+function originLabel(feature: FeatureFlagView, copy: ExperimentalCopy): string {
+  if (feature.overridden) return copy.overridden;
+  return feature.enabled ? copy.defaultOn : copy.defaultOff;
+}
 
 /**
  * Filter the flag list by a search term.
@@ -183,7 +166,6 @@ function ExperimentalFeatureRow({
   onToggle: (key: string, next: boolean) => void;
   copy: ExperimentalCopy;
 }) {
-  const badge = STABILITY_BADGE[feature.stability] ?? STABILITY_BADGE.experimental;
   // The switch's accessible name, pointed at the row's VISIBLE name rather
   // than repeating the string in an `aria-label`. `main`'s
   // `feature-flags-view.tsx` used `aria-label={flag.name}`; the port dropped
@@ -203,9 +185,6 @@ function ExperimentalFeatureRow({
           <p id={nameId} className="text-foreground text-sm font-medium">
             {feature.name}
           </p>
-          <Badge variant={badge.variant} size="sm">
-            {copy.stability[feature.stability]}
-          </Badge>
           <span className="text-muted-foreground/70 text-xs">{originLabel(feature, copy)}</span>
         </div>
         <p className="text-muted-foreground mt-0.5 text-xs text-pretty">{feature.description}</p>
@@ -370,8 +349,8 @@ export function ExperimentalTabView({
  *  `settings-panel.tsx` returns `null` otherwise), so nothing here fetches on
  *  panel open. */
 export function ExperimentalTab({ projectId }: { projectId: string }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
-  const t = useTranslations('settings.featureFlags');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
+  const t = useI18nTranslations('settings.featureFlags');
   const queryClient = useQueryClient();
 
   const projectQuery = useQuery({
@@ -436,7 +415,7 @@ export function ExperimentalTab({ projectId }: { projectId: string }) {
       }
     },
     onError: (error: Error, variables) => {
-      errorToast(error.message || tI18nComplete('textdd2d120a9ea9', { key: variables.key }));
+      errorToast(error.message || tI18nComplete('text6926cad8145a', { value0: variables.key }));
     },
   });
 
@@ -444,10 +423,10 @@ export function ExperimentalTab({ projectId }: { projectId: string }) {
 
   const rawFeatures = (project?.experimental_features ?? [])
     .filter((f) => f.available)
-    .map((f) => ({
-      ...f,
-      name: t(`flags.${f.key}.name`),
-      description: t(`flags.${f.key}.description`),
+    .map((feature) => ({
+      ...feature,
+      name: t(`flags.${feature.key}.name` as never),
+      description: t(`flags.${feature.key}.description` as never),
     }));
   const withPending = rawFeatures.map((f) => ({
     ...f,
@@ -486,7 +465,7 @@ export function ExperimentalTab({ projectId }: { projectId: string }) {
         search: t('search'),
         loadFailed: t('loadFailed'),
         retry: t('retry'),
-        noMatches: (query) => t('noMatches', { query }),
+        noMatches: (value) => t('noMatches', { query: value }),
         emptyTitle: t('emptyTitle'),
         emptyDescription: t('emptyDescription'),
         permission: t('permission'),

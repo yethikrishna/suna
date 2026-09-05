@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from '@/i18n/use-translations';
 import {
   type AdminConnector,
   type ConnectorAuthorizationStrategy,
@@ -12,10 +13,10 @@ import { useProjectAccountId } from '@kortix/sdk/react';
 import { CheckIcon, KeyIcon, PencilSimpleIcon, PlusIcon } from '@phosphor-icons/react';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useTranslations } from '@/i18n/use-translations';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { InfoBanner } from '@/components/ui/info-banner';
 import { Input } from '@/components/ui/input';
 import Loading from '@/components/ui/loading';
 import {
@@ -371,11 +372,49 @@ function ConnectorModalBody({
         </div>
       </ModalHeader>
 
-      <ModalBody className="max-h-[70vh] overflow-hidden p-0">
+      <ModalBody className="flex max-h-[70vh] flex-col overflow-hidden p-0">
+        {/* Not connected is the one state a person opening this modal must not
+            miss — an agent granted this connector cannot use it until someone
+            acts (Marko, 2026-09-03: "if it isn't connected we should make it
+            very clear"). The header's status chip says it; this says what to do. */}
+        {!connected && !isChannel && !isComputer && connectionsQuery.isSuccess ? (
+          <InfoBanner
+            tone="warning"
+            title={tI18nComplete('text6506d9ea4341', { value0: displayName })}
+            className="shrink-0 rounded-none border-x-0 border-t-0"
+            action={
+              showConnectCta ? (
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => (isManagedProvider ? reconnect.mutate() : setCredOpen(true))}
+                  disabled={strategyUpdating || (isManagedProvider && reconnect.isPending)}
+                >
+                  {isManagedProvider && reconnect.isPending ? (
+                    <Loading className="size-4 shrink-0" />
+                  ) : null}
+                  {isManagedProvider
+                    ? tI18nComplete.raw('textf5e732583fb2')
+                    : tI18nComplete.raw('text2dcccf29ebf4')}
+                </Button>
+              ) : !usesProjectAuthorization ? (
+                <Button size="sm" variant="outline" onClick={startPrivateSession}>
+                  {tI18nComplete.raw('text9676bdc9332f')}
+                </Button>
+              ) : undefined
+            }
+          >
+            {usesProjectAuthorization
+              ? canWrite
+                ? tI18nComplete.raw('text7acd4ac590c6')
+                : tI18nComplete.raw('text6a05ddf8cca1')
+              : tI18nComplete.raw('text607b97fdc5aa')}
+          </InfoBanner>
+        ) : null}
         <Tabs
           value={tab}
           onValueChange={(next) => setSelectedTab(next as ConnectorTab)}
-          className="flex min-h-0 flex-col gap-0 overflow-y-auto lg:h-[70vh] lg:flex-row lg:overflow-hidden"
+          className="flex min-h-0 flex-1 flex-col gap-0 overflow-y-auto lg:flex-row lg:overflow-hidden"
         >
           <TabsList
             type="underline"

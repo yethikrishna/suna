@@ -1,6 +1,7 @@
 'use client';
 
-import { useTranslations } from '@/i18n/use-translations';
+import { NewEntityMenu } from '@/features/workspace/capabilities/shared/new-entity-menu';
+import { useTranslations as useI18nTranslations } from '@/i18n/use-translations';
 import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,6 @@ import {
   InputGroupSearchIcon,
   InputGroupSearchInput,
 } from '@/components/ui/input-group';
-import Loading from '@/components/ui/loading';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EmptyState } from '@/features/layout/section/empty-state';
 import {
@@ -21,7 +21,7 @@ import { PROJECT_ACTIONS } from '@/lib/project-actions';
 import { useProjectCan } from '@/lib/use-project-can';
 import { getProjectDetail } from '@kortix/sdk';
 import { contract, qk, useProjectAccountId } from '@kortix/sdk/react';
-import { MagnifyingGlassIcon, PlusIcon, SparkleIcon } from '@phosphor-icons/react';
+import { MagnifyingGlassIcon, SparkleIcon } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 
 import { CapabilityPageShell } from '@/features/workspace/capabilities/shared/capability-page-shell';
@@ -61,7 +61,7 @@ const SCOPE_FILTERS: ReadonlyArray<{ value: ScopeFilter; label: string }> = [
  * its secondary, which is all a reader without write permission gets.
  */
 export function SkillsPage({ projectId }: { projectId: string }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   // `accountId` skips useProjectCan's own getProject and lets the IAM probe
   // run on the first render instead of waiting a round-trip for it.
   const accountId = useProjectAccountId(projectId);
@@ -113,12 +113,7 @@ export function SkillsPage({ projectId }: { projectId: string }) {
   // them. Telling the user "No skills yet" in the second case is false and
   // points at the wrong fix (clear the filter, not create a skill).
   const emptyKind = catalogEmptyKind(skills.length, filtered.length);
-  const scopeLabel =
-    scope === 'project'
-      ? tI18nComplete.raw('text985959785319')
-      : scope === 'kortix'
-        ? 'Kortix'
-        : tI18nComplete.raw('texta52ace420f21');
+  const scopeLabel = SCOPE_FILTERS.find((filter) => filter.value === scope)?.label ?? 'All';
 
   // One control, two labels. The header has a title beside it and can be terse;
   // the empty state is the whole screen and has to name what it creates. Both
@@ -128,19 +123,11 @@ export function SkillsPage({ projectId }: { projectId: string }) {
   // mismatched on a row that is centred, so both edges were off.
   const createButton = (label: string) =>
     canWrite ? (
-      <Button
-        variant="secondary"
-        size="sm"
-        onClick={() => configure.start(newConfigPrompt('skill'))}
-        disabled={configure.pending}
-      >
-        {configure.pending ? (
-          <Loading className="size-4 shrink-0" />
-        ) : (
-          <PlusIcon className="size-4" />
-        )}
-        {label}
-      </Button>
+      <NewEntityMenu
+        label={label}
+        pending={configure.pending}
+        onChat={() => configure.start(newConfigPrompt('skill'))}
+      />
     ) : null;
 
   return (
@@ -168,11 +155,7 @@ export function SkillsPage({ projectId }: { projectId: string }) {
           <TabsList>
             {SCOPE_FILTERS.map((filter) => (
               <TabsTrigger key={filter.value} value={filter.value}>
-                {filter.value === 'project'
-                  ? tI18nComplete.raw('text985959785319')
-                  : filter.value === 'kortix'
-                    ? 'Kortix'
-                    : tI18nComplete.raw('texta52ace420f21')}
+                {filter.label}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -190,7 +173,8 @@ export function SkillsPage({ projectId }: { projectId: string }) {
               <CatalogNoMatch query={query} />
             ) : (
               <CatalogEmptyNote>
-                {tI18nComplete.raw('textdc5255461795')} {scopeLabel}.
+                {tI18nComplete.raw('textdc5255461795')}
+                {scopeLabel}.
               </CatalogEmptyNote>
             )
           ) : (

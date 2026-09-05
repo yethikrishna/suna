@@ -1,27 +1,24 @@
 'use client';
 
-import { ADMIN_ACCOUNTS_TRANSLATION_KEYS } from '@/i18n/admin-accounts-translation-keys.generated';
-import { localizeUiCatalog } from '@/i18n/localize-ui-catalog';
 import type { UiTranslator } from '@/i18n/translator';
-import { useTranslations } from '@/i18n/use-translations';
+import { useLocalizedUiCatalog } from '@/i18n/use-localized-ui-catalog';
+import { useTranslations as useI18nTranslations } from '@/i18n/use-translations';
 import {
-  ArrowDownIcon as ArrowDown,
   ArrowDownRightIcon as ArrowDownRight,
-  ArrowUpIcon as ArrowUp,
   ArrowUpRightIcon as ArrowUpRight,
   ProhibitIcon as Ban,
   CheckCircleIcon as CheckCircle2,
-  CaretLeftIcon as ChevronLeft,
-  CaretRightIcon as ChevronRight,
+  CheckIcon,
+  CopyIcon,
   CreditCardIcon as CreditCard,
   ArrowSquareOutIcon as ExternalLink,
   EyeIcon as Eye,
   FunnelIcon as Filter,
   KanbanIcon as FolderKanban,
   ClockCounterClockwiseIcon as History,
+  IdentificationCardIcon,
   KeyIcon as Key,
   EnvelopeIcon as Mail,
-  ArrowClockwiseIcon as RefreshCw,
   ShieldIcon as Shield,
   SlidersHorizontalIcon as SlidersHorizontal,
   UsersIcon as Users,
@@ -34,10 +31,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import Hint from '@/components/ui/hint';
 import { Input } from '@/components/ui/input';
 import { IconInbox } from '@/components/ui/kortix-icons';
 import Loading from '@/components/ui/loading';
-import { PageSearchBar } from '@/components/ui/page-search-bar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
@@ -94,7 +91,10 @@ import { useDebounce } from '@/hooks/use-debounced-value';
 import { clearLastProjectId } from '@/lib/onboarding/last-project-cookie';
 import { cn } from '@/lib/utils';
 
-import { SectionContainer, SectionHeader, StatPill, StatRow } from '../_components/section-header';
+import { AdminPageShell, AdminRefreshButton } from '../_components/admin-page-shell';
+import { AdminEmptyFrame, AdminTableFrame } from '../_components/admin-panel';
+import { AdminPagination, AdminSearch, AdminSortHeader } from '../_components/admin-table';
+import { StatGrid, StatTile } from '../_components/stat-tile';
 import { adminLedgerRows } from './ledger-rows';
 import {
   MAX_COMPUTE_RATE_MULTIPLIER,
@@ -274,9 +274,12 @@ function formatDateTime(value: string | null | undefined) {
  *
  * NOT for "what plan is this account on?" — that is `PlanBadge` / `planLabel`.
  */
-function tierKeyLabel(tier: string | null | undefined): string {
+function tierKeyLabel(
+  tier: string | null | undefined,
+  options: readonly TierFilterOption[] = TIER_OPTIONS,
+): string {
   if (!tier) return 'No plan';
-  return TIER_LABELS[tier] ?? tier;
+  return options.find((option) => option.value === tier)?.label ?? TIER_LABELS[tier] ?? tier;
 }
 
 /**
@@ -287,8 +290,8 @@ function tierKeyLabel(tier: string | null | undefined): string {
  *
  * The fallback covers a console pointed at an API older than the resolver.
  */
-function planLabel(account: AdminAccount): string {
-  return account.plan?.label ?? tierKeyLabel(account.tier);
+function planLabel(account: AdminAccount, options?: readonly TierFilterOption[]): string {
+  return account.plan?.label ?? tierKeyLabel(account.tier, options);
 }
 
 function planBadgeVariant(account: AdminAccount): React.ComponentProps<typeof Badge>['variant'] {
@@ -315,10 +318,11 @@ function PlanBadge({
   size?: React.ComponentProps<typeof Badge>['size'];
   className?: string;
 }) {
+  const tierOptions = useLocalizedUiCatalog(TIER_OPTIONS);
   const sublabel = account.plan?.sublabel;
   return (
     <Badge variant={planBadgeVariant(account)} size={size} className={className}>
-      {planLabel(account)}
+      {planLabel(account, tierOptions)}
       {sublabel ? <span className="ml-1 font-normal opacity-70">· {sublabel}</span> : null}
     </Badge>
   );
@@ -334,7 +338,7 @@ function PlanBadge({
  * no subscription on file — the badge alone is correct in that case.
  */
 function LiveSubscriptionLine({ accountId }: { accountId: string }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const { data, error } = useAdminAccountSubscription(accountId);
   const sub = data?.subscription;
   // A lookup that FAILS is itself the finding: the account row carries a
@@ -345,7 +349,8 @@ function LiveSubscriptionLine({ accountId }: { accountId: string }) {
       <span className="text-destructive flex items-center gap-1.5 text-xs">
         <CreditCard className="h-3 w-3 shrink-0" />
         <span className="truncate">
-          {tI18nComplete.raw('text3573c6a20ab0')} {error.message}
+          {tI18nComplete.raw('text3573c6a20ab0')}
+          {error.message}
         </span>
       </span>
     );
@@ -360,7 +365,8 @@ function LiveSubscriptionLine({ accountId }: { accountId: string }) {
     <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
       <CreditCard className="h-3 w-3 shrink-0" />
       <span className="truncate">
-        {tI18nComplete.raw('text3f197cd0d612')} {amount ?? tI18nComplete.raw('text4e445fd409fb')}
+        {tI18nComplete.raw('text3f197cd0d612')}
+        {amount ?? tI18nComplete.raw('text4e445fd409fb')}
         {sub.quantity > 1 ? ` (${sub.quantity}×)` : ''}
         {label ? ` · ${label}` : ''}
         {sub.status !== 'active' ? ` · ${sub.status.replace(/_/g, ' ')}` : ''}
@@ -482,7 +488,7 @@ function activeFilterCount(f: AccountFilters): number {
 }
 
 export default function AdminAccountsPage() {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   // Seed from ?search= so cross-links (e.g. the Projects page's account cell)
   // land on a filtered list instead of the whole fleet.
   const urlSearchParams = useSearchParams();
@@ -545,51 +551,34 @@ export default function AdminAccountsPage() {
   };
 
   return (
-    <SectionContainer>
-      <SectionHeader
-        icon={Users}
-        title={tI18nComplete.raw('text8a7c8b67fe8b')}
-        description={tI18nComplete.raw('text29a3ff8f897b')}
-        actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="gap-1.5"
-          >
-            {isFetching ? (
-              <Loading className="h-3.5 w-3.5" />
-            ) : (
-              <RefreshCw className="h-3.5 w-3.5" />
-            )}
-            {tI18nComplete.raw('text0e9161011702')}
-          </Button>
-        }
-      />
-
-      <StatRow>
-        <StatPill
+    <AdminPageShell
+      width="wide"
+      title={tI18nComplete.raw('text8a7c8b67fe8b')}
+      description={tI18nComplete.raw('text9f5eff06b203')}
+      action={<AdminRefreshButton busy={isFetching} onRefresh={() => void refetch()} />}
+    >
+      <StatGrid>
+        <StatTile
           label={tI18nComplete.raw('text9dea85290e57')}
           value={total.toLocaleString()}
           hint={
             filtersCount > 0
-              ? tI18nComplete.raw('text0350dc45fdbb')
+              ? tI18nComplete.raw('text904eb9015563')
               : tI18nComplete.raw('textf4f6813aa30f')
           }
         />
-        <StatPill
+        <StatTile
           label={tI18nComplete.raw('textfb81b961af45')}
           value={(summary?.paidCount ?? 0).toLocaleString()}
           tone="success"
           hint={tI18nComplete.raw('text38ba7f9cc345')}
         />
-        <StatPill
+        <StatTile
           label={tI18nComplete.raw('text98d2f310af85')}
           value={formatCredits(summary?.totalCredits ?? 0)}
           hint={tI18nComplete.raw('text5bd8a81336da')}
         />
-        <StatPill
+        <StatTile
           label={tI18nComplete.raw('text629c555fb7f8')}
           value={summary?.pastDueCount ?? 0}
           tone={(summary?.pastDueCount ?? 0) > 0 ? 'warning' : 'default'}
@@ -599,7 +588,7 @@ export default function AdminAccountsPage() {
               : tI18nComplete.raw('text96ed94a7e3ac')
           }
         />
-      </StatRow>
+      </StatGrid>
 
       <FilterBar
         searchInput={searchInput}
@@ -624,16 +613,17 @@ export default function AdminAccountsPage() {
           ))}
         </div>
       ) : accounts.length === 0 ? (
-        <div className="border-border/60 bg-card rounded-md border">
+        <AdminEmptyFrame>
           <EmptyState
             icon={IconInbox}
+            size="sm"
             title={
               search || filtersCount > 0
-                ? tI18nComplete.raw('textb67d444ba208')
+                ? tI18nComplete.raw('text56f26c55e418')
                 : tI18nComplete.raw('text84a7e27178d9')
             }
             description={
-              search || filtersCount > 0 ? tI18nComplete.raw('textc62da8a2d904') : undefined
+              search || filtersCount > 0 ? tI18nComplete.raw('text0713dbee5126') : undefined
             }
             action={
               search || filtersCount > 0 ? (
@@ -643,14 +633,9 @@ export default function AdminAccountsPage() {
               ) : undefined
             }
           />
-        </div>
+        </AdminEmptyFrame>
       ) : (
-        <div
-          className={cn(
-            'border-border/60 overflow-hidden rounded-md border transition-opacity',
-            isFetching && 'opacity-70',
-          )}
-        >
+        <AdminTableFrame busy={isFetching}>
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -700,7 +685,7 @@ export default function AdminAccountsPage() {
                       <div className="truncate text-sm font-medium">{accountLabelFor(account)}</div>
                       <div className="text-muted-foreground truncate text-xs">
                         {account.ownerEmail || tI18nComplete.raw('textaca82dbb8ef0')}
-                        <span className="mx-1.5 opacity-50">·</span>
+                        <span className="text-muted-foreground/40 mx-1.5">·</span>
                         <span className="font-mono">{account.accountId.slice(0, 8)}</span>
                       </div>
                     </div>
@@ -712,7 +697,7 @@ export default function AdminAccountsPage() {
                     <span
                       className={cn(
                         'font-mono text-sm',
-                        Number(account.balance ?? 0) < 0 && 'text-destructive',
+                        Number(account.balance ?? 0) < 0 && 'text-kortix-red',
                       )}
                     >
                       {formatCredits(account.balance)}
@@ -741,42 +726,19 @@ export default function AdminAccountsPage() {
               ))}
             </TableBody>
           </Table>
-        </div>
+        </AdminTableFrame>
       )}
 
-      {pages > 1 && (
-        <div className="text-muted-foreground flex items-center justify-between text-sm">
-          <span>
-            {tI18nComplete.raw('text0a30a815d67d')} {page} {tI18nComplete.raw('text28391d3bc64e')}{' '}
-            {pages} · {total.toLocaleString()} {tI18nComplete.raw('textbc62a3c14fec')}
-          </span>
-          <div className="flex gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1 px-2.5"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-              {tI18nComplete.raw('text73912999faf4')}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1 px-2.5"
-              onClick={() => setPage((p) => Math.min(pages, p + 1))}
-              disabled={page === pages}
-            >
-              {tI18nComplete.raw('text1ff57a29d7c9')}
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
-      )}
+      <AdminPagination
+        page={page}
+        pages={pages}
+        total={total}
+        noun="accounts"
+        onPageChange={setPage}
+      />
 
       <AccountDetailSheet account={selectedAccount} onClose={() => setSelected(null)} />
-    </SectionContainer>
+    </AdminPageShell>
   );
 }
 
@@ -799,18 +761,19 @@ function FilterBar({
   onReset: () => void;
   filtersCount: number;
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
-  const { tiers, paymentStatuses } = localizedAdminAccountCatalog(tI18nComplete);
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-      <PageSearchBar
-        value={searchInput}
-        onChange={onSearchChange}
-        placeholder={tI18nComplete.raw('text60e0fe98face')}
-      />
+      <div className="min-w-0 flex-1">
+        <AdminSearch
+          value={searchInput}
+          onChange={onSearchChange}
+          placeholder={tI18nComplete.raw('text9640e38947da')}
+        />
+      </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <label className="border-input bg-card flex h-9 items-center gap-2 rounded-md border px-3 py-1.5 text-sm">
+        <label className="border-input bg-popover flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm">
           <Switch
             checked={filters.paidOnly}
             onCheckedChange={(v) => onFiltersChange({ ...filters, paidOnly: v })}
@@ -821,14 +784,9 @@ function FilterBar({
 
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-9 gap-1.5">
+            <Button variant="outline" size="sm">
               <Filter className="h-3.5 w-3.5" />
               {tI18nComplete.raw('text546ebb8eb993')}
-              {filtersCount > 0 && (
-                <Badge variant="muted" size="sm" className="ml-1">
-                  {filtersCount}
-                </Badge>
-              )}
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-[320px] p-0">
@@ -843,7 +801,7 @@ function FilterBar({
             onFiltersChange({ ...filters, sortBy, sortDir });
           }}
         >
-          <SelectTrigger className="h-9 w-[170px] gap-1.5">
+          <SelectTrigger variant="outline" size="sm" arrow={false}>
             <SlidersHorizontal className="text-muted-foreground h-3.5 w-3.5" />
             <SelectValue placeholder={tI18nComplete.raw('textbec69036aa27')} />
           </SelectTrigger>
@@ -872,8 +830,9 @@ function FiltersPanel({
   onChange: (f: AccountFilters) => void;
   onReset: () => void;
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
-  const { tiers, paymentStatuses } = localizedAdminAccountCatalog(tI18nComplete);
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
+  const tierOptions = useLocalizedUiCatalog(TIER_OPTIONS);
+  const paymentStatusOptions = useLocalizedUiCatalog(PAYMENT_STATUS_OPTIONS);
   const [minBalance, setMinBalance] = useState(
     filters.minBalance !== null ? String(filters.minBalance) : '',
   );
@@ -914,14 +873,14 @@ function FiltersPanel({
 
   return (
     <div className="max-h-[70vh] overflow-y-auto">
-      <div className="border-border/60 flex items-center justify-between border-b px-4 py-3">
+      <div className="border-border flex items-center justify-between border-b px-4 py-3">
         <span className="text-sm font-medium">{tI18nComplete.raw('text546ebb8eb993')}</span>
         <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onReset}>
           {tI18nComplete.raw('text645982c52b7c')}
         </Button>
       </div>
 
-      <div className="border-border/60 space-y-2 border-b px-4 py-3">
+      <div className="border-border space-y-2 border-b px-4 py-3">
         <div className="text-muted-foreground text-xs font-medium">
           {tI18nComplete.raw('text4999c6c6c7ba')}
         </div>
@@ -954,7 +913,7 @@ function FiltersPanel({
         </div>
       </div>
 
-      <div className="border-border/60 space-y-2 border-b px-4 py-3">
+      <div className="border-border space-y-2 border-b px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="text-muted-foreground text-xs font-medium">
             {tI18nComplete.raw('textcb9e8664edea')}
@@ -971,16 +930,16 @@ function FiltersPanel({
           )}
         </div>
         <div className="space-y-1">
-          {tiers.map((t, i) => (
+          {tierOptions.map((t, i) => (
             <div key={t.value}>
               {/* One heading, before the first grandfathered key — these are
                   still-honored plans no account can be moved onto today. */}
-              {t.grandfathered && !tiers[i - 1]?.grandfathered && (
-                <div className="text-muted-foreground/70 px-1.5 pt-2 pb-1 text-xs">
+              {t.grandfathered && !tierOptions[i - 1]?.grandfathered && (
+                <div className="text-muted-foreground px-1.5 pt-2 pb-1 text-xs">
                   {tI18nComplete.raw('text9d5adef979f7')}
                 </div>
               )}
-              <label className="hover:bg-muted/40 flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-sm">
+              <label className="hover:bg-hover flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-sm">
                 <Checkbox
                   checked={filters.tier.includes(t.value)}
                   onCheckedChange={() => toggleTier(t.value)}
@@ -992,7 +951,7 @@ function FiltersPanel({
         </div>
       </div>
 
-      <div className="border-border/60 space-y-2 border-b px-4 py-3">
+      <div className="border-border space-y-2 border-b px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="text-muted-foreground text-xs font-medium">
             {tI18nComplete.raw('text272b5704fa54')}
@@ -1009,10 +968,10 @@ function FiltersPanel({
           )}
         </div>
         <div className="space-y-1">
-          {paymentStatuses.map((p) => (
+          {paymentStatusOptions.map((p) => (
             <label
               key={p.value}
-              className="hover:bg-muted/40 flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-sm"
+              className="hover:bg-hover flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-sm"
             >
               <Checkbox
                 checked={filters.paymentStatus.includes(p.value)}
@@ -1065,7 +1024,8 @@ function ActiveChips({
   searchInput: string;
   onSearchChange: (v: string) => void;
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
+  const tierOptions = useLocalizedUiCatalog(TIER_OPTIONS);
   const chips: Array<{ key: string; label: string; onRemove: () => void }> = [];
 
   if (searchInput) {
@@ -1085,7 +1045,7 @@ function ActiveChips({
   for (const t of filters.tier) {
     chips.push({
       key: `tier:${t}`,
-      label: tI18nComplete('text3ac9d50c270e', { value0: tierKeyLabel(t) }),
+      label: tI18nComplete('text3ac9d50c270e', { value0: tierKeyLabel(t, tierOptions) }),
       onRemove: () => onChange({ ...filters, tier: filters.tier.filter((x) => x !== t) }),
     });
   }
@@ -1130,15 +1090,17 @@ function ActiveChips({
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {chips.map((chip) => (
-        <button
+        <Button
           key={chip.key}
           type="button"
+          size="sm"
+          variant="outline"
           onClick={chip.onRemove}
-          className="group border-border/60 bg-muted/30 hover:bg-muted/60 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors"
+          className="rounded-full"
         >
           <span>{chip.label}</span>
           <X className="text-muted-foreground group-hover:text-foreground h-3 w-3" />
-        </button>
+        </Button>
       ))}
       {chips.length > 1 && (
         <Button
@@ -1161,14 +1123,9 @@ function ActiveChips({
 // Sortable table header
 // ─────────────────────────────────────────────────────────────────────────────
 
-function SortHeader({
-  label,
-  column,
-  sortBy,
-  sortDir,
-  onSort,
-  align = 'left',
-}: {
+/** The accounts table's sortable header — the shared `AdminSortHeader`, bound
+ *  to this page's column union. */
+function SortHeader(props: {
   label: string;
   column: AdminAccountsSortBy;
   sortBy: AdminAccountsSortBy;
@@ -1176,30 +1133,7 @@ function SortHeader({
   onSort: (col: AdminAccountsSortBy) => void;
   align?: 'left' | 'right';
 }) {
-  const active = sortBy === column;
-  return (
-    <TableHead className={align === 'right' ? 'text-right' : ''}>
-      <button
-        type="button"
-        onClick={() => onSort(column)}
-        className={cn(
-          'inline-flex items-center gap-1 text-xs font-medium transition-colors',
-          active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
-        )}
-      >
-        {label}
-        {active ? (
-          sortDir === 'asc' ? (
-            <ArrowUp className="h-3 w-3" />
-          ) : (
-            <ArrowDown className="h-3 w-3" />
-          )
-        ) : (
-          <ArrowDown className="h-3 w-3 opacity-0" />
-        )}
-      </button>
-    </TableHead>
-  );
+  return <AdminSortHeader<AdminAccountsSortBy> {...props} />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1220,7 +1154,7 @@ function AccountDetailSheet({
     <Sheet open={!!account} onOpenChange={(open) => !open && onClose()}>
       <SheetContent
         side="right"
-        className="w-full overflow-y-auto p-0 sm:!max-w-[640px] md:!max-w-[820px] lg:!max-w-[1120px]"
+        className="bg-background w-full overflow-y-auto p-0 sm:!max-w-[640px] md:!max-w-[820px] lg:!max-w-[1120px]"
       >
         {account && <AccountDetail account={account} />}
       </SheetContent>
@@ -1244,7 +1178,7 @@ function AccountDetailSheet({
  * naming the customer.
  */
 function OpenAsAccountButton({ account }: { account: AdminAccount }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const impersonate = useAdminImpersonate();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState('');
@@ -1306,138 +1240,232 @@ function OpenAsAccountButton({ account }: { account: AdminAccount }) {
   );
 }
 
+/**
+ * A one-line identity value you copy by clicking it. The copy glyph fades in on
+ * hover and swaps to a green check for ~1.5s after a copy. The whole row is the
+ * hit target — Jay's note: "the email should be copyable, not a decorative
+ * icon". Renders a plain muted line when there is no value.
+ */
+function CopyField({
+  icon: Icon,
+  value,
+  placeholder,
+  label,
+  mono = false,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  value: string | null | undefined;
+  placeholder: string;
+  label: string;
+  mono?: boolean;
+}) {
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
+  const [copied, setCopied] = useState(false);
+
+  if (!value) {
+    return (
+      <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
+        <Icon className="size-3.5 shrink-0" />
+        {placeholder}
+      </span>
+    );
+  }
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      errorToast(tI18nComplete.raw('text4cb23f3c3b90'));
+    }
+  };
+
+  return (
+    <Hint label={copied ? 'Copied' : `Copy ${label}`} side="bottom">
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={`Copy ${label}`}
+        className="group text-muted-foreground hover:text-foreground focus-visible:ring-ring -mx-1 flex max-w-full cursor-pointer items-center gap-1.5 rounded-md px-1 py-0.5 text-xs transition-colors outline-none focus-visible:ring-2 active:scale-[0.98]"
+      >
+        <Icon className="size-3.5 shrink-0" />
+        <span className={cn('truncate', mono && 'font-mono')}>{value}</span>
+        <span className="relative inline-flex size-3 shrink-0 items-center justify-center">
+          {copied ? (
+            <CheckIcon className="text-kortix-green size-3" />
+          ) : (
+            <CopyIcon className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
+          )}
+        </span>
+      </button>
+    </Hint>
+  );
+}
+
 function AccountDetail({ account }: { account: AdminAccount }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const usersQuery = useAdminAccountUsers(account.accountId);
   const projectsQuery = useAdminAccountProjects(account.accountId);
   const ledgerQuery = useAdminAccountLedger(account.accountId, 100);
   const actions = billingActionsFor(account, tI18nComplete);
+  const balanceNegative = Number(account.balance ?? 0) < 0;
+  const usersCount = usersQuery.data?.users?.length;
+  const projectsCount = projectsQuery.data?.projects?.length;
 
   return (
-    <div className="flex flex-col">
-      <SheetHeader className="border-border/60 border-b p-6">
-        <SheetTitle className="flex items-center gap-2 text-lg">
-          {accountLabelFor(account)}
-          <PlanBadge account={account} />
-          {account.paymentStatus && account.paymentStatus !== 'active' && (
-            <Badge
-              variant={paymentStatusBadge(account.paymentStatus)}
-              size="sm"
-              className="capitalize"
-            >
-              {account.paymentStatus.replace(/_/g, ' ')}
-            </Badge>
-          )}
-        </SheetTitle>
-        <SheetDescription className="flex flex-col gap-0.5 text-left">
-          <span className="flex items-center gap-1.5 text-xs">
-            <Mail className="h-3 w-3" />
-            {account.ownerEmail || tI18nComplete.raw('textaca82dbb8ef0')}
-          </span>
-          <span className="font-mono text-xs">{account.accountId}</span>
-          <LiveSubscriptionLine accountId={account.accountId} />
-        </SheetDescription>
-        <div className="pt-3">
+    <div className="flex min-h-0 flex-col">
+      <SheetHeader className="border-border gap-3 border-b px-6 py-5">
+        {/* Title + who/what/where badges on the left; the one invasive action
+            (Open as account) pinned top-right so it never hides under scroll. */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-2">
+            <SheetTitle className="truncate text-lg font-semibold tracking-tight">
+              {accountLabelFor(account)}
+            </SheetTitle>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <PlanBadge account={account} />
+              {account.paymentStatus && account.paymentStatus !== 'active' && (
+                <Badge
+                  variant={paymentStatusBadge(account.paymentStatus)}
+                  size="sm"
+                  className="capitalize"
+                >
+                  {account.paymentStatus.replace(/_/g, ' ')}
+                </Badge>
+              )}
+              {trialIsActive(account.trial) && (
+                <Badge variant="success" size="sm">
+                  {tI18nComplete.raw('text98a66e9745c9')}
+                </Badge>
+              )}
+            </div>
+          </div>
           <OpenAsAccountButton account={account} />
         </div>
+
+        <SheetDescription className="sr-only">
+          {tI18nComplete('text196a5c2c8297', { value0: accountLabelFor(account) })}
+        </SheetDescription>
+
+        {/* Identity: email and account id are both click-to-copy. */}
+        <div className="flex flex-col items-start gap-1">
+          <CopyField
+            icon={Mail}
+            value={account.ownerEmail}
+            placeholder={tI18nComplete.raw('textaca82dbb8ef0')}
+            label={tI18nComplete.raw('text82244417f956')}
+          />
+          <CopyField
+            icon={IdentificationCardIcon}
+            value={account.accountId}
+            placeholder={tI18nComplete.raw('text6335879539ad')}
+            label={tI18nComplete.raw('texte4bfff9b557b')}
+            mono
+          />
+          <LiveSubscriptionLine accountId={account.accountId} />
+        </div>
+
         {actions.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 pt-3">
+          <div className="flex flex-wrap gap-1.5">
             {actions.map((a) => (
               <a
                 key={a.href}
                 href={a.href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="group border-border/60 bg-card text-foreground hover:bg-muted/40 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors"
+                className="group border-border bg-popover text-foreground hover:bg-hover inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors active:scale-[0.98]"
               >
                 <ServiceFavicon domain={a.domain} />
                 {a.label}
-                <ExternalLink className="text-muted-foreground/60 group-hover:text-foreground h-3 w-3" />
+                <ExternalLink className="text-muted-foreground group-hover:text-foreground size-3" />
               </a>
             ))}
           </div>
         )}
       </SheetHeader>
 
-      <div className="space-y-6 p-6">
-        <StatRow className="!grid-cols-2 lg:!grid-cols-4">
-          <StatPill
-            label={tI18nComplete.raw('textc9b3c38247f7')}
+      <div className="space-y-6 px-6 py-6">
+        <StatGrid className="grid-cols-2 lg:grid-cols-4">
+          <StatTile
+            label={tI18nComplete.raw('text10ea22c4a146')}
             value={formatCredits(account.balance)}
+            tone={balanceNegative ? 'danger' : 'default'}
           />
-          <StatPill
+          <StatTile
             label={tI18nComplete.raw('textff44a401445c')}
             value={formatCredits(account.expiringCredits)}
           />
-          <StatPill
+          <StatTile
             label={tI18nComplete.raw('text455a95491f40')}
             value={formatCredits(account.nonExpiringCredits)}
           />
-          <StatPill
+          <StatTile
             label={tI18nComplete.raw('textb36c2611dcdf')}
             value={formatCredits(account.dailyCreditsBalance)}
           />
-        </StatRow>
+        </StatGrid>
 
         <Tabs defaultValue="credits" className="w-full">
-          <TabsList className="h-auto w-full flex-wrap">
-            <TabsTrigger value="credits" className="gap-1.5">
-              <CreditCard className="h-3.5 w-3.5" />
+          {/* Underline section tabs — the brand's primary-tab style — replacing
+              the wrapping pill pad. Scrolls horizontally on a narrow sheet
+              rather than reflowing into a second row. */}
+          <TabsList
+            type="underline"
+            className="w-full [scrollbar-width:none] justify-start gap-4 overflow-x-auto [&::-webkit-scrollbar]:hidden"
+          >
+            <TabsTrigger value="credits" className="w-fit flex-none gap-1.5">
+              <CreditCard className="size-3.5 shrink-0" />
               {tI18nComplete.raw('text2a6b24ad2872')}
             </TabsTrigger>
-            <TabsTrigger value="entitlements" className="gap-1.5">
-              <Key className="h-3.5 w-3.5" />
+            <TabsTrigger value="entitlements" className="w-fit flex-none gap-1.5">
+              <Key className="size-3.5 shrink-0" />
               {tI18nComplete.raw('text2cc79c9e300d')}
-              {trialIsActive(account.trial) && (
-                <Badge variant="success" size="sm">
-                  {tI18nComplete.raw('text79891e980747')}
-                </Badge>
-              )}
             </TabsTrigger>
-            <TabsTrigger value="users" className="gap-1.5">
-              <Users className="h-3.5 w-3.5" />
+            <TabsTrigger value="users" className="w-fit flex-none gap-1.5">
+              <Users className="size-3.5 shrink-0" />
               {tI18nComplete.raw('text6b0cc904d081')}
-              {usersQuery.data?.users && (
-                <Badge variant="muted" size="sm">
-                  {usersQuery.data.users.length}
+              {usersCount != null && (
+                <Badge variant="secondary" size="sm">
+                  {usersCount}
                 </Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="projects" className="gap-1.5">
-              <FolderKanban className="h-3.5 w-3.5" />
+            <TabsTrigger value="projects" className="w-fit flex-none gap-1.5">
+              <FolderKanban className="size-3.5 shrink-0" />
               {tI18nComplete.raw('text04e2a9728af7')}
-              {projectsQuery.data?.projects && (
-                <Badge variant="muted" size="sm">
-                  {projectsQuery.data.projects.length}
+              {projectsCount != null && (
+                <Badge variant="secondary" size="sm">
+                  {projectsCount}
                 </Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="ledger" className="gap-1.5">
-              <History className="h-3.5 w-3.5" />
+            <TabsTrigger value="ledger" className="w-fit flex-none gap-1.5">
+              <History className="size-3.5 shrink-0" />
               {tI18nComplete.raw('textee69eb4afc76')}
             </TabsTrigger>
-            <TabsTrigger value="billing" className="gap-1.5">
-              <Shield className="h-3.5 w-3.5" />
+            <TabsTrigger value="billing" className="w-fit flex-none gap-1.5">
+              <Shield className="size-3.5 shrink-0" />
               {tI18nComplete.raw('text3ac8bbca9a74')}
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="credits" className="mt-4">
+          <TabsContent value="credits" className="mt-5">
             <CreditsTab account={account} />
           </TabsContent>
-          <TabsContent value="entitlements" className="mt-4">
+          <TabsContent value="entitlements" className="mt-5">
             <EntitlementsTab account={account} />
           </TabsContent>
-          <TabsContent value="users" className="mt-4">
+          <TabsContent value="users" className="mt-5">
             <UsersTab usersQuery={usersQuery} accountId={account.accountId} />
           </TabsContent>
-          <TabsContent value="projects" className="mt-4">
+          <TabsContent value="projects" className="mt-5">
             <ProjectsTab projectsQuery={projectsQuery} />
           </TabsContent>
-          <TabsContent value="ledger" className="mt-4">
+          <TabsContent value="ledger" className="mt-5">
             <LedgerTab ledgerQuery={ledgerQuery} />
           </TabsContent>
-          <TabsContent value="billing" className="mt-4">
+          <TabsContent value="billing" className="mt-5">
             <BillingTab account={account} />
           </TabsContent>
         </Tabs>
@@ -1447,7 +1475,8 @@ function AccountDetail({ account }: { account: AdminAccount }) {
 }
 
 function CreditsTab({ account }: { account: AdminAccount }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
+  const tierOptions = useLocalizedUiCatalog(TIER_OPTIONS);
   const grant = useAdminGrantCredits();
   const debit = useAdminDebitCredits();
   const setEnterpriseEntitled = useAdminSetEnterpriseEntitled();
@@ -1461,7 +1490,7 @@ function CreditsTab({ account }: { account: AdminAccount }) {
 
   async function handleGrant() {
     if (!isValid) {
-      errorToast(tI18nComplete.raw('text56644b72a713'));
+      errorToast(tI18nComplete.raw('texta9e82cd23e9d'));
       return;
     }
     try {
@@ -1471,7 +1500,7 @@ function CreditsTab({ account }: { account: AdminAccount }) {
         description: description.trim() || 'Admin credit adjustment',
         isExpiring,
       });
-      successToast(tI18nComplete.raw('text91c41abbc611'), {
+      successToast(tI18nComplete.raw('text0268c03cd74c'), {
         description: tI18nComplete('text24dab51514a1', {
           value0: money(parsed),
           value1: accountLabelFor(account),
@@ -1479,8 +1508,8 @@ function CreditsTab({ account }: { account: AdminAccount }) {
       });
       setAmount('');
     } catch (error) {
-      errorToast(tI18nComplete.raw('textdaf8a3e28790'), {
-        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
+      errorToast(tI18nComplete.raw('text9538346557b5'), {
+        description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   }
@@ -1493,7 +1522,7 @@ function CreditsTab({ account }: { account: AdminAccount }) {
         amount: parsed,
         description: description.trim() || 'Admin debit',
       });
-      successToast(tI18nComplete.raw('text27935fdead34'), {
+      successToast(tI18nComplete.raw('text3efd6742a383'), {
         description: tI18nComplete('text1836d8d61ae9', {
           value0: money(parsed),
           value1: accountLabelFor(account),
@@ -1501,8 +1530,8 @@ function CreditsTab({ account }: { account: AdminAccount }) {
       });
       setAmount('');
     } catch (error) {
-      errorToast(tI18nComplete.raw('text6641e2ca3556'), {
-        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
+      errorToast(tI18nComplete.raw('text16cf9ca5c085'), {
+        description: error instanceof Error ? error.message : 'Unknown error',
       });
     } finally {
       setConfirmDebit(false);
@@ -1517,15 +1546,13 @@ function CreditsTab({ account }: { account: AdminAccount }) {
         {
           description: tI18nComplete('textb18320256e28', {
             value0: accountLabelFor(account),
-            value1: enabled
-              ? tI18nComplete.raw('textb615ea53d360')
-              : tI18nComplete.raw('textb8c6c60542bc'),
+            value1: enabled ? 'now has' : 'no longer has',
           }),
         },
       );
     } catch (error) {
-      errorToast(tI18nComplete.raw('textad54697fed7c'), {
-        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
+      errorToast(tI18nComplete.raw('text3f3d54f50e6f'), {
+        description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   }
@@ -1541,15 +1568,15 @@ function CreditsTab({ account }: { account: AdminAccount }) {
           plan shown is the RESOLVED one the API reports — an active trial and
           the per-seat self-heal overlay the stored tier, and the entitlement
           writes below act on the account, not on that plan. */}
-      <div className="border-border/60 bg-card mb-4 space-y-3 rounded-md border p-4">
+      <div className="border-border bg-popover mb-4 space-y-3 rounded-md border p-4">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
             <div className="text-foreground text-sm font-medium">
               {tI18nComplete.raw('textfa8ed0bdabdd')}
             </div>
             <div className="text-muted-foreground text-xs">
-              {tI18nComplete.raw('textc09f632874c2')}{' '}
-              <span className="text-foreground font-medium">{planLabel(account)}</span>
+              {tI18nComplete.raw('textc09f632874c2')}
+              <span className="text-foreground font-medium">{planLabel(account, tierOptions)}</span>
               {account.plan?.sublabel ? ` · ${account.plan.sublabel}` : ''}
               {isEnterprise && tI18nComplete.raw('text70541b9b587b')}
             </div>
@@ -1580,7 +1607,7 @@ function CreditsTab({ account }: { account: AdminAccount }) {
         <p className="text-muted-foreground text-xs">{tI18nComplete.raw('texte65c84be34f9')}</p>
       </div>
 
-      <div className="border-border/60 bg-card space-y-4 rounded-md border p-4">
+      <div className="border-border bg-popover space-y-4 rounded-md border p-4">
         <div className="flex flex-wrap gap-1.5">
           {REIMBURSEMENT_PRESETS.map((n) => (
             <Button
@@ -1652,7 +1679,7 @@ function CreditsTab({ account }: { account: AdminAccount }) {
             <p>
               {tI18nComplete.raw('text5498f487a861')}{' '}
               <span className="text-foreground font-mono">{isValid ? money(parsed) : '—'}</span>{' '}
-              {tI18nComplete.raw('text75857a458999')}{' '}
+              {tI18nComplete.raw('text75857a458999')}
               <span className="font-medium">{accountLabelFor(account)}</span>.
             </p>
             <p className="text-muted-foreground text-xs">{tI18nComplete.raw('textfb9f1f579b54')}</p>
@@ -1738,20 +1765,6 @@ const OVERRIDE_TRI_STATE_OPTIONS: { value: OverrideTriState; label: string }[] =
   { value: 'off', label: 'Force off' },
 ];
 
-function localizedAdminAccountCatalog(tI18nComplete: UiTranslator) {
-  return localizeUiCatalog(
-    {
-      tiers: TIER_OPTIONS,
-      paymentStatuses: PAYMENT_STATUS_OPTIONS,
-      trialTiers: TRIAL_TIER_OPTIONS,
-      overrideEntitlements: OVERRIDE_ENTITLEMENT_ROWS,
-      overrideStates: OVERRIDE_TRI_STATE_OPTIONS,
-    },
-    tI18nComplete,
-    ADMIN_ACCOUNTS_TRANSLATION_KEYS,
-  );
-}
-
 /** Short date for an expiry chip — the year matters, the minute does not. */
 function formatDay(value: string): string {
   return new Date(value).toLocaleDateString('en-US', {
@@ -1785,8 +1798,9 @@ function OverrideExpiryChip({ expiresAt }: { expiresAt: string | null }) {
  * above, and this card is where an operator inspects or clears one.
  */
 function OverridesCard({ account }: { account: AdminAccount }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
-  const { overrideEntitlements, overrideStates } = localizedAdminAccountCatalog(tI18nComplete);
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
+  const entitlementRows = useLocalizedUiCatalog(OVERRIDE_ENTITLEMENT_ROWS);
+  const triStateOptions = useLocalizedUiCatalog(OVERRIDE_TRI_STATE_OPTIONS);
   const setOverrides = useAdminSetOverrides();
   const stored = account.entitlementOverrides ?? null;
 
@@ -1815,12 +1829,12 @@ function OverridesCard({ account }: { account: AdminAccount }) {
     if (!result.ok || isEmptyPatch(result.patch)) return;
     try {
       await setOverrides.mutateAsync({ accountId: account.accountId, patch: result.patch });
-      successToast(tI18nComplete.raw('text840911e55942'), {
+      successToast(tI18nComplete.raw('text214d79fdac84'), {
         description: describeOverridePatch(result.patch),
       });
     } catch (error) {
-      errorToast(tI18nComplete.raw('text9ee1f41d408d'), {
-        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
+      errorToast(tI18nComplete.raw('text222b8d57e366'), {
+        description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   }
@@ -1828,7 +1842,7 @@ function OverridesCard({ account }: { account: AdminAccount }) {
   const effectiveMultiplier = account.computeRateMultiplier;
 
   return (
-    <div className="border-border/60 bg-card space-y-4 rounded-md border p-4">
+    <div className="border-border bg-popover space-y-4 rounded-md border p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-foreground text-sm font-medium">
@@ -1845,8 +1859,8 @@ function OverridesCard({ account }: { account: AdminAccount }) {
         )}
       </div>
 
-      <div className="border-border/60 divide-border divide-y rounded-md border">
-        {overrideEntitlements.map(({ key, title, description }) => (
+      <div className="border-border divide-border divide-y rounded-md border">
+        {entitlementRows.map(({ key, title, description }) => (
           <div key={key} className="px-4 py-3">
             <EntitlementRow
               title={title}
@@ -1862,7 +1876,7 @@ function OverridesCard({ account }: { account: AdminAccount }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {overrideStates.map((option) => (
+                  {triStateOptions.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>
@@ -1922,7 +1936,7 @@ function OverridesCard({ account }: { account: AdminAccount }) {
           {effectiveMultiplier !== undefined && (
             <p className="text-muted-foreground mt-2 text-xs">
               {tI18nComplete.raw('text888f1dba5133')}{' '}
-              <span className="text-muted-foreground tabular-nums">{effectiveMultiplier}×</span>{' '}
+              <span className="text-foreground tabular-nums">{effectiveMultiplier}×</span>{' '}
               {tI18nComplete.raw('text01b8c5ddf23f')}
             </p>
           )}
@@ -1955,8 +1969,9 @@ function OverridesCard({ account }: { account: AdminAccount }) {
 }
 
 function EntitlementsTab({ account }: { account: AdminAccount }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
-  const { trialTiers } = localizedAdminAccountCatalog(tI18nComplete);
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
+  const tierOptions = useLocalizedUiCatalog(TIER_OPTIONS);
+  const trialTierOptions = useLocalizedUiCatalog(TRIAL_TIER_OPTIONS);
   const grantTrial = useAdminGrantTrial();
   const revokeTrial = useAdminRevokeTrial();
   const setManagedModels = useAdminSetManagedModels();
@@ -2005,15 +2020,15 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
         {
           description: tI18nComplete('text6db974c8b732', {
             value0: accountLabel,
-            value1: tierKeyLabel(tierKey),
+            value1: tierKeyLabel(tierKey, tierOptions),
             value2: parsedDuration,
           }),
         },
       );
       setNote('');
     } catch (error) {
-      errorToast(tI18nComplete.raw('text3744409146e0'), {
-        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
+      errorToast(tI18nComplete.raw('texte8ea82789107'), {
+        description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   }
@@ -2021,12 +2036,12 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
   async function handleRevokeTrial() {
     try {
       await revokeTrial.mutateAsync({ accountId: account.accountId });
-      successToast(tI18nComplete.raw('text9e296f576cba'), {
+      successToast(tI18nComplete.raw('text34a6992c659a'), {
         description: tI18nComplete('text9e0449fd24b6', { value0: accountLabel }),
       });
     } catch (error) {
-      errorToast(tI18nComplete.raw('texte67be036c73b'), {
-        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
+      errorToast(tI18nComplete.raw('text05da7af7e394'), {
+        description: error instanceof Error ? error.message : 'Unknown error',
       });
     } finally {
       setConfirmRevoke(false);
@@ -2036,17 +2051,17 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
   async function handleManagedModels(override: boolean | null) {
     try {
       await setManagedModels.mutateAsync({ accountId: account.accountId, override });
-      successToast(tI18nComplete.raw('textae8891825c78'), {
+      successToast(tI18nComplete.raw('text13811c334c6d'), {
         description:
           override === null
-            ? tI18nComplete.raw('textb8abec2b94c9')
+            ? 'The effective tier decides again.'
             : override
-              ? tI18nComplete.raw('textb97d1327b7b6')
-              : tI18nComplete.raw('textf4c2941f54da'),
+              ? 'Managed models forced on.'
+              : 'Restricted to BYOK keys.',
       });
     } catch (error) {
-      errorToast(tI18nComplete.raw('text59af855b5950'), {
-        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
+      errorToast(tI18nComplete.raw('text278179d861e0'), {
+        description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   }
@@ -2058,8 +2073,8 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
         enabled ? tI18nComplete.raw('texta2225f18a62a') : tI18nComplete.raw('texta4007c748290'),
       );
     } catch (error) {
-      errorToast(tI18nComplete.raw('textd67566f60104'), {
-        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
+      errorToast(tI18nComplete.raw('textcb7d3df7dd59'), {
+        description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   }
@@ -2071,8 +2086,8 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
         enabled ? tI18nComplete.raw('text9bfe30eaa67e') : tI18nComplete.raw('text0d26dc67cdfe'),
       );
     } catch (error) {
-      errorToast(tI18nComplete.raw('texta1e4e5cf36fd'), {
-        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
+      errorToast(tI18nComplete.raw('texte913f584c3bc'), {
+        description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   }
@@ -2088,7 +2103,7 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
       {/* Trial — an admin-issued overlay: the account BEHAVES as the trial tier
           until it ends, without touching credit_accounts.tier (Stripe owns
           that). Re-granting overwrites the window: extend = re-grant. */}
-      <div className="border-border/60 bg-card space-y-4 rounded-md border p-4">
+      <div className="border-border bg-popover space-y-4 rounded-md border p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-foreground text-sm font-medium">
@@ -2096,7 +2111,7 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
             </div>
             <p className="text-muted-foreground mt-0.5 text-xs">
               {tI18nComplete.raw('text92a15b76467d')}{' '}
-              <span className="text-muted-foreground">{tierKeyLabel(account.tier)}</span>.
+              <span className="text-foreground">{tierKeyLabel(account.tier, tierOptions)}</span>.
             </p>
           </div>
           <Badge variant={trialBadgeVariant(trial?.status ?? null)} size="sm">
@@ -2105,13 +2120,13 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
         </div>
 
         {trial && trial.status !== 'none' ? (
-          <div className="border-border/60 divide-border grid grid-cols-1 divide-y rounded-md border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+          <div className="border-border divide-border grid grid-cols-1 divide-y rounded-md border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
             <div className="px-3 py-2.5">
-              <div className="text-muted-foreground/70 text-xs">
+              <div className="text-muted-foreground text-xs">
                 {tI18nComplete.raw('textcb9e8664edea')}
               </div>
               <div className="mt-0.5 text-sm font-medium">
-                {trial.tier ? tierKeyLabel(trial.tier) : '—'}
+                {trial.tier ? tierKeyLabel(trial.tier, tierOptions) : '—'}
                 {trial.seats != null && (
                   <span className="text-muted-foreground font-normal">
                     {' '}
@@ -2125,7 +2140,7 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
                 and that window can still be in the future — so the countdown is
                 only meaningful while the trial is active. */}
             <div className="px-3 py-2.5">
-              <div className="text-muted-foreground/70 text-xs">
+              <div className="text-muted-foreground text-xs">
                 {isActive ? 'Ends' : tI18nComplete.raw('text108bff86a0eb')}
               </div>
               <div className="mt-0.5 text-sm font-medium">
@@ -2136,7 +2151,7 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
               )}
             </div>
             <div className="px-3 py-2.5">
-              <div className="text-muted-foreground/70 text-xs">
+              <div className="text-muted-foreground text-xs">
                 {tI18nComplete.raw('textecbc89cd37a0')}
               </div>
               <div className="mt-0.5 text-sm font-medium">{formatRelative(trial.startedAt)}</div>
@@ -2148,13 +2163,13 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
         )}
 
         {trial?.note && (
-          <p className="text-muted-foreground border-border/60 border-l-2 pl-3 text-xs">
+          <p className="text-muted-foreground border-border border-l-2 pl-3 text-xs">
             {trial.note}
           </p>
         )}
 
         {/* Grant / replace form */}
-        <div className="border-border/60 space-y-3 border-t pt-4">
+        <div className="border-border space-y-3 border-t pt-4">
           <div className="text-foreground text-sm font-medium">
             {isActive
               ? tI18nComplete.raw('text57579cf783f3')
@@ -2162,7 +2177,7 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
           </div>
           <div className="grid gap-2 sm:grid-cols-3">
             <div className="space-y-1">
-              <label className="text-muted-foreground/70 text-xs">
+              <label className="text-muted-foreground text-xs">
                 {tI18nComplete.raw('textcb9e8664edea')}
               </label>
               <Select value={tierKey} onValueChange={setTierKey}>
@@ -2170,7 +2185,7 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {trialTiers.map((t) => (
+                  {trialTierOptions.map((t) => (
                     <SelectItem key={t.value} value={t.value}>
                       <span>{t.label}</span>
                       <span className="text-muted-foreground ml-1.5 text-xs">{t.hint}</span>
@@ -2183,7 +2198,7 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
               </p>
             </div>
             <div className="space-y-1">
-              <label className="text-muted-foreground/70 text-xs">
+              <label className="text-muted-foreground text-xs">
                 {tI18nComplete.raw('textf3b81325942e')}
               </label>
               <Input
@@ -2197,7 +2212,7 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-muted-foreground/70 text-xs">
+              <label className="text-muted-foreground text-xs">
                 {tI18nComplete.raw('text1f1196332022')}
               </label>
               <Input
@@ -2213,7 +2228,7 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
           </div>
 
           <div className="space-y-1">
-            <label className="text-muted-foreground/70 text-xs">
+            <label className="text-muted-foreground text-xs">
               {tI18nComplete.raw('text4fc52a3c4c55')}
             </label>
             <div className="flex flex-wrap items-center gap-1.5">
@@ -2276,7 +2291,7 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
       </div>
 
       {/* Managed models override — tri-state, null restores tier control. */}
-      <div className="border-border/60 bg-card space-y-3 rounded-md border p-4">
+      <div className="border-border bg-popover space-y-3 rounded-md border p-4">
         <EntitlementRow
           title={tI18nComplete.raw('text92cd11d7f50e')}
           description={tI18nComplete.raw('textb89ec7e4cd95')}
@@ -2300,7 +2315,7 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
       </div>
 
       {/* Enterprise flags. Demo = evaluation preview; entitled = signed contract. */}
-      <div className="border-border/60 bg-card space-y-4 rounded-md border p-4">
+      <div className="border-border bg-popover space-y-4 rounded-md border p-4">
         <EntitlementRow
           title={tI18nComplete.raw('textfdccb896a3a1')}
           description={tI18nComplete.raw('textc6f417d32fe6')}
@@ -2313,7 +2328,7 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
           />
         </EntitlementRow>
 
-        <div className="border-border/60 border-t pt-4">
+        <div className="border-border border-t pt-4">
           <EntitlementRow
             title={tI18nComplete.raw('texta7d1ea80d81f')}
             description={tI18nComplete.raw('text458cde86effb')}
@@ -2334,15 +2349,15 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
       <OverridesCard account={account} />
 
       {/* Read-only context the operator needs before issuing a trial. */}
-      <div className="border-border/60 bg-card divide-border grid grid-cols-2 divide-x rounded-md border text-sm">
+      <div className="border-border bg-popover divide-border grid grid-cols-2 divide-x rounded-md border text-sm">
         <div className="flex items-center justify-between gap-3 px-4 py-3">
-          <span className="text-muted-foreground/70 text-xs">
+          <span className="text-muted-foreground text-xs">
             {tI18nComplete.raw('text266240ec402c')}
           </span>
           <span className="text-right font-medium">{account.billingModel || '—'}</span>
         </div>
         <div className="flex items-center justify-between gap-3 px-4 py-3">
-          <span className="text-muted-foreground/70 text-xs">
+          <span className="text-muted-foreground text-xs">
             {tI18nComplete.raw('textf3b81325942e')}
           </span>
           <span className="text-right font-medium">{account.seatCount ?? '—'}</span>
@@ -2358,7 +2373,9 @@ function EntitlementsTab({ account }: { account: AdminAccount }) {
             <p>
               <span className="font-medium">{accountLabel}</span>{' '}
               {tI18nComplete.raw('textfd8beb3c3acc')}{' '}
-              <span className="text-foreground font-medium">{tierKeyLabel(account.tier)}</span>{' '}
+              <span className="text-foreground font-medium">
+                {tierKeyLabel(account.tier, tierOptions)}
+              </span>{' '}
               {tI18nComplete.raw('textb94207703902')}
             </p>
             <p className="text-muted-foreground text-xs">{tI18nComplete.raw('text05643520119a')}</p>
@@ -2381,26 +2398,26 @@ function UsersTab({
   usersQuery: ReturnType<typeof useAdminAccountUsers>;
   accountId: string;
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const setMemberRole = useAdminSetMemberRole();
 
   async function handleRoleChange(userId: string, email: string, role: AdminAccountMemberRole) {
     try {
       await setMemberRole.mutateAsync({ accountId, userId, role });
-      successToast(tI18nComplete.raw('texta172f7fb3563'), {
+      successToast(tI18nComplete.raw('textd7baeba57734'), {
         description: tI18nComplete('text359215455ae1', { value0: email, value1: role }),
       });
     } catch (error) {
-      errorToast(tI18nComplete.raw('text47b31f661d3f'), {
-        description: error instanceof Error ? error.message : tI18nComplete.raw('text27c2ccd962c2'),
+      errorToast(tI18nComplete.raw('texte4143613f121'), {
+        description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   }
 
   if (usersQuery.isLoading) {
     return (
-      <div className="border-border/60 bg-card text-muted-foreground flex items-center gap-2 rounded-md border px-4 py-6 text-sm">
-        <Loading className="h-4 w-4" />
+      <div className="border-border bg-popover text-muted-foreground flex items-center gap-2 rounded-md border px-4 py-6 text-sm">
+        <Loading className="size-4 shrink-0" />
         {tI18nComplete.raw('texta53ec7ac2a7b')}
       </div>
     );
@@ -2409,7 +2426,7 @@ function UsersTab({
   const users = usersQuery.data?.users ?? [];
   if (users.length === 0) {
     return (
-      <div className="border-border/60 bg-card rounded-md border">
+      <div className="border-border bg-popover rounded-md border">
         <EmptyState
           icon={IconInbox}
           title={tI18nComplete.raw('text404bfcea3d30')}
@@ -2421,7 +2438,7 @@ function UsersTab({
   }
 
   return (
-    <div className="border-border/60 bg-card divide-border divide-y rounded-md border">
+    <div className="border-border bg-popover divide-border divide-y rounded-md border">
       {users.map((user) => {
         const banned = user.banned_until && new Date(user.banned_until) > new Date();
         const confirmed = !!user.email_confirmed_at;
@@ -2431,7 +2448,7 @@ function UsersTab({
               <div className="flex min-w-0 items-center gap-2">
                 <span className="truncate font-medium">{user.email}</span>
                 {confirmed ? (
-                  <CheckCircle2 className="text-kortix-green h-3.5 w-3.5 shrink-0" />
+                  <CheckCircle2 weight="fill" className="text-kortix-green size-3.5 shrink-0" />
                 ) : (
                   <Badge variant="warning" size="sm">
                     {tI18nComplete.raw('text97b7e2db799e')}
@@ -2439,7 +2456,7 @@ function UsersTab({
                 )}
                 {banned && (
                   <Badge variant="destructive" size="sm" className="gap-1">
-                    <Ban className="h-3 w-3" />
+                    <Ban className="size-3 shrink-0" />
                     {tI18nComplete.raw('text7b412527489f')}
                   </Badge>
                 )}
@@ -2465,26 +2482,26 @@ function UsersTab({
             </div>
             <div className="text-muted-foreground grid grid-cols-2 gap-2 text-xs">
               <div className="truncate">
-                <span className="text-muted-foreground/70">
+                <span className="text-muted-foreground">
                   {tI18nComplete.raw('text20c37607a3b4')}
                 </span>
-                <span className="text-muted-foreground">
+                <span className="text-foreground">
                   {user.last_sign_in_at ? formatRelative(user.last_sign_in_at) : 'Never'}
                 </span>
               </div>
               <div className="truncate">
-                <span className="text-muted-foreground/70">
+                <span className="text-muted-foreground">
                   {tI18nComplete.raw('textd55e4ce78182')}
                 </span>
-                <span className="text-muted-foreground">
+                <span className="text-foreground">
                   {user.signed_up_at ? formatRelative(user.signed_up_at) : '—'}
                 </span>
               </div>
               <div className="truncate">
-                <span className="text-muted-foreground/70">
-                  {tI18nComplete.raw('text672f1efd8b87')}{' '}
+                <span className="text-muted-foreground">
+                  {tI18nComplete.raw('text672f1efd8b87')}
                 </span>
-                <span className="text-muted-foreground capitalize">{user.provider || '—'}</span>
+                <span className="text-foreground capitalize">{user.provider || '—'}</span>
               </div>
               <div className="truncate font-mono text-xs">{user.user_id.slice(0, 8)}…</div>
             </div>
@@ -2500,11 +2517,11 @@ function ProjectsTab({
 }: {
   projectsQuery: ReturnType<typeof useAdminAccountProjects>;
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   if (projectsQuery.isLoading) {
     return (
-      <div className="border-border/60 bg-card text-muted-foreground flex items-center gap-2 rounded-md border px-4 py-6 text-sm">
-        <Loading className="h-4 w-4" />
+      <div className="border-border bg-popover text-muted-foreground flex items-center gap-2 rounded-md border px-4 py-6 text-sm">
+        <Loading className="size-4 shrink-0" />
         {tI18nComplete.raw('text6970a1ced73d')}
       </div>
     );
@@ -2513,7 +2530,7 @@ function ProjectsTab({
   const projects = projectsQuery.data?.projects ?? [];
   if (projects.length === 0) {
     return (
-      <div className="border-border/60 bg-card rounded-md border">
+      <div className="border-border bg-popover rounded-md border">
         <EmptyState
           icon={FolderKanban}
           title={tI18nComplete.raw('text4b3a077cc3f0')}
@@ -2525,14 +2542,14 @@ function ProjectsTab({
   }
 
   return (
-    <div className="border-border/60 bg-card divide-border divide-y rounded-md border">
+    <div className="border-border bg-popover divide-border divide-y rounded-md border">
       {projects.map((project) => (
         <a
           key={project.projectId}
           href={`/projects/${project.projectId}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="hover:bg-muted/40 flex flex-col gap-2 px-4 py-3 text-sm transition-colors"
+          className="hover:bg-hover flex flex-col gap-2 px-4 py-3 text-sm transition-colors"
         >
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
@@ -2548,28 +2565,22 @@ function ProjectsTab({
                 </Badge>
               )}
             </div>
-            <ExternalLink className="text-muted-foreground/60 h-3.5 w-3.5 shrink-0" />
+            <ExternalLink className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
           </div>
           <div className="text-muted-foreground grid grid-cols-2 gap-2 text-xs">
             <div className="truncate">
-              <span className="text-muted-foreground/70">
-                {tI18nComplete.raw('text7bb2d21db6dc')}{' '}
-              </span>
-              <span className="text-muted-foreground">{project.sessionCount}</span>
+              <span className="text-muted-foreground">{tI18nComplete.raw('text7bb2d21db6dc')}</span>
+              <span className="text-foreground">{project.sessionCount}</span>
             </div>
             <div className="truncate">
-              <span className="text-muted-foreground/70">
-                {tI18nComplete.raw('textade43e0f021f')}{' '}
-              </span>
-              <span className="text-muted-foreground">
+              <span className="text-muted-foreground">{tI18nComplete.raw('textade43e0f021f')}</span>
+              <span className="text-foreground">
                 {project.lastSessionAt ? formatRelative(project.lastSessionAt) : '—'}
               </span>
             </div>
             <div className="truncate">
-              <span className="text-muted-foreground/70">
-                {tI18nComplete.raw('text29d0051ddd19')}{' '}
-              </span>
-              <span className="text-muted-foreground">{formatRelative(project.updatedAt)}</span>
+              <span className="text-muted-foreground">{tI18nComplete.raw('text29d0051ddd19')}</span>
+              <span className="text-foreground">{formatRelative(project.updatedAt)}</span>
             </div>
             <div className="truncate font-mono text-xs">{project.projectId.slice(0, 8)}…</div>
           </div>
@@ -2593,11 +2604,11 @@ function formatRelative(value: string | null) {
 }
 
 function LedgerTab({ ledgerQuery }: { ledgerQuery: ReturnType<typeof useAdminAccountLedger> }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   if (ledgerQuery.isLoading) {
     return (
-      <div className="border-border/60 bg-card text-muted-foreground flex items-center gap-2 rounded-md border px-4 py-6 text-sm">
-        <Loading className="h-4 w-4" />
+      <div className="border-border bg-popover text-muted-foreground flex items-center gap-2 rounded-md border px-4 py-6 text-sm">
+        <Loading className="size-4 shrink-0" />
         {tI18nComplete.raw('text2893925796c8')}
       </div>
     );
@@ -2606,7 +2617,7 @@ function LedgerTab({ ledgerQuery }: { ledgerQuery: ReturnType<typeof useAdminAcc
   const entries = ledgerQuery.data?.entries ?? [];
   if (entries.length === 0) {
     return (
-      <div className="border-border/60 bg-card rounded-md border">
+      <div className="border-border bg-popover rounded-md border">
         <EmptyState
           icon={IconInbox}
           title={tI18nComplete.raw('text1171c854cfa8')}
@@ -2628,7 +2639,7 @@ function LedgerTab({ ledgerQuery }: { ledgerQuery: ReturnType<typeof useAdminAcc
 }
 
 function BillingTab({ account }: { account: AdminAccount }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const actions = billingActionsFor(account, tI18nComplete);
 
   const summary: Array<[string, React.ReactNode]> = [
@@ -2682,37 +2693,37 @@ function BillingTab({ account }: { account: AdminAccount }) {
               href={a.href}
               target="_blank"
               rel="noopener noreferrer"
-              className="group border-border/60 bg-card hover:bg-muted/40 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors"
+              className="group border-border bg-popover hover:bg-hover inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors"
             >
               <ServiceFavicon domain={a.domain} />
               {a.label}
-              <ExternalLink className="text-muted-foreground/60 group-hover:text-foreground h-3 w-3" />
+              <ExternalLink className="text-muted-foreground group-hover:text-foreground h-3 w-3" />
             </a>
           ))}
         </div>
       )}
 
-      <div className="border-border/60 bg-card rounded-md border text-sm">
+      <div className="border-border bg-popover rounded-md border text-sm">
         <div className="divide-border grid grid-cols-1 divide-y sm:grid-cols-2 sm:divide-x sm:divide-y-0">
           {summary.map(([label, value]) => (
             <div key={label} className="flex items-center justify-between gap-3 px-4 py-3">
-              <span className="text-muted-foreground/70 text-xs">{label}</span>
+              <span className="text-muted-foreground text-xs">{label}</span>
               <span className="text-right font-medium">{value}</span>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="border-border/60 bg-card divide-border divide-y rounded-md border text-sm">
+      <div className="border-border bg-popover divide-border divide-y rounded-md border text-sm">
         {idRows.map(({ label, value, href }) => (
           <div
             key={label}
             className="flex flex-col gap-1 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-6"
           >
-            <span className="text-muted-foreground/70 shrink-0 text-xs sm:w-40">{label}</span>
+            <span className="text-muted-foreground shrink-0 text-xs sm:w-40">{label}</span>
             {value ? (
               <div className="flex min-w-0 flex-1 items-center gap-2">
-                <code className="text-muted-foreground bg-muted/30 min-w-0 flex-1 rounded px-2 py-1 font-mono text-xs break-all">
+                <code className="text-foreground bg-muted/30 min-w-0 flex-1 rounded px-2 py-1 font-mono text-xs break-all">
                   {value}
                 </code>
                 {href && (
@@ -2720,7 +2731,7 @@ function BillingTab({ account }: { account: AdminAccount }) {
                     href={href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="border-border/60 bg-card text-muted-foreground hover:bg-muted/40 hover:text-foreground inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium transition-colors"
+                    className="border-border bg-popover text-muted-foreground hover:bg-hover hover:text-foreground inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium transition-colors"
                     title={tI18nComplete.raw('textd1f9c6739594')}
                   >
                     <ServiceFavicon domain="stripe.com" className="h-3 w-3" />

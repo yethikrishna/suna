@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from '@/i18n/test-source';
+import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 
 /**
@@ -31,7 +31,7 @@ describe('SecretsView page chrome', () => {
   test('the page is the shared capability shell, not its own column', () => {
     expect(shellStart).toBeGreaterThan(-1);
     expect(childrenStart).toBeGreaterThan(shellStart);
-    expect(shellHeader).toContain("raw('i18nComplete.textd8707d411d99')");
+    expect(shellHeader).toContain("raw('textd8707d411d99')");
     // The two pieces of the old narrow layout, gone for good. The heading is
     // written here rather than looked up: `secrets` is in neither registry
     // `SettingsTabHeader` reads, and a missed lookup renders nothing at all.
@@ -48,12 +48,12 @@ describe('SecretsView page chrome', () => {
    * restate the title.
    */
   test('the heading explains what a secret is and how it reaches a session', () => {
-    expect(shellHeader).toContain("raw('i18nComplete.texteca47e3afa10')");
+    expect(shellHeader).toContain("raw('texteca47e3afa10')");
   });
 
   test('search and the Add action are the shell’s slots, not inline', () => {
     expect(shellHeader).toContain('InputGroupSearchInput');
-    expect(shellHeader).toContain('onClick={openCreate}');
+    expect(shellHeader).toContain('onSelect: openCreate');
     expect(shellChildren).not.toContain('InputGroupSearchInput');
   });
 
@@ -66,7 +66,7 @@ describe('SecretsView page chrome', () => {
     const action = shellHeader.slice(shellHeader.indexOf('action={'));
     expect(action.indexOf('/docs/project/secrets')).toBeGreaterThan(-1);
     expect(action.indexOf('/docs/project/secrets')).toBeLessThan(
-      action.indexOf('onClick={openCreate}'),
+      action.indexOf('onSelect: openCreate'),
     );
   });
 

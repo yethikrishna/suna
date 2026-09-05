@@ -137,11 +137,14 @@ export function approvalNoticeHeadline(
 } {
   if (pendingCount === 0) return { title: tI18nComplete.raw('text6f1de8b7c3e5'), hint: null };
   if (pendingCount === 1) {
-    return { title: tI18nComplete.raw('textd24f71ceadfb'), hint: 'waiting for one decision' };
+    return {
+      title: tI18nComplete.raw('textd24f71ceadfb'),
+      hint: tI18nComplete.raw('textce033f75c938'),
+    };
   }
   return {
     title: tI18nComplete('text54d14f0b67f3', { value0: pendingCount }),
-    hint: `waiting for ${pendingCount} decisions`,
+    hint: tI18nComplete('text5726504025dc', { value0: pendingCount }),
   };
 }
 

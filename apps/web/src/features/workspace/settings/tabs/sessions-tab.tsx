@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from '@/i18n/use-translations';
 /**
  * The Sessions tab — what a running session is allowed to do to get your
  * attention: sounds and browser notifications.
@@ -28,7 +29,6 @@ import {
   SpeakerHighIcon as Volume2,
   type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
-import { useTranslations } from '@/i18n/use-translations';
 import { useEffect } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -96,7 +96,7 @@ export interface SessionsTabCopy {
 }
 
 export const DEFAULT_SESSIONS_TAB_COPY: SessionsTabCopy = {
-  notifications: 'Notifications',
+  notifications: 'Browser notifications',
   notificationsDescription: 'Browser notifications for what happens in your sessions.',
   unsupported: 'Your browser does not support notifications.',
   enableNotifications: 'Enable notifications',
@@ -255,6 +255,9 @@ export function SessionsTabView({
           change, and the one with a browser permission attached. */}
       <section className="space-y-3">
         <SettingsSubsectionHeader
+          // "Browser notifications", not "Notifications": the pane itself is
+          // called Notifications now, and a section repeating the pane's name
+          // says nothing. Sounds is the other kind.
           title={copy.notifications}
           description={copy.notificationsDescription}
         />
@@ -431,7 +434,10 @@ export function SessionsTab() {
         label: t('types.onCompletion.label'),
         description: t('types.onCompletion.description'),
       },
-      onError: { label: t('types.onError.label'), description: t('types.onError.description') },
+      onError: {
+        label: t('types.onError.label'),
+        description: t('types.onError.description'),
+      },
       onQuestion: {
         label: t('types.onQuestion.label'),
         description: t('types.onQuestion.description'),
@@ -454,7 +460,10 @@ export function SessionsTab() {
     sounds: t('sounds'),
     soundsDescription: t('soundsDescription'),
     soundPacks: {
-      off: { label: t('soundPacks.off.label'), description: t('soundPacks.off.description') },
+      off: {
+        label: t('soundPacks.off.label'),
+        description: t('soundPacks.off.description'),
+      },
       opencode: {
         label: t('soundPacks.opencode.label'),
         description: t('soundPacks.opencode.description'),
@@ -479,7 +488,10 @@ export function SessionsTab() {
         label: t('soundEvents.notification.label'),
         description: t('soundEvents.notification.description'),
       },
-      send: { label: t('soundEvents.send.label'), description: t('soundEvents.send.description') },
+      send: {
+        label: t('soundEvents.send.label'),
+        description: t('soundEvents.send.description'),
+      },
     },
     testNotificationTitle: t('testNotificationTitle'),
     testNotificationBody: t('testNotificationBody'),
@@ -512,7 +524,6 @@ export function SessionsTab() {
 
   return (
     <SessionsTabView
-      copy={copy}
       soundPack={soundPreferences.pack}
       onSoundPackChange={setSoundPack}
       soundVolume={soundPreferences.volume}
@@ -526,6 +537,7 @@ export function SessionsTab() {
       onToggleNotificationsEnabled={() => void toggleNotificationsEnabled()}
       onNotificationPreferenceChange={setNotificationPreference}
       onSendTestNotification={handleSendTestNotification}
+      copy={copy}
     />
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import type { UiTranslator } from '@/i18n/translator';
-import { useTranslations } from '@/i18n/use-translations';
+import { useTranslations as useI18nTranslations } from '@/i18n/use-translations';
 // AccessDialog — THE modal for every "give / edit access" interaction.
 //
 // Five modes (grant, edit, attach, bulk-role, bulk-group) over three scopes
@@ -163,6 +163,13 @@ export interface AccessDialogProps {
   excludeUserIds?: string[];
   /** Groups the removed principal still inherits access from — feeds the confirm copy. */
   inheritedFrom?: string[];
+  /**
+   * Grant mode only: open with the agent picker already narrowed to these
+   * agents. An agent's own page grants access to THAT agent, so it seeds
+   * its name here rather than asking the person to find it in the list.
+   * Ignored in every other mode, which seeds from `current`.
+   */
+  initialAgentIds?: string[];
   onDone?: (result: AccessDialogResult) => void;
 }
 
@@ -196,6 +203,28 @@ export function diffAgentGrants(
     add: nextIds.filter((id) => !currentIds.includes(id)),
     remove: currentIds.filter((id) => !nextIds.includes(id)),
   };
+}
+
+/**
+ * The agent grants a draft actually writes for a PROJECT MEMBER.
+ *
+ * Agents are closed by default: a member with no grant rows can use none of
+ * them (`objectUsable`, `apps/api/src/iam/authorize.ts`), and only the
+ * manager tier bypasses that. So "All agents" for a member is not "write no
+ * rows" — that would be "no agents" — it is one grant per agent the project
+ * has today. A custom role's tier is not known here, so a custom role keeps
+ * the literal selection.
+ */
+export function effectiveAgentIds(
+  builtinRole: ProjectRole | undefined,
+  customRoleId: string | null | undefined,
+  agents: AgentSelection,
+  projectAgents: readonly { id: string }[],
+): string[] {
+  if (agents.mode === 'subset') return agents.ids;
+  if (customRoleId) return [];
+  if (builtinRole === 'manager') return [];
+  return projectAgents.map((a) => a.id);
 }
 
 export interface AccessDraft {
@@ -252,27 +281,30 @@ export function accessDialogCopy(
       ? scope.projectName
       : scope.kind === 'group'
         ? scope.groupName
-        : (opts?.accountName ?? 'this account');
+        : (opts?.accountName ?? tI18nComplete.raw('text2faca96de47e'));
   const count = opts?.selectedCount ?? 0;
 
   if (mode.kind === 'grant') {
     const description =
       scope.kind === 'account'
-        ? 'Pick people, or type an email to invite someone new — everyone selected gets the same role on this account.'
+        ? tI18nComplete.raw('text3a5ae4d7de8e')
         : scope.kind === 'project'
-          ? 'Pick people or groups, or type an email to invite someone new — everyone selected gets the same role on this project.'
-          : 'Pick account members to add to this group.';
+          ? tI18nComplete.raw('textae79dce0e646')
+          : tI18nComplete.raw('text2f5525e787a5');
     return {
       title: tI18nComplete.raw('text8693768c7e08'),
       description,
-      submitLabel: count > 0 ? `Grant access (${count})` : 'Grant access',
+      submitLabel:
+        count > 0
+          ? tI18nComplete('text7697f2d90676', { count })
+          : tI18nComplete.raw('text8693768c7e08'),
     };
   }
   if (mode.kind === 'attach') {
     return {
       title: tI18nComplete.raw('text8693768c7e08'),
       description: tI18nComplete('text9f65b66d4940', { value0: mode.principal.label }),
-      submitLabel: 'Attach',
+      submitLabel: tI18nComplete.raw('textd406ade2958c'),
     };
   }
   if (mode.kind === 'edit') {
@@ -282,7 +314,7 @@ export function accessDialogCopy(
         value0: mode.principal.label,
         value1: scopeName,
       }),
-      submitLabel: 'Save',
+      submitLabel: tI18nComplete.raw('text1509f561f241'),
     };
   }
   if (mode.kind === 'bulk-group') {
@@ -290,18 +322,23 @@ export function accessDialogCopy(
     return {
       title: tI18nComplete.raw('textea849eb70c26'),
       description:
-        n === 1 ? 'Pick the group this person joins.' : `Pick the group these ${n} people join.`,
-      submitLabel: 'Add to group',
+        n === 1
+          ? tI18nComplete.raw('text8e4a6d907944')
+          : tI18nComplete('textdb16253b2304', { count: n }),
+      submitLabel: tI18nComplete.raw('textea849eb70c26'),
     };
   }
   return {
     title: tI18nComplete.raw('texta514a684676a'),
     description: tI18nComplete('text065f04fd94d6', {
       value0: mode.principals.length,
-      value1: mode.principals.length === 1 ? 'person' : 'people',
+      value1:
+        mode.principals.length === 1
+          ? tI18nComplete.raw('text38a81e87e796')
+          : tI18nComplete.raw('textc9022680f888'),
       value2: scopeName,
     }),
-    submitLabel: 'Save',
+    submitLabel: tI18nComplete.raw('text1509f561f241'),
   };
 }
 
@@ -347,6 +384,7 @@ interface AccessDraftState {
 function initialDraftState(
   mode: AccessDialogMode,
   roleScope: 'account' | 'project' | null,
+  initialAgentIds?: string[],
 ): AccessDraftState {
   const role: RoleValue =
     mode.kind === 'edit'
@@ -357,7 +395,12 @@ function initialDraftState(
   return {
     principals: EMPTY_PRINCIPAL_SELECTION,
     role,
-    agents: mode.kind === 'edit' ? agentSelectionFromCurrent(mode.current.agentIds) : ALL_AGENTS,
+    agents:
+      mode.kind === 'edit'
+        ? agentSelectionFromCurrent(mode.current.agentIds)
+        : mode.kind === 'grant' && initialAgentIds && initialAgentIds.length > 0
+          ? { mode: 'subset', ids: [...initialAgentIds] }
+          : ALL_AGENTS,
     expires: mode.kind === 'edit' ? isoToDateInputValue(mode.current.expiresAt) : '',
     attachProjectId: '',
     projectGrants: [],
@@ -380,9 +423,10 @@ export function AccessDialog({
   excludeProjectIds,
   excludeUserIds,
   inheritedFrom,
+  initialAgentIds,
   onDone,
 }: AccessDialogProps) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const queryClient = useQueryClient();
   const roleScope = roleScopeFor(scope);
   const projectId = scope.kind === 'project' ? scope.projectId : undefined;
@@ -393,11 +437,13 @@ export function AccessDialog({
   // render, and no stale draft from a previous principal can survive a
   // reopen. Closing never re-seeds, so the exit animation plays over the
   // content the person was looking at.
-  const [draft, setDraft] = useState<AccessDraftState>(() => initialDraftState(mode, roleScope));
+  const [draft, setDraft] = useState<AccessDraftState>(() =>
+    initialDraftState(mode, roleScope, initialAgentIds),
+  );
   const [wasOpen, setWasOpen] = useState(open);
   if (open !== wasOpen) {
     setWasOpen(open);
-    if (open) setDraft(initialDraftState(mode, roleScope));
+    if (open) setDraft(initialDraftState(mode, roleScope, initialAgentIds));
   }
 
   const {
@@ -436,7 +482,13 @@ export function AccessDialog({
   const builtin = baselineBuiltinRole(roleScope ?? 'project', role);
 
   // ── Agents (project scope only) ───────────────────────────────────────
-  const showAgents = scope.kind === 'project' && (mode.kind === 'grant' || mode.kind === 'edit');
+  // Not for a project admin: the manager tier uses every agent regardless of
+  // grants (`objectUsable` in `apps/api/src/iam/authorize.ts`), so a picker
+  // under that role would write rows that change nothing.
+  const showAgents =
+    scope.kind === 'project' &&
+    (mode.kind === 'grant' || mode.kind === 'edit') &&
+    builtin !== 'manager';
   const resourceGrantsQuery = useQuery({
     queryKey: qk.project.resourceGrants(projectId ?? ''),
     queryFn: () => listProjectResourceGrants(projectId as string),
@@ -650,7 +702,7 @@ export function AccessDialog({
     // project scope
     const projectBuiltin = (builtin ?? 'member') as ProjectRole;
     const pid = scope.projectId;
-    const agentIdsToGrant = agents.mode === 'subset' ? agents.ids : [];
+    const agentIdsToGrant = effectiveAgentIds(projectBuiltin, roleId, agents, projectAgents);
 
     for (const userId of principals.memberIds) {
       tasks.push({
@@ -691,7 +743,15 @@ export function AccessDialog({
   function buildEditTasks(): Task[] {
     if (mode.kind !== 'edit') return [];
     const { principal, current } = mode;
-    const diff = diffAccessDraft(current, { role, agents, expiresAt: expires });
+    const effectiveDraftAgents: AgentSelection =
+      agents.mode === 'all' && builtin !== 'manager' && !isCustom
+        ? { mode: 'subset', ids: projectAgents.map((a) => a.id) }
+        : agents;
+    const diff = diffAccessDraft(current, {
+      role,
+      agents: effectiveDraftAgents,
+      expiresAt: expires,
+    });
     if (!diff.dirty) return [];
     const roleId = role.kind === 'custom' ? role.roleId : null;
     const expiresIso = expirySupported ? endOfLocalDayIso(expires) : undefined;
@@ -851,11 +911,11 @@ export function AccessDialog({
 
       if (undeliveredInvite && undeliveredInvite.status === 'fulfilled') {
         const url = (undeliveredInvite.value as { invite_url?: string }).invite_url ?? '';
-        warningToast(tI18nComplete.raw('text235b7345c9a4'), {
+        warningToast(tI18nComplete.raw('textc32c6c7ee51b'), {
           duration: 10_000,
           button: (
             <Button size="sm" onClick={() => void navigator.clipboard.writeText(url)}>
-              {tI18nComplete.raw('text4dd4a88d39fe')}
+              {tI18nComplete.raw('text6aaa89b8157c')}
             </Button>
           ),
         });
@@ -876,7 +936,7 @@ export function AccessDialog({
             : tI18nComplete('text272f6dbe5a44', { value0: total }),
         );
       } else if (mode.kind === 'attach') {
-        successToast(tI18nComplete.raw('text9fc6a9fcbab2'));
+        successToast(tI18nComplete.raw('text4c646014b529'));
       } else if (mode.kind === 'bulk-group') {
         successToast(
           selectedCount === 1
@@ -884,7 +944,7 @@ export function AccessDialog({
             : tI18nComplete('textfd1a3ff157f3', { value0: selectedCount }),
         );
       } else {
-        successToast(tI18nComplete.raw('textec9036582701'));
+        successToast(tI18nComplete.raw('texte0769a52772f'));
       }
 
       const touched = [
@@ -911,7 +971,7 @@ export function AccessDialog({
       }
     },
     onSuccess: () => {
-      successToast(tI18nComplete.raw('textabb84f9edc9e'));
+      successToast(tI18nComplete.raw('textdcdce51f07eb'));
       invalidate(projectId ? [projectId] : []);
       setRemoveOpen(false);
       onOpenChange(false);
@@ -1083,6 +1143,13 @@ export function AccessDialog({
                     </TabsTriggerCompact>
                   </TabsListCompact>
                 </Tabs>
+                {agents.mode === 'all' ? (
+                  <FieldDescription>
+                    {projectAgents.length === 0
+                      ? tI18nComplete.raw('text7bf9d07dcb99')
+                      : tI18nComplete('textc5bb9fda9711', { value0: projectAgents.length })}
+                  </FieldDescription>
+                ) : null}
                 {agents.mode === 'subset' ? (
                   resourceGrantsQuery.isLoading ? (
                     <Skeleton className="h-24 w-full rounded-md" />
@@ -1232,7 +1299,7 @@ export function AccessDialog({
 // ─── Body pieces ───────────────────────────────────────────────────────────
 
 function FixedPrincipals({ principals }: { principals: AccessDialogPrincipal[] }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   return (
     <ul className="space-y-2">
       {principals.map((principal) => (
@@ -1275,7 +1342,7 @@ function ScopeLine({
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <Icon className="text-muted-foreground/70 size-3.5 shrink-0" />
-      <span className="text-muted-foreground text-xs font-medium">{label}</span>
+      <span className="text-muted-foreground text-[11px] font-medium">{label}</span>
       {items.map((name) => (
         <Badge key={name} variant="outline" size="xs" className="font-mono">
           {name}
@@ -1296,7 +1363,7 @@ export function BlastRadiusPreview({
 }: {
   declares: { secrets: string[] | 'all'; connectors: string[] | 'all' };
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const secrets = declares.secrets === 'all' ? [] : declares.secrets;
   const connectors = declares.connectors === 'all' ? [] : declares.connectors;
   const nothingExtra = secrets.length === 0 && connectors.length === 0;
@@ -1304,12 +1371,12 @@ export function BlastRadiusPreview({
     <div className="border-border/60 bg-muted/30 space-y-2 rounded-md border p-3">
       <div className="flex items-center gap-1.5">
         <ArrowElbowDownRightIcon className="text-muted-foreground/70 size-3.5 shrink-0" />
-        <span className="text-foreground text-xs font-medium">
+        <span className="text-foreground/80 text-xs font-medium">
           {tI18nComplete.raw('text4fb37eec9d1d')}
         </span>
       </div>
       {nothingExtra ? (
-        <p className="text-muted-foreground text-xs leading-relaxed">
+        <p className="text-muted-foreground text-[11px] leading-relaxed">
           {tI18nComplete.raw('text7cbab07cd223')}
         </p>
       ) : (
@@ -1330,7 +1397,7 @@ export function BlastRadiusPreview({
               />
             ) : null}
           </div>
-          <p className="text-muted-foreground text-xs leading-relaxed">
+          <p className="text-muted-foreground/60 text-[11px] leading-relaxed">
             {tI18nComplete.raw('text4b25aab8909e')}
           </p>
         </>
@@ -1358,7 +1425,7 @@ function ProjectAccessRows({
   rbacEnabled?: boolean;
   canManageRoles?: boolean;
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   if (!expanded && rows.length === 0) {
     return (
       <button

@@ -28,6 +28,7 @@ import type { FeatureFlagKey } from '@kortix/sdk';
 import {
   ActivityIcon as Activity,
   AlarmIcon as AlarmClock,
+  ArrowCircleUpIcon as ArrowUpCircle,
   SquaresFourIcon as Blocks,
   RobotIcon as Bot,
   CalendarIcon as Calendar,
@@ -35,8 +36,10 @@ import {
   GearSixIcon as CogOne,
   CoinsIcon as Coins,
   CompassIcon as Compass,
+  ShippingContainerIcon as Container,
   CpuIcon as Cpu,
   CreditCardIcon as CreditCardSolid,
+  FlaskIcon as Flask,
   GitBranchIcon as FolderGit2,
   FolderOpenIcon as FolderOpen,
   GitDiffIcon as GitCompareArrows,
@@ -498,14 +501,64 @@ export const menuRegistry: MenuItemDef[] = [
     group: 'navigation',
     showIn: ['commandPalette'],
     kind: 'navigate',
-    // The index/hub, NOT `/config`. `/customize` renders `CustomizeIndexPage`,
-    // a card grid over every tab below — which is what the word "customize"
-    // now names, since each tab it introduces has its own row. Before this
-    // change the word led to the Settings tab, one of the eight things the hub
-    // introduces.
+    // `/customize` redirects to the first capability tab the caller may open
+    // — Agents, for anyone who can read them — so this entry lands where the
+    // sidebar's Customize row lands (Marko, 2026-09-01: Customize is
+    // agent-centric). It is kept as the palette's href rather than `/agent`
+    // so the two cannot drift: one redirect owns the landing rule.
     href: '/projects/{projectId}/customize',
     requiresProject: true,
     keywords: 'customize configure setup capabilities overview hub',
+  },
+  // The Customize bar's trailing Settings tab, one row per section. Retired
+  // 2026-09-02 for the overlay's Workspace group; both came back to this page
+  // on 2026-09-03 (Marko) when that group was removed from the overlay.
+  {
+    id: 'proj-config-general',
+    label: 'Settings · General',
+    icon: CogOne,
+    group: 'navigation',
+    showIn: ['commandPalette'],
+    kind: 'navigate',
+    href: '/projects/{projectId}/customize/settings',
+    requiresProject: true,
+    keywords:
+      'settings general workspace rename delete danger zone name description git repo repository github clone branch remote',
+  },
+  {
+    id: 'proj-config-sandbox',
+    label: 'Settings · Sandbox templates',
+    icon: Container,
+    group: 'navigation',
+    showIn: ['commandPalette'],
+    kind: 'navigate',
+    href: '/projects/{projectId}/customize/settings?section=sandbox',
+    requiresProject: true,
+    // Snapshots merged into this section — a snapshot is a sandbox template's
+    // build history — so both vocabularies answer here.
+    keywords: 'sandbox templates template image runtime machine snapshots builds recipe container',
+  },
+  {
+    id: 'proj-config-feature-flags',
+    label: 'Settings · Feature flags',
+    icon: Flask,
+    group: 'navigation',
+    showIn: ['commandPalette'],
+    kind: 'navigate',
+    href: '/projects/{projectId}/customize/settings?section=feature-flags',
+    requiresProject: true,
+    keywords: 'feature flags flag experimental labs beta toggle enable disable',
+  },
+  {
+    id: 'proj-config-upgrades',
+    label: 'Settings · Upgrades',
+    icon: ArrowUpCircle,
+    group: 'navigation',
+    showIn: ['commandPalette'],
+    kind: 'navigate',
+    href: '/projects/{projectId}/customize/settings?section=upgrades',
+    requiresProject: true,
+    keywords: 'upgrades upgrade migrate migration manifest runner kortix yaml version bump',
   },
   {
     id: 'proj-models',
@@ -514,7 +567,7 @@ export const menuRegistry: MenuItemDef[] = [
     group: 'navigation',
     showIn: ['commandPalette'],
     kind: 'navigate',
-    href: '/projects/{projectId}/models',
+    href: '/projects/{projectId}/customize/models',
     requiresProject: true,
     // The reported bug's row. `llm gateway providers budgets anthropic openai
     // openrouter` came off `proj-customize`'s bag, where they pointed at
@@ -534,7 +587,7 @@ export const menuRegistry: MenuItemDef[] = [
     // The standalone page, not `/customize/agents`. That href still works —
     // `legacySectionRedirect` bounces it here — but routing through the
     // redirect costs a second navigation and paints the overlay route first.
-    href: '/projects/{projectId}/agent',
+    href: '/projects/{projectId}/customize/agents',
     requiresProject: true,
     keywords: 'agents subagents ai',
   },
@@ -545,7 +598,7 @@ export const menuRegistry: MenuItemDef[] = [
     group: 'navigation',
     showIn: ['commandPalette'],
     kind: 'navigate',
-    href: '/projects/{projectId}/skills',
+    href: '/projects/{projectId}/customize/skills',
     requiresProject: true,
     keywords: 'skills abilities',
   },
@@ -563,7 +616,7 @@ export const menuRegistry: MenuItemDef[] = [
     group: 'navigation',
     showIn: ['commandPalette'],
     kind: 'navigate',
-    href: '/projects/{projectId}/connectors',
+    href: '/projects/{projectId}/customize/connectors',
     requiresProject: true,
     // 'apps' removed: it is the label of `proj-apps` (deployments), so the
     // one-word query for that page returned Connectors as well. 'connector' /
@@ -582,7 +635,7 @@ export const menuRegistry: MenuItemDef[] = [
     // "slack" and "inbox" are words people type, and the scope query lands
     // them on the inbound half rather than the outbound one.
     // 'connections' stays off this bag — it names `proj-connectors`.
-    href: '/projects/{projectId}/connectors?scope=channels',
+    href: '/projects/{projectId}/customize/connectors?scope=channels',
     requiresProject: true,
     keywords: 'channels channel slack teams discord email agentmail inbox inbound messaging',
   },
@@ -598,7 +651,7 @@ export const menuRegistry: MenuItemDef[] = [
     // `?rules=1` opens the Global rules sheet on arrival — the Connectors page
     // hosts `PoliciesPanel` and reads that param (`connectors-page.tsx`), so
     // this entry now reaches the destination its label names.
-    href: '/projects/{projectId}/connectors?rules=1',
+    href: '/projects/{projectId}/customize/connectors?rules=1',
     requiresProject: true,
     keywords: 'policies approval block require_approval rules tools connector guardrails',
   },
@@ -614,7 +667,7 @@ export const menuRegistry: MenuItemDef[] = [
     // two ways to start it, not two separate rows. `/projects/{id}/settings/
     // schedules` and `/settings/webhooks` no longer resolve to a tab; both
     // redirect here via `legacySectionRedirect`.
-    href: '/projects/{projectId}/triggers',
+    href: '/projects/{projectId}/customize/triggers',
     requiresProject: true,
     // The combined bag both retired rows carried, so neither query goes dark.
     keywords:
@@ -627,7 +680,7 @@ export const menuRegistry: MenuItemDef[] = [
     group: 'navigation',
     showIn: ['commandPalette'],
     kind: 'navigate',
-    href: '/projects/{projectId}/secrets',
+    href: '/projects/{projectId}/customize/secrets',
     requiresProject: true,
     keywords: 'secrets secret env environment variables credentials vault egress store',
   },
@@ -685,7 +738,7 @@ export const menuRegistry: MenuItemDef[] = [
   //
   // `proj-config-feature-flags` outlived that sentence by a day. The row was
   // still here on 2026-09-03, twenty-five lines under its own obituary, with
-  // `href: '/projects/{projectId}/config?section=feature-flags'` — a route
+  // `href: '/projects/{projectId}/customize/settings?section=feature-flags'` — a route
   // `app/` no longer contains. Typing "feature flag" returned TWO rows: this
   // one, under Navigation, labelled "Settings · Feature flags" and landing on
   // a dead URL, and the derived `settings-tab-feature-flags` under "Settings ·
@@ -712,7 +765,7 @@ export const menuRegistry: MenuItemDef[] = [
     showIn: ['commandPalette'],
     kind: 'navigate',
     // Its own capability tab since 2026-09-02, beside Agents and Triggers.
-    href: '/projects/{projectId}/review',
+    href: '/projects/{projectId}/customize/review',
     requiresProject: true,
     // Same gate the tab carries (`visibleCapabilityTabs` hides Review while
     // `review_center` is off), so the row cannot outlive the page.
@@ -989,7 +1042,7 @@ export const menuRegistry: MenuItemDef[] = [
   // change exists to remove.
   // ──────────────────────────────────────────────────────────────────────────
   // `pref-general` is gone. It declared `settingsTab: 'general'` — the project
-  // WORKSPACE tab — which is a `?section=` on `/projects/[id]/config` now, not
+  // WORKSPACE tab — which is a `?section=` on `/projects/[id]/customize/settings` now, not
   // a settings tab at all. A `kind: 'settings'` row can only name a tab, and
   // there is no user-scoped tab this row meant, so it was removed rather than
   // repointed at an unrelated pane. Nothing rendered it: its only declared

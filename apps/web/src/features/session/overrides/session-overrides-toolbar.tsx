@@ -2,6 +2,7 @@
 
 import { InfoBanner } from '@/components/ui/info-banner';
 import { errorToast, successToast } from '@/components/ui/toast';
+import { useTranslations } from '@/i18n/use-translations';
 import type { SessionScope } from '@kortix/sdk';
 import {
   CpuIcon as Cpu,
@@ -9,7 +10,6 @@ import {
   PlugIcon as PlugZap,
   WarningIcon as TriangleAlert,
 } from '@phosphor-icons/react';
-import { useTranslations } from '@/i18n/use-translations';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import {
@@ -212,7 +212,7 @@ export function SessionOverridesToolbar({
       id: 'secrets',
       name: 'Secrets',
       icon: KeyRound,
-      hint: 'Environment values',
+      hint: tI18nComplete.raw('textb9967f948f93'),
       summary:
         activeCatalog.secrets.status === 'ready' ? sessionSecretsSummary(draft) : 'Unavailable',
       overridden: sessionSecretsAreOverridden(draft),
@@ -232,7 +232,7 @@ export function SessionOverridesToolbar({
       id: 'connectors',
       name: 'Connectors',
       icon: PlugZap,
-      hint: 'Authorized accounts',
+      hint: tI18nComplete.raw('textaea537d63c8c'),
       summary:
         activeCatalog.connector_connections.status === 'ready'
           ? sessionConnectorsSummary(draft)
@@ -256,7 +256,7 @@ export function SessionOverridesToolbar({
         id: 'sandbox',
         name: 'Sandbox',
         icon: Cpu,
-        hint: 'Where it runs',
+        hint: tI18nComplete.raw('text6cc00d310273'),
         summary: sandboxSlot.summary,
         overridden: sandboxSlot.overridden,
         description:
@@ -271,7 +271,7 @@ export function SessionOverridesToolbar({
         id: 'sandbox',
         name: 'Sandbox',
         icon: Cpu,
-        hint: 'Fixed at session start',
+        hint: tI18nComplete.raw('text57c8f2cd3dd6'),
         summary: sandbox?.slug ?? tI18nComplete.raw('text0b1bdec38bf0'),
         description: tI18nComplete.raw('textf3ad568c3fa6'),
         readOnly: true,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from '@/i18n/use-translations';
+import { useTranslations as useI18nTranslations } from '@/i18n/use-translations';
 /**
  * The panel behind a row click.
  *
@@ -76,6 +76,7 @@ import {
 } from '@phosphor-icons/react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
+import { triggerSessionAccessCopy } from './trigger-session-access-copy';
 
 import {
   CUSTOM_TIMING_LABEL,
@@ -149,7 +150,7 @@ export function ScheduleDetailSheet({
   onDelete: () => void;
   onMutated: () => void;
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const toggle = useMutation({
     mutationFn: (enabled: boolean) => updateProjectTrigger(projectId, trigger!.slug, { enabled }),
     onSuccess: (_data, enabled) => {
@@ -261,7 +262,8 @@ export function ScheduleDetailSheet({
                 <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuItem variant="destructive" onClick={onDelete}>
                     <TrashIcon className="size-3.5 shrink-0" />
-                    {tI18nComplete.raw('texte2d0a54968ea')} {isCron ? 'schedule' : 'webhook'}
+                    {tI18nComplete.raw('texte2d0a54968ea')}
+                    {isCron ? 'schedule' : 'webhook'}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -373,7 +375,7 @@ function WhatItDoesPanel({
   canWrite: boolean;
   onMutated: () => void;
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const [name, setName] = useState(trigger.name);
   const [instruction, setInstruction] = useState(trigger.prompt_template);
 
@@ -476,7 +478,7 @@ function WhenItRunsPanel({
   canWrite: boolean;
   onMutated: () => void;
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const [editing, setEditing] = useState(false);
   const [cron, setCron] = useState(trigger.cron ?? '0 0 9 * * *');
   const [runAt, setRunAt] = useState<string | null>(trigger.run_at);
@@ -501,7 +503,7 @@ function WhenItRunsPanel({
           : { cron: cron.trim(), run_at: null, timezone },
       ),
     onSuccess: () => {
-      successToast(tI18nComplete.raw('text47931699ba90'));
+      successToast(tI18nComplete.raw('text5e2e76e79516'));
       setEditing(false);
       onMutated();
     },
@@ -586,7 +588,7 @@ function AddressPanel({
   canWrite: boolean;
   onMutated: () => void;
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const url = trigger.webhook_url ?? '';
   const sample = useMemo(() => buildSampleRequest(url), [url]);
   const security = describeSecurity(trigger, tI18nComplete);
@@ -600,7 +602,7 @@ function AddressPanel({
     mutationFn: () =>
       updateProjectTrigger(projectId, trigger.slug, { secret_env: secretName.trim() }),
     onSuccess: () => {
-      successToast(tI18nComplete.raw('text523a2c77931b'));
+      successToast(tI18nComplete.raw('textd5c147e93f23'));
       onMutated();
     },
     onError: (e: Error) => errorToast(e.message || tI18nComplete.raw('text966761671cbc')),
@@ -691,7 +693,7 @@ function ConditionsPanel({
   canWrite: boolean;
   onMutated: () => void;
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const [rows, setRows] = useState<ConditionRow[]>(() => conditionsToRows(trigger.filter));
 
   // The list refetches every 10s and `trigger.filter` is a fresh object each
@@ -706,7 +708,7 @@ function ConditionsPanel({
     mutationFn: () =>
       updateProjectTrigger(projectId, trigger.slug, { filter: rowsToConditions(rows) }),
     onSuccess: () => {
-      successToast(tI18nComplete.raw('text264bee80d72a'));
+      successToast(tI18nComplete.raw('textfc62a0071f66'));
       onMutated();
     },
     onError: (e: Error) => errorToast(e.message || tI18nComplete.raw('text2371acc8f6df')),
@@ -763,7 +765,7 @@ function AgentPanel({
   canWrite: boolean;
   onMutated: () => void;
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const agents = useVisibleAgents({ projectId });
   const { data: providers } = useRuntimeProviders();
   const models = useMemo(() => flattenModels(providers), [providers]);
@@ -778,7 +780,7 @@ function AgentPanel({
   const saveAgent = useMutation({
     mutationFn: (agent: string) => updateProjectTrigger(projectId, trigger.slug, { agent }),
     onSuccess: () => {
-      successToast(tI18nComplete.raw('text72f493ee94fe'));
+      successToast(tI18nComplete.raw('textd24a95381c8e'));
       onMutated();
     },
     onError: (e: Error) => errorToast(e.message || tI18nComplete.raw('textc617ab4ba83d')),
@@ -790,7 +792,7 @@ function AgentPanel({
         model: model ? modelKeyToWire(model) : null,
       }),
     onSuccess: () => {
-      successToast(tI18nComplete.raw('text3c236853c693'));
+      successToast(tI18nComplete.raw('text4c658b4e952e'));
       onMutated();
     },
     onError: (e: Error) => errorToast(e.message || tI18nComplete.raw('text6ff3502ac059')),
@@ -804,7 +806,7 @@ function AgentPanel({
             { label: tI18nComplete.raw('text11b39c93777e'), value: trigger.agent },
             {
               label: tI18nComplete.raw('text5e2c614c23f0'),
-              value: trigger.model ?? tI18nComplete.raw('text73b95849f271'),
+              value: trigger.model ?? "The agent's usual model",
             },
           ]}
         />
@@ -879,7 +881,7 @@ function MemoryPanel({
   canWrite: boolean;
   onMutated: () => void;
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const [mode, setMode] = useState<SessionMode>(trigger.session_mode);
   const [pinned, setPinned] = useState<string | null>(trigger.session_id);
   const [key, setKey] = useState(trigger.session_key ?? '');
@@ -982,13 +984,13 @@ function AccessPanel({
   canWrite: boolean;
   onMutated: () => void;
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const [selection, setSelection] = useState<SharingSelection>(trigger.session_access);
 
   const save = useMutation({
     mutationFn: () => updateProjectTrigger(projectId, trigger.slug, { session_access: selection }),
     onSuccess: () => {
-      successToast(tI18nComplete.raw('text6af67c48af69'));
+      successToast(tI18nComplete.raw('text416476d59f76'));
       onMutated();
     },
     onError: (e: Error) => errorToast(e.message || tI18nComplete.raw('text68d66e06fd0f')),
@@ -1024,21 +1026,7 @@ function AccessPanel({
         value={selection}
         onChange={setSelection}
         showHeading={false}
-        copy={{
-          heading: tI18nComplete.raw('textefcc5a598260'),
-          private: {
-            label: tI18nComplete.raw('text56536365c70b'),
-            desc: tI18nComplete.raw('textc296b293902b'),
-          },
-          members: {
-            label: tI18nComplete.raw('text1999ea7700a7'),
-            desc: tI18nComplete.raw('text96f78a1908b4'),
-          },
-          project: {
-            label: tI18nComplete.raw('text28ff734e9722'),
-            desc: tI18nComplete.raw('text655d15facaf2'),
-          },
-        }}
+        copy={triggerSessionAccessCopy(tI18nComplete)}
       />
       {trigger.session_mode === 'pinned' ? (
         <InfoBanner tone="info" className="text-xs">
@@ -1052,7 +1040,7 @@ function AccessPanel({
 /* ─── Details — facts, not settings ─────────────────────────────────────── */
 
 function DetailsPanel({ trigger }: { trigger: ProjectTrigger }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   return (
     <Disclosure className="group bg-popover overflow-hidden rounded-md border">
       <DisclosureTrigger>

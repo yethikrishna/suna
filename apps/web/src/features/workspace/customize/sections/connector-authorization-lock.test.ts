@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from '@/i18n/test-source';
+import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 
 /**
@@ -44,7 +44,7 @@ describe('connector authorization owner is locked after creation', () => {
     // Both halves matter: WHICH owner (the thing being read) and WHY it cannot
     // move (the thing that stops a support ticket).
     expect(MODAL).toContain('{lockedReason}');
-    expect(MODAL).toContain("? tI18nComplete.raw('text985959785319')");
+    expect(MODAL).toContain("tI18nComplete.raw('text985959785319')");
   });
 
   test('the backend path is still wired, so this stays a one-prop revert', () => {

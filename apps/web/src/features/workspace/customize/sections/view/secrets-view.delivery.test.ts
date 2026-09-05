@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from '@/i18n/test-source';
+import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 
 import { testUiTranslator } from '@/i18n/test-translator';
@@ -104,9 +104,7 @@ describe('SecretsView asks ONE question and writes the three pairs the model nam
     expect(code).not.toContain('available_sandbox_providers');
     expect(code).not.toContain('disabledReason');
     expect(code).toContain("useFeatureFlag(projectId, 'secrets_egress').enabled");
-    expect(code).toContain(
-      'secretExposureOptions(egressEnabled || rowIsEnforced, tI18nComplete)',
-    );
+    expect(code).toContain('secretExposureOptions(egressEnabled || rowIsEnforced, tI18nComplete)');
   });
 });
 
@@ -153,7 +151,7 @@ describe('SecretsView warns when no agent can receive the secret', () => {
     expect(code).toContain(
       'shouldWarnMissingAgentGrant(row.deliveryBlockedReason, row.strategy, row.consumer) && (',
     );
-    expect(code).toContain("raw('i18nComplete.text6404e0b5d78d')");
+    expect(code).toContain("raw('text6404e0b5d78d')");
   });
 
   test('the dialog renders the notice and the kortix.yaml fix', () => {

@@ -238,7 +238,9 @@ const displayAttributeNames = new Set([
   'aria-label',
   'description',
   'emptyText',
+  'help',
   'helperText',
+  'hint',
   'label',
   'message',
   'placeholder',
@@ -267,6 +269,7 @@ const displayPropertyNames = new Set([
   'eyebrow',
   'helperText',
   'heading',
+  'help',
   'label',
   'markdown',
   'message',
@@ -280,6 +283,7 @@ const displayPropertyNames = new Set([
   'thinkingLabel',
   'title',
   'tooltip',
+  'hint',
 ]);
 
 const displayCollectionPropertyNames = new Set([
@@ -472,7 +476,7 @@ function scanFile(file) {
     if (
       ts.isCallExpression(node) &&
       ts.isIdentifier(node.expression) &&
-      node.expression.text === 'localizeUiCatalog'
+      ['localizeUiCatalog', 'useLocalizedUiCatalog'].includes(node.expression.text)
     ) {
       const value = node.arguments[0];
       if (value && ts.isObjectLiteralExpression(value)) {
@@ -491,6 +495,33 @@ function scanFile(file) {
   }
 
   collectLocalizedCatalogRoots(sourceFile);
+  let expandedCatalogRoots = true;
+  while (expandedCatalogRoots) {
+    expandedCatalogRoots = false;
+    function expandLocalizedCatalogRoots(node) {
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        localizedCatalogRoots.has(node.name.text) &&
+        node.initializer &&
+        ts.isObjectLiteralExpression(node.initializer)
+      ) {
+        for (const property of node.initializer.properties) {
+          const identifier = ts.isShorthandPropertyAssignment(property)
+            ? property.name
+            : ts.isPropertyAssignment(property) && ts.isIdentifier(property.initializer)
+              ? property.initializer
+              : undefined;
+          if (identifier && !localizedCatalogRoots.has(identifier.text)) {
+            localizedCatalogRoots.add(identifier.text);
+            expandedCatalogRoots = true;
+          }
+        }
+      }
+      ts.forEachChild(node, expandLocalizedCatalogRoots);
+    }
+    expandLocalizedCatalogRoots(sourceFile);
+  }
 
   function add(kind, node, text) {
     const nodeKey = `${node.pos}:${node.end}`;
@@ -768,7 +799,7 @@ function scanFile(file) {
         ].includes(catalogRoot);
       const coveredSettingsRail =
         file === path.join(srcDir, 'features/workspace/settings/rail.ts') &&
-        catalogRoot === 'STATIC_GROUPS';
+        ['STATIC_GROUPS', 'RETIRED_RAIL_ITEMS'].includes(catalogRoot);
       const coveredOnboardingProfileFixture =
         file === path.join(srcDir, 'components/projects/onboarding/onboarding-profile.ts') &&
         ['USE_CASE_OPTIONS', 'STARTER_PROMPTS', 'ENGLISH_KICKOFF_COPY'].includes(catalogRoot);

@@ -8,7 +8,7 @@ const headings = (html: string): string[] =>
 const html = () => renderToStaticMarkup(<SessionsTabView />);
 
 describe('SessionsTabView', () => {
-  test('renders injected locale copy instead of fixed English labels', () => {
+  test('renders injected locale body copy instead of fixed English body labels', () => {
     const out = renderToStaticMarkup(
       <SessionsTabView
         copy={{
@@ -58,11 +58,11 @@ describe('SessionsTabView', () => {
     expect(out).toContain('Обавештења');
     expect(out).toContain('Омогући обавештења');
     expect(out).toContain('Звукови');
-    expect(out).not.toContain('>Notifications<');
+    expect(out).not.toContain('>Browser notifications<');
   });
 
   test('notifications lead, then sounds — one h2, the rest h3', () => {
-    expect(headings(html())).toEqual(['h2:Sessions', 'h3:Notifications', 'h3:Sounds']);
+    expect(headings(html())).toEqual(['h2:Notifications', 'h3:Browser notifications', 'h3:Sounds']);
   });
 
   test('a separator sits between the two sections', () => {

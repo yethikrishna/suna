@@ -76,7 +76,9 @@ export function ComputeCreditCalculator(): ReactNode {
           <ControlRow
             label={tI18nComplete.raw('text42ef2c24bd7a')}
             value={String(seats)}
-            hint={`Each seat adds ${FMT.format(TEAM_CREDITS_PER_SEAT)} pooled credits a month. The whole team draws from one balance.`}
+            hint={tI18nComplete('text415d8dfb1c5e', {
+              value0: FMT.format(TEAM_CREDITS_PER_SEAT),
+            })}
           >
             <Slider
               value={[seats]}

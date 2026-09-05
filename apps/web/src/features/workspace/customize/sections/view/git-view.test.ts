@@ -74,23 +74,6 @@ test('never echoes a raw connection status enum at the user', () => {
   expect(connectionStatusLabel(null)).toEqual({ tone: 'unknown', label: 'Not connected' });
 });
 
-test('connection and provider helpers accept locale copy', () => {
-  expect(
-    connectionStatusLabel('error', {
-      connected: 'Повезано',
-      attention: 'Потребна пажња',
-      connecting: 'Повезивање…',
-      disconnected: 'Није повезано',
-    }),
-  ).toEqual({ tone: 'attention', label: 'Потребна пажња' });
-  expect(
-    providerSentence('github', {
-      hosted: (provider) => `Хостовано на ${provider}.`,
-      stored: (provider) => `Сачувано у ${provider}.`,
-    }),
-  ).toBe('Хостовано на GitHub.');
-});
-
 test('copy control keeps both icons in an animated fixed-size box', () => {
   // The pane must reach the box through the shared control...
   expect(source).toContain("import { CopyButton } from '@/components/markdown/copy-button'");
@@ -108,9 +91,9 @@ test('copy control keeps both icons in an animated fixed-size box', () => {
 
 test('develop locally includes the environment-aware CLI installer before clone', () => {
   expect(source).toContain('useDeploymentCliInstallCommand(getEnv().VERSION)');
-  expect(source).toContain("label={t('installCommand')}");
-  expect(source.indexOf("label={t('installCommand')}")).toBeLessThan(
-    source.indexOf("label={t('cloneCommand')}"),
+  expect(source).toContain('label="Install command"');
+  expect(source.indexOf('label="Install command"')).toBeLessThan(
+    source.indexOf('label="Clone command"'),
   );
 });
 
@@ -120,7 +103,7 @@ test('the comment-stripped view of the source can still fail', () => {
   // pass forever while testing nothing. Prove the strip kept the code and
   // removed the prose in the same breath.
   expect(code).toContain('export function GitView');
-  expect(code).toContain("<SettingsSubsectionHeader title={t('title')} />");
+  expect(code).toContain('<RepositoryGroup');
   expect(code.length).toBeGreaterThan(source.length / 3);
   // The canary is the exact string the next test asserts is absent from the
   // code. `OwnGitClient`'s doc comment quotes the old section name verbatim to
@@ -130,15 +113,14 @@ test('the comment-stripped view of the source can still fail', () => {
   expect(code).not.toContain('Kortix proxy origin');
 });
 
-test('renders exactly one page heading, and it is a subsection now — General owns the page title', () => {
-  // Repositories merged INTO General under a "Git repo" section (Jay,
-  // 2026-08-17) — the same move Snapshots made into Sandbox templates. This
-  // pane no longer has its own page-level heading (`SettingsTabHeader`) or its
-  // own width wrapper (`GeneralTabView` supplies both via `gitRepoSlot`); it
-  // renders one `SettingsSubsectionHeader`, exactly the class of duplication
-  // the pane's ORIGINAL rewrite (stacking `CustomizeSectionWrapper title="Git"`
-  // on `<h3>Repository` on `<h3>Repository settings`) already removed once.
-  expect(code).toContain("<SettingsSubsectionHeader title={t('title')} />");
+test('renders no heading of its own — the Git repo section pane owns the title', () => {
+  // Git repo is its own section of the Settings tab since 2026-09-03
+  // (`project-settings-page.tsx` renders the section title). This pane has
+  // neither a page-level heading (`SettingsTabHeader`) nor a subsection one
+  // nor its own width wrapper — exactly the class of duplication the pane's
+  // ORIGINAL rewrite (stacking `CustomizeSectionWrapper title="Git"` on
+  // `<h3>Repository` on `<h3>Repository settings`) already removed once.
+  expect(code).not.toContain('title="Git repo"');
   expect(code).not.toContain('SettingsTabHeader');
   expect(code).not.toContain('CustomizeSectionWrapper');
   expect(code).not.toContain('Repository settings');
@@ -151,14 +133,14 @@ test('does not name internal mechanisms in user-facing copy', () => {
   expect(code).not.toContain('proxy origin');
   expect(code).not.toContain('Proxy URL');
   expect(code).not.toContain('Connection health');
-  expect(code).toContain("t('ownClientTitle')");
+  expect(code).toContain("raw('textd29222de0472')");
 });
 
 test('every technical setting carries a docs link', () => {
   expect(code).toContain("const DOCS_CLI = '/docs/cli'");
   expect(code).toContain("const DOCS_MANIFEST = '/docs/project/manifest'");
-  expect(code).toContain('<DocsLink href={DOCS_MANIFEST}>');
-  expect(code).toContain('action={<DocsLink href={DOCS_CLI}>');
+  expect(code).toContain('<DocsLink href={DOCS_MANIFEST} />');
+  expect(code).toContain('action={<DocsLink href={DOCS_CLI} />}');
 });
 
 /**
@@ -278,9 +260,9 @@ test('projectRepoFallback never guesses a URL for a host it cannot place', () =>
 test('the provider sentence follows the same fallback the value does', () => {
   // Without this the row would read "Hosted on Git." directly beside a GitHub
   // link, because `providerSentence` was fed `connection?.provider` alone.
-  expect(code).toContain('providerSentence(repositoryProvider,');
+  expect(code).toContain('providerSentence(repositoryProvider)');
   expect(code).toContain('projectRepoFallback(project.repo_url)?.provider');
-  expect(code).toContain("notLinked={t('notLinked')}");
+  expect(code).toContain('<RepositoryValue connection={connection} repoUrl={project.repo_url} />');
 });
 
 /**
@@ -327,7 +309,7 @@ test('a non-managed repository explains itself instead of hiding the section', (
     code.indexOf('function RepoAccessSection'),
     code.indexOf('function ExternallyManagedRepoAccess'),
   );
-  expect(section).toContain("title={t('peopleTitle')}");
+  expect(section).toContain("title={tI18nComplete.raw('text6ecf05a928e8')}");
   expect(section).toContain('managed ? (');
 });
 

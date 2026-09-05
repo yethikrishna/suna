@@ -1,6 +1,7 @@
 'use client';
 
-import { useTranslations } from '@/i18n/use-translations';
+import { useTranslations as useI18nTranslations } from '@/i18n/use-translations';
+import { useTranslations } from 'next-intl';
 
 import {
   AsteriskIcon as Asterisk,
@@ -64,11 +65,15 @@ import {
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { errorToast, infoToast, successToast, warningToast } from '@/components/ui/toast';
-import { Plus as PlusIcon } from '@/features/icon/icons/plus';
 import { EmptyState } from '@/features/layout/section/empty-state';
 import { ErrorState } from '@/features/layout/section/error-state';
 import { CapabilityPageShell } from '@/features/workspace/capabilities/shared/capability-page-shell';
+import { NewEntityMenu } from '@/features/workspace/capabilities/shared/new-entity-menu';
 import { ProjectProviderModal } from '@/features/workspace/customize/sections/llm-provider/llm-provider-modal';
+import {
+  newConfigPrompt,
+  useConfigureThread,
+} from '@/features/workspace/customize/use-configure-thread';
 import { useSettingsNav } from '@/features/workspace/shared/settings-nav-context';
 import { isLlmGatewayEnabled } from '@/lib/llm-gateway';
 import { PROJECT_ACTIONS } from '@/lib/project-actions';
@@ -152,7 +157,7 @@ type Requirement = 'required' | 'optional' | null;
  * project-wide create/configure/value only. `identifier` is the unique handle;
  * `key` (the env var name) is NOT unique — two identifiers may share one.
  */
-interface SecretRow {
+export interface SecretRow {
   identifier: string;
   key: string;
   requirement: Requirement;
@@ -185,6 +190,7 @@ type SecretSavePlan = {
 };
 
 export function SecretsView({ projectId }: { projectId: string }) {
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const tHardcodedUi = useTranslations('hardcodedUi');
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
@@ -251,6 +257,7 @@ export function SecretsView({ projectId }: { projectId: string }) {
     );
   }, [allRows, query]);
 
+  const configure = useConfigureThread(projectId);
   const openCreate = () => {
     setDialogRow(null);
     setDialogOpen(true);
@@ -272,7 +279,7 @@ export function SecretsView({ projectId }: { projectId: string }) {
 
   return (
     <CapabilityPageShell
-      title={tHardcodedUi.raw('i18nComplete.textd8707d411d99')}
+      title={tI18nComplete.raw('textd8707d411d99')}
       /* "the real value" is exact, not hedged: an enforced secret DOES put an
          env var in the sandbox — an opaque handle under the same key
          (`apps/api/src/projects/secrets.ts`
@@ -280,7 +287,7 @@ export function SecretsView({ projectId }: { projectId: string }) {
          credential. "Environment variable is the only exposure that puts a
          real value in the sandbox" is the claim the API actually guarantees
          (`deliversPlaintextToSandbox`, `apps/api/src/secrets/strategy.ts`). */
-      description={tHardcodedUi.raw('i18nComplete.texteca47e3afa10')}
+      description={tI18nComplete.raw('texteca47e3afa10')}
       search={
         /* Hidden until there is a list to search, the same rule Triggers
            uses: a filter over nothing is a control that cannot do anything. */
@@ -290,7 +297,7 @@ export function SecretsView({ projectId }: { projectId: string }) {
               <Search />
             </InputGroupSearchIcon>
             <InputGroupSearchInput
-              placeholder={tHardcodedUi.raw('i18nComplete.textb5814f05b923')}
+              placeholder={tI18nComplete.raw('textb5814f05b923')}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               variant="popover"
@@ -310,14 +317,19 @@ export function SecretsView({ projectId }: { projectId: string }) {
           <Button asChild variant="secondary" size="sm" className="gap-1.5">
             <Link href="/docs/project/secrets" target="_blank" rel="noreferrer">
               <BookOpenIcon className="size-3.5 shrink-0" />
-              {tHardcodedUi.raw('i18nComplete.text7af023c43013')}
+              {tI18nComplete.raw('text7af023c43013')}
             </Link>
           </Button>
           {showContent && canManage ? (
-            <Button size="sm" variant="secondary" onClick={openCreate}>
-              <PlusIcon className="size-4 shrink-0" />
-              {tHardcodedUi.raw('i18nComplete.text9fd728c66c9a')}
-            </Button>
+            <NewEntityMenu
+              label={tI18nComplete.raw('text18fdd549b2ed')}
+              pending={configure.pending}
+              onChat={() => configure.start(newConfigPrompt('secret'))}
+              manual={{
+                description: tI18nComplete.raw('textefd041115e9e'),
+                onSelect: openCreate,
+              }}
+            />
           ) : null}
         </div>
       }
@@ -342,12 +354,11 @@ export function SecretsView({ projectId }: { projectId: string }) {
               'appProjectsIdCustomizeSecretsPage.line773JsxAttrTitleFailedToLoadSecrets',
             )}
             description={
-              (secretsQuery.error as Error)?.message ??
-              tHardcodedUi.raw('i18nComplete.text398e53499fed')
+              (secretsQuery.error as Error)?.message ?? tI18nComplete.raw('text398e53499fed')
             }
             action={
               <Button variant="outline" size="sm" onClick={() => secretsQuery.refetch()}>
-                {tHardcodedUi.raw('i18nComplete.text942087cc2d41')}
+                {tI18nComplete.raw('text942087cc2d41')}
               </Button>
             }
           />
@@ -357,32 +368,32 @@ export function SecretsView({ projectId }: { projectId: string }) {
               <InfoBanner
                 tone="warning"
                 icon={<DangerTriangleSolid weight="fill" />}
-                title={tI18nHardcoded('i18nComplete.text10d33709a797', {
+                title={tI18nComplete('text10d33709a797', {
                   value0: missingRequired.length,
                   value1: missingRequired.length === 1 ? 'secret' : 'secrets',
                 })}
               >
-                {tHardcodedUi.raw('i18nComplete.textc18dc13ca821')}
+                {tI18nComplete.raw('textc18dc13ca821')}
               </InfoBanner>
             )}
 
             {filtered.length === 0 ? (
               query.trim() ? (
                 <p className="text-muted-foreground px-3 py-6 text-center text-xs">
-                  {tHardcodedUi.raw('i18nComplete.texta8897de42124')}{' '}
+                  {tI18nComplete.raw('texta8897de42124')}
                   <span className="text-foreground font-mono">{query}</span>.
                 </p>
               ) : (
                 <EmptyState
                   icon={KeyRound}
                   size="sm"
-                  title={tHardcodedUi.raw('i18nComplete.text5aa40906d187')}
-                  description={tHardcodedUi.raw('i18nComplete.text234482872368')}
+                  title={tI18nComplete.raw('text5aa40906d187')}
+                  description={tI18nComplete.raw('text234482872368')}
                   action={
                     canManage ? (
                       <Button variant="outline" size="sm" className="gap-1.5" onClick={openCreate}>
                         <Plus className="size-3.5 shrink-0" />
-                        {tHardcodedUi.raw('i18nComplete.textf57a23c69b34')}
+                        {tI18nComplete.raw('textf57a23c69b34')}
                       </Button>
                     ) : undefined
                   }
@@ -392,13 +403,11 @@ export function SecretsView({ projectId }: { projectId: string }) {
               <Table className="overflow-hidden rounded-md">
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead>{tHardcodedUi.raw('i18nComplete.text9b10587f84a2')}</TableHead>
-                    <TableHead>{tHardcodedUi.raw('i18nComplete.text8e37953d23da')}</TableHead>
-                    <TableHead>{tHardcodedUi.raw('i18nComplete.textec5ba0abb717')}</TableHead>
+                    <TableHead>{tI18nComplete.raw('text9b10587f84a2')}</TableHead>
+                    <TableHead>{tI18nComplete.raw('text8e37953d23da')}</TableHead>
+                    <TableHead>{tI18nComplete.raw('textec5ba0abb717')}</TableHead>
                     <TableHead className="w-[52px]">
-                      <span className="sr-only">
-                        {tHardcodedUi.raw('i18nComplete.textff8059dc6752')}
-                      </span>
+                      <span className="sr-only">{tI18nComplete.raw('textff8059dc6752')}</span>
                     </TableHead>
                   </TableRow>
                 </TableHeader>
@@ -444,27 +453,21 @@ export function SecretsView({ projectId }: { projectId: string }) {
         onOpenChange={(open) => {
           if (!open) setDeleteRow(null);
         }}
-        title={tHardcodedUi.raw('i18nComplete.text1a48c8c83043')}
+        title={tI18nComplete.raw('text1a48c8c83043')}
         description={
-          deleteRow
-            ? tI18nHardcoded('i18nComplete.text05b1f0cd964e', {
-                value0: deleteRow.identifier,
-              })
-            : ''
+          deleteRow ? tI18nComplete('text05b1f0cd964e', { value0: deleteRow.identifier }) : ''
         }
-        confirmLabel={tHardcodedUi.raw('i18nComplete.texte2d0a54968ea')}
+        confirmLabel={tI18nComplete.raw('texte2d0a54968ea')}
         confirmVariant="destructive"
         onConfirm={() => {
           if (!deleteRow) return;
           removeShared.mutate(deleteRow.identifier, {
             onSuccess: () => {
               setDeleteRow(null);
-              successToast(tHardcodedUi.raw('i18nComplete.textb2c5bc52374a'));
+              successToast(tI18nComplete.raw('text50c9e2de86db'));
             },
             onError: (e) =>
-              errorToast(
-                e instanceof Error ? e.message : tHardcodedUi.raw('i18nComplete.text9e55b28c22d0'),
-              ),
+              errorToast(e instanceof Error ? e.message : tI18nComplete.raw('text7673a45d3385')),
           });
         }}
         isPending={removeShared.isPending}
@@ -491,7 +494,7 @@ export function SecretsView({ projectId }: { projectId: string }) {
  * Restating them here in JSX is how the legend and the badge start disagreeing.
  */
 function SecretsAccessExplainer({ showEnforced }: { showEnforced: boolean }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const [open, setOpen] = useState(false);
   return (
     /* `w-full` because the shell's filters row is a flex line: without it the
@@ -587,7 +590,9 @@ function normalizeResponse(
   };
 }
 
-function buildRows(raw: ProjectSecretsResponse | ProjectSecret[] | null | undefined): SecretRow[] {
+export function buildRows(
+  raw: ProjectSecretsResponse | ProjectSecret[] | null | undefined,
+): SecretRow[] {
   const data = normalizeResponse(raw);
   const requirementByKey = new Map<string, Requirement>();
   for (const key of data.required) requirementByKey.set(key, 'required');
@@ -677,7 +682,7 @@ function statusLabel(row: SecretRow): string {
  *               "required field" convention every form uses
  */
 function SecretMarks({ row }: { row: SecretRow }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   if (!row.system && row.requirement !== 'required') return null;
   return (
     <span className="flex shrink-0 items-center gap-1">
@@ -722,14 +727,11 @@ function SecretTableRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const tI18nHardcoded = useTranslations('hardcodedUi');
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
   const canManageShared = canManage && !row.system;
   const distinctKey = row.identifier !== row.key;
-  const delivery = secretDeliveryPresentation(row.strategy, row.consumer, {
-    llmGatewayEnabled,
-    tI18nComplete,
-  });
+  const delivery = secretDeliveryPresentation(row.strategy, row.consumer, { llmGatewayEnabled });
 
   return (
     <TableRow
@@ -759,13 +761,13 @@ function SecretTableRow({
             {delivery.label}
           </Badge>
           {row.requiresRotation && (
-            <span className="text-kortix-orange text-xs font-medium">
-              {tI18nHardcoded.raw('i18nComplete.texte450e0da6cf9')}
+            <span className="text-kortix-orange text-[11px] font-medium">
+              {tI18nComplete.raw('texte450e0da6cf9')}
             </span>
           )}
           {shouldWarnMissingAgentGrant(row.deliveryBlockedReason, row.strategy, row.consumer) && (
-            <span className="text-kortix-orange text-xs font-medium">
-              {tI18nHardcoded.raw('i18nComplete.text6404e0b5d78d')}
+            <span className="text-kortix-orange text-[11px] font-medium">
+              {tI18nComplete.raw('text6404e0b5d78d')}
             </span>
           )}
         </div>
@@ -792,8 +794,8 @@ function SecretTableRow({
               <DropdownMenuItem onClick={onEdit}>
                 <PencilSimpleIcon className="size-3.5 shrink-0" />
                 {row.configured
-                  ? tI18nHardcoded.raw('i18nComplete.textb5068d24eb4f')
-                  : tI18nHardcoded.raw('i18nComplete.text58bf3410b028')}
+                  ? tI18nComplete.raw('textb5068d24eb4f')
+                  : tI18nComplete.raw('text58bf3410b028')}
               </DropdownMenuItem>
               {row.configured && (
                 <DropdownMenuItem onClick={onDelete}>
@@ -808,6 +810,62 @@ function SecretTableRow({
         )}
       </TableCell>
     </TableRow>
+  );
+}
+
+/**
+ * `SecretDialog` with its plumbing resolved from the project alone, for a
+ * surface that is not the Secrets page — the agent editor's Secrets page
+ * opens the SAME create/edit dialog from a secret card (Marko, 2026-09-03:
+ * "hardcore reuse same components … same modals"). Nothing here is new
+ * behavior; it is the exact reads `SecretsView` does before it mounts the
+ * dialog, so the two can never drift.
+ */
+export function ProjectSecretDialog({
+  projectId,
+  row,
+  open,
+  onOpenChange,
+  onSaved,
+}: {
+  projectId: string;
+  /** The secret to edit, or null to create one. */
+  row: SecretRow | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSaved?: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const projectDetailQuery = useQuery({
+    queryKey: qk.project.detail(projectId),
+    queryFn: () => getProjectDetail(projectId),
+    ...contract('config'),
+    enabled: open,
+  });
+  const connectorsQuery = useQuery({
+    queryKey: qk.project.connectors(projectId),
+    queryFn: () => listConnectors(projectId),
+    ...contract('config'),
+    enabled: open,
+  });
+  const egressEnabled = useFeatureFlag(projectId, 'secrets_egress').enabled;
+  return (
+    <SecretDialog
+      key={row?.identifier ?? 'new'}
+      open={open}
+      onOpenChange={onOpenChange}
+      projectId={projectId}
+      row={row}
+      llmGatewayEnabled={isLlmGatewayEnabled(projectDetailQuery.data?.project)}
+      connectors={connectorsQuery.data?.connectors ?? []}
+      connectorsLoading={connectorsQuery.isLoading}
+      egressEnabled={egressEnabled}
+      onSaved={() => {
+        queryClient.invalidateQueries({ queryKey: qk.project.secrets(projectId) });
+        refreshProjectProviderState(queryClient, projectId);
+        onSaved?.();
+      }}
+    />
   );
 }
 
@@ -832,7 +890,7 @@ function SecretDialog({
   egressEnabled: boolean;
   onSaved: () => void;
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const queryClient = useQueryClient();
   const projectConfig = useProjectConfig(projectId);
   const isEdit = row !== null;

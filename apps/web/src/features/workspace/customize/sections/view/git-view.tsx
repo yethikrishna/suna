@@ -19,6 +19,7 @@ import { errorToast, successToast } from '@/components/ui/toast';
 import { Github as GithubIcon } from '@/features/icon/icons/github';
 import { ErrorState } from '@/features/layout/section/error-state';
 import { useDebounce } from '@/hooks/use-debounce';
+import { useTranslations as useI18nTranslations } from '@/i18n/use-translations';
 import { getEnv } from '@/lib/env-config';
 import { PROJECT_ACTIONS } from '@/lib/project-actions';
 import { useDeploymentCliInstallCommand } from '@/lib/use-deployment-cli-install-command';
@@ -44,7 +45,6 @@ import {
   WarningIcon,
 } from '@phosphor-icons/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useTranslations } from '@/i18n/use-translations';
 import Link from 'next/link';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 
@@ -105,7 +105,7 @@ function gitCloneUrl(project: ProjectWithOrigin): string {
  * `text-xs` is set rather than inherited so it matches the row descriptions it
  * appears in and stays quiet in the header slot, where nothing else sets a size.
  */
-function DocsLink({ href, children }: { href: string; children: ReactNode }) {
+function DocsLink({ href, children = 'Learn more' }: { href: string; children?: ReactNode }) {
   return (
     <Link
       href={href}
@@ -146,13 +146,10 @@ function CommandLine({
 }) {
   return (
     <div className="bg-muted group/command-line -mx-2 flex min-w-0 items-center gap-2 rounded-sm px-3 py-1.5 transition-colors">
-      <code
-        aria-label={label}
-        className="text-foreground scrollbar-hide min-w-0 flex-1 overflow-x-auto font-mono text-xs whitespace-nowrap"
-      >
+      <code className="text-foreground scrollbar-hide min-w-0 flex-1 overflow-x-auto font-mono text-[12px] whitespace-nowrap">
         {value}
       </code>
-      <span className="duration-moderate shrink-0 opacity-0 transition-opacity group-hover/command-line:opacity-100">
+      <span className="shrink-0 opacity-0 transition-opacity duration-200 group-hover/command-line:opacity-100">
         <CopyButton code={value} size="sm" />
       </span>
     </div>
@@ -167,14 +164,8 @@ const TONE_DOT: Record<ConnectionTone, string> = {
 
 /** Status as a dot plus a word. A `Badge` would announce itself louder than the
  *  repository name it describes; a dot is read as a state, not as a label. */
-function StatusValue({
-  status,
-  copy,
-}: {
-  status: string | null | undefined;
-  copy: Parameters<typeof connectionStatusLabel>[1];
-}) {
-  const { tone, label } = connectionStatusLabel(status, copy);
+function StatusValue({ status }: { status: string | null | undefined }) {
+  const { tone, label } = connectionStatusLabel(status);
   return (
     <span className="flex items-center gap-2 text-sm">
       <span aria-hidden className={cn('size-1.5 shrink-0 rounded-full', TONE_DOT[tone])} />
@@ -238,17 +229,15 @@ export function projectRepoFallback(
 export function RepositoryValue({
   connection,
   repoUrl,
-  notLinked = 'Not linked yet',
 }: {
   connection: ProjectGitConnection | null | undefined;
   repoUrl?: string | null;
-  notLinked?: string;
 }) {
   const fallback = connection ? null : projectRepoFallback(repoUrl);
   const name =
     connection?.repo_owner && connection.repo_name
       ? `${connection.repo_owner}/${connection.repo_name}`
-      : connection?.repo_url || fallback?.label || repoUrl?.trim() || notLinked;
+      : connection?.repo_url || fallback?.label || repoUrl?.trim() || 'Not linked yet';
   const webUrl = connection?.repo_url
     ? repositoryWebUrl(connection.provider, connection.repo_url)
     : (fallback?.webUrl ?? null);
@@ -275,8 +264,13 @@ export function RepositoryValue({
   );
 }
 
-function SaveStatus({ label }: { label: string }) {
-  return <span className="text-muted-foreground shrink-0 text-xs tabular-nums">{label}</span>;
+function SaveStatus() {
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
+  return (
+    <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+      {tI18nComplete.raw('text23e39291d613')}
+    </span>
+  );
 }
 
 /**
@@ -304,8 +298,7 @@ function RepositoryGroup({
   connection: ProjectGitConnection | null | undefined;
   canManage: boolean;
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
-  const t = useTranslations('settings.git');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const queryClient = useQueryClient();
   const branchesQuery = useQuery({
     queryKey: qk.project.branches(project.project_id),
@@ -351,8 +344,7 @@ function RepositoryGroup({
       queryClient.invalidateQueries({ queryKey: qk.projects.scope() });
       queryClient.invalidateQueries({ queryKey: qk.project.branches(project.project_id) });
     },
-    onError: (error: Error) =>
-      errorToast(error.message || tI18nComplete('textdd2d120a9ea9')),
+    onError: (error: Error) => errorToast(error.message || tI18nComplete.raw('textc25bdcabc47d')),
   });
 
   const { mutate, isPending } = mutation;
@@ -384,7 +376,7 @@ function RepositoryGroup({
   return (
     <section className="space-y-3">
       {connection?.last_error_message ? (
-        <InfoBanner tone="warning" icon={WarningIcon} title={t('unreachable')}>
+        <InfoBanner tone="warning" icon={WarningIcon} title={tI18nComplete.raw('textcb25ff313d81')}>
           {connection.last_error_message}
         </InfoBanner>
       ) : null}
@@ -396,39 +388,30 @@ function RepositoryGroup({
             does rather than saying a flat "Hosted on Git." beside a GitHub
             link. */}
         <SettingsRow
-          label={t('repository')}
-          description={providerSentence(repositoryProvider, {
-            hosted: (provider) => t('hostedOn', { provider }),
-            stored: (provider) => t('storedIn', { provider }),
-          })}
+          label={tI18nComplete.raw('text13d6ff07b8a5')}
+          description={providerSentence(repositoryProvider)}
         >
-          <RepositoryValue
-            connection={connection}
-            repoUrl={project.repo_url}
-            notLinked={t('notLinked')}
-          />
+          <RepositoryValue connection={connection} repoUrl={project.repo_url} />
         </SettingsRow>
 
-        <SettingsRow label={t('status')}>
-          <StatusValue
-            status={connection?.status}
-            copy={{
-              connected: t('statuses.connected'),
-              attention: t('statuses.attention'),
-              connecting: t('statuses.connecting'),
-              disconnected: t('statuses.disconnected'),
-            }}
-          />
+        <SettingsRow label={tI18nComplete.raw('text920e413c7d41')}>
+          <StatusValue status={connection?.status} />
         </SettingsRow>
 
-        <SettingsRow label={t('baseBranch')} description={t('baseBranchDescription')}>
-          {saving ? <SaveStatus label={t('saving')} /> : null}
+        <SettingsRow
+          label={tI18nComplete.raw('text9acbb9ebea63')}
+          description={tI18nComplete.raw('text4ea9e9ad1d10')}
+        >
+          {saving ? <SaveStatus /> : null}
           <Select
             value={defaultBranch}
             onValueChange={setDefaultBranch}
             disabled={!canManage || isPending}
           >
-            <SelectTrigger aria-label={t('baseBranch')} className="h-8 w-44 font-mono text-xs">
+            <SelectTrigger
+              aria-label={tI18nComplete.raw('text9acbb9ebea63')}
+              className="h-8 w-44 font-mono text-xs"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent align="end">
@@ -442,16 +425,16 @@ function RepositoryGroup({
         </SettingsRow>
 
         <SettingsRow
-          label={t('manifestFile')}
+          label={tI18nComplete.raw('textcef30be178a6')}
           description={
             <>
-              {t('manifestDescription')} <DocsLink href={DOCS_MANIFEST}>{t('learnMore')}</DocsLink>
+              {tI18nComplete.raw('text0ec4cd70d04c')} <DocsLink href={DOCS_MANIFEST} />
             </>
           }
         >
           <Input
             id="manifest-path"
-            aria-label={t('manifestFile')}
+            aria-label={tI18nComplete.raw('textcef30be178a6')}
             value={manifestPath}
             onChange={(e) => setManifestPath(e.target.value)}
             disabled={!canManage || isPending}
@@ -486,7 +469,7 @@ function Step({
 }) {
   return (
     <li className="flex gap-3 px-4 py-3.5">
-      <span className="bg-muted text-muted-foreground flex size-5 shrink-0 items-center justify-center rounded-full text-xs font-medium tabular-nums">
+      <span className="bg-muted text-muted-foreground flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-medium tabular-nums">
         {index}
       </span>
       <div className="min-w-0 flex-1 space-y-2.5">
@@ -511,15 +494,16 @@ function Step({
  * match that assertion and would silently un-pin the order.
  */
 function LocalSetup({ projectId }: { projectId: string }) {
-  const t = useTranslations('settings.git');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
+  const tGit = useI18nTranslations('settings.git');
   const installCommand = useDeploymentCliInstallCommand(getEnv().VERSION);
 
   return (
     <section className="space-y-3">
       <SettingsSubsectionHeader
-        title={t('localTitle')}
-        description={t('localDescription')}
-        action={<DocsLink href={DOCS_CLI}>{t('learnMore')}</DocsLink>}
+        title={tI18nComplete.raw('text17635feb9ad5')}
+        description={tI18nComplete.raw('text80e155d7b8e5')}
+        action={<DocsLink href={DOCS_CLI} />}
       />
       {/* Carries `SettingsRowGroup`'s exact classes on an `<ol>` rather than
           using the component, which renders a `div`. These are numbered steps,
@@ -528,15 +512,18 @@ function LocalSetup({ projectId }: { projectId: string }) {
           Everything visual matches the groups above it, so the pane still reads
           as one system. */}
       <ol className="bg-popover divide-border divide-y overflow-hidden rounded-md border">
-        <Step index={1} title={t('installTitle')} hint={t('installHint')}>
-          <CommandLine value={installCommand} label={t('installCommand')} />
+        <Step index={1} title={tI18nComplete.raw('text81fbecb138f6')} hint={tGit('installHint')}>
+          <CommandLine value={installCommand} label={tI18nComplete.raw('text1ae97542051d')} />
         </Step>
-        <Step index={2} title={t('cloneTitle')} hint={t('cloneHint')}>
-          <CommandLine value={`kortix projects clone ${projectId}`} label={t('cloneCommand')} />
+        <Step index={2} title={tI18nComplete.raw('text7114f5d2fafa')} hint={tGit('cloneHint')}>
+          <CommandLine
+            value={`kortix projects clone ${projectId}`}
+            label={tI18nComplete.raw('text6264f3bfdd91')}
+          />
         </Step>
-        <Step index={3} title={t('setupTitle')} hint={t('setupHint')}>
-          <CommandLine value="kortix init --force" label={t('setupCommand')} />
-          <CommandLine value="kortix env pull" label={t('secretsCommand')} />
+        <Step index={3} title={tI18nComplete.raw('texte7f187cbe20d')} hint={tGit('setupHint')}>
+          <CommandLine value="kortix init --force" label={tI18nComplete.raw('text6300595b1dfd')} />
+          <CommandLine value="kortix env pull" label={tI18nComplete.raw('text68269b6f8874')} />
         </Step>
       </ol>
     </section>
@@ -555,7 +542,7 @@ function LocalSetup({ projectId }: { projectId: string }) {
  * the credential.
  */
 function OwnGitClient({ project }: { project: ProjectWithOrigin }) {
-  const t = useTranslations('settings.git');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const [open, setOpen] = useState(false);
 
   return (
@@ -583,17 +570,16 @@ function OwnGitClient({ project }: { project: ProjectWithOrigin }) {
           >
             <span className="min-w-0 flex-1 space-y-0.5">
               <span className="text-foreground block text-sm font-medium">
-                {t('ownClientTitle')}
+                {tI18nComplete.raw('textd29222de0472')}
               </span>
               <span className="text-muted-foreground block text-xs font-normal text-pretty">
-                {t.rich('ownClientDescription', {
-                  code: (chunks) => <code className="font-mono">{chunks}</code>,
-                })}
+                {tI18nComplete.raw('text7760401b25c7')}
+                <code className="font-mono">git</code> {tI18nComplete.raw('text2f72fafe0ce1')}
               </span>
             </span>
             <CaretDownIcon
               className={cn(
-                'text-muted-foreground duration-moderate mt-0.5 size-4 shrink-0 transition-transform motion-reduce:transition-none',
+                'text-muted-foreground mt-0.5 size-4 shrink-0 transition-transform duration-200',
                 open && 'rotate-180',
               )}
             />
@@ -602,9 +588,14 @@ function OwnGitClient({ project }: { project: ProjectWithOrigin }) {
         <DisclosureContent variant="outline" contentClassName="border-border border-t">
           <div className="space-y-2 px-4 py-3.5">
             <p className="text-muted-foreground text-xs text-pretty">
-              {t('cloneAddressDescription')}
+              {tI18nComplete.raw('texte327e6c1348b')}
+              <code className="font-mono">git</code> {tI18nComplete.raw('textb74106e21108')}
             </p>
-            <CommandLine value={gitCloneUrl(project)} label={t('cloneAddress')} kind="address" />
+            <CommandLine
+              value={gitCloneUrl(project)}
+              label={tI18nComplete.raw('textac830bd3c755')}
+              kind="address"
+            />
           </div>
         </DisclosureContent>
       </Disclosure>
@@ -644,7 +635,7 @@ function RepoAccessSection({
   managed: boolean;
   canManageMembers: boolean;
 }) {
-  const t = useTranslations('settings.git');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   // Still gated on the capability — someone who cannot grant repository access
   // has no use for either the form or an explanation of where to grant it.
   if (!canManageMembers) return null;
@@ -652,8 +643,10 @@ function RepoAccessSection({
   return (
     <section className="space-y-3">
       <SettingsSubsectionHeader
-        title={t('peopleTitle')}
-        description={managed ? t('peopleManagedDescription') : t('peopleExternalDescription')}
+        title={tI18nComplete.raw('text6ecf05a928e8')}
+        description={
+          managed ? tI18nComplete.raw('text51df486e7027') : tI18nComplete.raw('text6ce403f96404')
+        }
       />
       {managed ? (
         <RepoCollaboratorInvite projectId={projectId} />
@@ -685,7 +678,7 @@ function ExternallyManagedRepoAccess({
 }: {
   connection: ProjectGitConnection | null | undefined;
 }) {
-  const t = useTranslations('settings.git');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const provider = connection?.provider;
   // GitHub only. `repositoryWebUrl` also answers for GitLab, but the deep link
   // below is `/settings/access`, which is GitHub's path — GitLab's is
@@ -700,14 +693,14 @@ function ExternallyManagedRepoAccess({
     <div className="bg-popover rounded-md border px-4 py-3">
       <p className="text-muted-foreground text-xs text-pretty">
         {provider === 'github'
-          ? t('externalGithubDescription')
-          : t('externalProviderDescription', { provider: providerLabel(provider) })}
+          ? tI18nComplete.raw('text6e5a03445559')
+          : tI18nComplete('textdfa16aeaca13', { value0: providerLabel(provider) })}
       </p>
       {webUrl ? (
         <Button asChild variant="outline" size="sm" className="mt-3 gap-1.5">
           <a href={`${webUrl}/settings/access`} target="_blank" rel="noopener noreferrer">
             <ExternalLink className="size-3.5 shrink-0" />
-            {t('manageOnGithub')}
+            {tI18nComplete.raw('text03298bf58cdb')}
           </a>
         </Button>
       ) : null}
@@ -716,8 +709,7 @@ function ExternallyManagedRepoAccess({
 }
 
 function RepoCollaboratorInvite({ projectId }: { projectId: string }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
-  const t = useTranslations('settings.git');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const [username, setUsername] = useState('');
   const [permission, setPermission] = useState<'read' | 'write'>('write');
 
@@ -725,14 +717,13 @@ function RepoCollaboratorInvite({ projectId }: { projectId: string }) {
     mutationFn: () => inviteRepoCollaborator(projectId, username.trim(), permission),
     onSuccess: (res) => {
       if (res.alreadyCollaborator) {
-        successToast(tI18nComplete('texteed8a3ac1ec6', { username: res.username }));
+        successToast(tI18nComplete('text4ece196e2346', { value0: res.username }));
       } else {
-        successToast(tI18nComplete('text1ad2cc6a4099', { username: res.username }));
+        successToast(tI18nComplete('text1283bae259c2', { value0: res.username }));
       }
       setUsername('');
     },
-    onError: (error: Error) =>
-      errorToast(error.message || tI18nComplete('textcd2434c323fa')),
+    onError: (error: Error) => errorToast(error.message || tI18nComplete.raw('textc6c23265e620')),
   });
 
   const submit = (e: FormEvent) => {
@@ -756,10 +747,10 @@ function RepoCollaboratorInvite({ projectId }: { projectId: string }) {
             <GithubIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
             <Input
               id="repo-collaborator-username"
-              aria-label={t('githubUsername')}
+              aria-label={tI18nComplete.raw('text64477e38cfb5')}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder={t('githubUsername')}
+              placeholder={tI18nComplete.raw('text64477e38cfb5')}
               // NOT `variant="popover"`. That variant is `bg-popover`, the same
               // fill as the panel around it, so the input dissolved into its own
               // container. The default `bg-input` is what makes it read as
@@ -775,14 +766,14 @@ function RepoCollaboratorInvite({ projectId }: { projectId: string }) {
           <Select value={permission} onValueChange={(v) => setPermission(v as 'read' | 'write')}>
             <SelectTrigger
               id="repo-collaborator-permission"
-              aria-label={t('accessLevel')}
+              aria-label={tI18nComplete.raw('text86da9c960cf9')}
               className="h-8 w-full rounded-sm"
             >
               <SelectValue />
             </SelectTrigger>
             <SelectContent align="end">
-              <SelectItem value="write">{t('canEdit')}</SelectItem>
-              <SelectItem value="read">{t('canView')}</SelectItem>
+              <SelectItem value="write">{tI18nComplete.raw('text5abe9e1fbc5b')}</SelectItem>
+              <SelectItem value="read">{tI18nComplete.raw('text151dc282a69e')}</SelectItem>
             </SelectContent>
           </Select>
 
@@ -793,7 +784,7 @@ function RepoCollaboratorInvite({ projectId }: { projectId: string }) {
             disabled={!username.trim() || inviteMutation.isPending}
           >
             {inviteMutation.isPending ? <Loading className="size-3.5 shrink-0" /> : null}
-            {t('invite')}
+            {tI18nComplete.raw('text1fd9ae1607aa')}
           </Button>
         </form>
       </div>
@@ -802,7 +793,7 @@ function RepoCollaboratorInvite({ projectId }: { projectId: string }) {
 }
 
 export function GitView({ projectId }: { projectId: string }) {
-  const t = useTranslations('settings.git');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const detail = useQuery({
     queryKey: qk.project.detail(projectId),
     queryFn: () => getProjectDetail(projectId),
@@ -825,7 +816,13 @@ export function GitView({ projectId }: { projectId: string }) {
   // Managed = Kortix created this repository, so the managed-org admin
   // credential has repo-admin scope on it. False for a BYO repo and for a
   // repository on any provider other than GitHub.
-  const managed = project ? isManagedGithubProject(project) : false;
+  // The connection row is the truth since repositories moved out of
+  // `metadata.git` (`project_git_connections.managed`); the metadata check
+  // is the fallback for a server that predates the field. Reading metadata
+  // alone said "Kortix did not create this repository" for every managed
+  // repo — the block only holds `seed` and `fast_boot` now.
+  const managed =
+    detail.data?.git_connection?.managed ?? (project ? isManagedGithubProject(project) : false);
 
   return (
     <div className="space-y-8">
@@ -837,7 +834,9 @@ export function GitView({ projectId }: { projectId: string }) {
           heading; a second one here would be a duplicate, the same fix
           `snapshots-tab.tsx` got when Snapshots merged into Sandbox
           templates. */}
-      <SettingsSubsectionHeader title={t('title')} />
+      {/* No subsection heading: this view is the Settings tab's own "Git repo"
+          section since 2026-09-03, and the section pane already carries that
+          title (`project-settings-page.tsx`). */}
 
       {detail.isLoading ? (
         <div className="space-y-5">
@@ -849,12 +848,12 @@ export function GitView({ projectId }: { projectId: string }) {
       {detail.isError ? (
         <ErrorState
           size="sm"
-          title={t('loadFailed')}
+          title={tI18nComplete.raw('text6c07047e9e83')}
           description={(detail.error as Error).message}
           action={
             <Button variant="outline" size="sm" onClick={() => detail.refetch()}>
               <RefreshCw className="size-3.5" />
-              {t('retry')}
+              {tI18nComplete.raw('text942087cc2d41')}
             </Button>
           }
         />
@@ -867,6 +866,13 @@ export function GitView({ projectId }: { projectId: string }) {
             connection={detail.data?.git_connection}
             canManage={canEdit}
           />
+          {/* The clone address right under the repository (Marko, 2026-09-03):
+              it is the Kortix-signed address of THIS repo, so it belongs with
+              the repo, not at the foot after who-can-access. */}
+          <OwnGitClient project={project as ProjectWithOrigin} />
+          {/* Who can reach the repo comes before how to work on it locally
+              (Marko, 2026-09-03): access is the decision, the local setup is
+              the how-to. */}
           <RepoAccessSection
             projectId={projectId}
             connection={detail.data?.git_connection}
@@ -874,7 +880,6 @@ export function GitView({ projectId }: { projectId: string }) {
             canManageMembers={canManageMembers}
           />
           <LocalSetup projectId={projectId} />
-          <OwnGitClient project={project as ProjectWithOrigin} />
         </>
       ) : null}
     </div>

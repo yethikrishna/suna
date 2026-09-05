@@ -5,8 +5,8 @@
 // destructive action is confirmed, and the tri-state override can express all
 // three states. Same source-assertion style as
 // `src/components/iam/enterprise-upsell.test.ts`.
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from '@/i18n/test-source';
+import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 
 const dir = import.meta.dir;
@@ -84,7 +84,9 @@ describe('admin accounts — Entitlements tab', () => {
   test('an account plan is rendered from the API plan block, never re-derived', () => {
     expect(pageSource).not.toContain('TIER_CATALOG');
     expect(pageSource).not.toMatch(/function tierLabel\b/);
-    expect(pageSource).toMatch(/account\.plan\?\.label \?\? tierKeyLabel\(account\.tier\)/);
+    expect(pageSource).toMatch(
+      /account\.plan\?\.label \?\? tierKeyLabel\(account\.tier(?:, options)?\)/,
+    );
     expect(pageSource).toContain('account.plan?.sublabel');
     // Every place a plan is shown goes through the one component.
     for (const site of [

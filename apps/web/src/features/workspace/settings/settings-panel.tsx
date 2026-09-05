@@ -20,6 +20,7 @@ import {
   type SettingsNav,
 } from '@/features/workspace/shared/settings-nav-context';
 import { useIsMobile } from '@/hooks/utils';
+import { useTranslations as useI18nTranslations } from '@/i18n/use-translations';
 import {
   CUSTOMIZE_SECTION_GATE_ACTIONS,
   isCustomizeSectionVisible,
@@ -32,13 +33,20 @@ import { hasOpenFloatingLayer, hasOpenNestedDialog } from '@/lib/z-stack';
 import { useSettingsPanelStore, type MembersTab } from '@/stores/settings-panel-store';
 import { getProjectDetail, type KortixProject } from '@kortix/sdk';
 import { contract, qk } from '@kortix/sdk/react';
-import { ArrowLeftIcon } from '@phosphor-icons/react';
+import { ArrowLeftIcon, ArrowUpRightIcon } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
-import { useTranslations } from '@/i18n/use-translations';
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo } from 'react';
 import { isRailItemActive, railGroups } from './rail';
 import { SettingsRailCopyProvider, type SettingsRailChromeCopy } from './rail-copy-context';
 import { DEFAULT_SETTINGS_TAB, type SettingsTab } from './settings-tabs';
+import {
+  accountRoleLabel,
+  DEFAULT_ACCOUNT_MEMBERSHIPS_COPY,
+  useAccountMemberships,
+  type AccountMembership,
+  type AccountMembershipsCopy,
+} from './tabs/account-memberships';
 import { AppearanceTab } from './tabs/appearance-tab';
 import { ConnectedAccountsTab } from './tabs/connected-tab';
 import { CreditsTab } from './tabs/credits-tab';
@@ -187,7 +195,8 @@ export function buildSettingsPanelSettingsNav(state: {
 }
 
 export function SettingsPanel({ projectId }: { projectId?: string }) {
-  const tRail = useTranslations('settings.rail');
+  const tSettingsRail = useI18nTranslations('settings.rail');
+  const tOrganizations = useI18nTranslations('settings.profile.organizations');
   const open = useSettingsPanelStore((s) => s.open);
   const tab = useSettingsPanelStore((s) => s.tab);
   const setTab = useSettingsPanelStore((s) => s.setTab);
@@ -201,6 +210,7 @@ export function SettingsPanel({ projectId }: { projectId?: string }) {
     [open, tab, membersTab],
   );
   const isMobile = useIsMobile();
+  const memberships = useAccountMemberships();
 
   // Mod+, lives with the panel, not with whatever row happens to link to it —
   // binding it here is what makes the keystroke work on every surface that
@@ -235,22 +245,34 @@ export function SettingsPanel({ projectId }: { projectId?: string }) {
 
   const groups = useMemo(() => {
     const allowed: RailGroup[] = [];
-    for (const g of railGroups((key) => tRail(key as never))) {
+    for (const g of railGroups((key) => tSettingsRail(key as never))) {
       const items = g.items.filter((item) => isTabAllowed(item.tab));
       if (items.length > 0) allowed.push({ ...g, items });
     }
     return allowed;
-  }, [isTabAllowed, tRail]);
+  }, [isTabAllowed, tSettingsRail]);
+  const allItems = useMemo(() => groups.flatMap((g) => g.items), [groups]);
   const chrome = useMemo<SettingsRailChromeCopy>(
     () => ({
-      settings: tRail('settings'),
-      backToApp: tRail('backToApp'),
-      close: tRail('close'),
-      docs: tRail('docs'),
+      settings: tSettingsRail('settings'),
+      backToApp: tSettingsRail('backToApp'),
+      close: tSettingsRail('close'),
+      docs: tSettingsRail('docs'),
     }),
-    [tRail],
+    [tSettingsRail],
   );
-  const allItems = useMemo(() => groups.flatMap((g) => g.items), [groups]);
+  const organizationCopy = useMemo<AccountMembershipsCopy>(
+    () => ({
+      title: tOrganizations('title'),
+      description: tOrganizations('description'),
+      fallbackAccountName: tOrganizations('fallbackAccountName'),
+      owner: tOrganizations('owner'),
+      admin: tOrganizations('admin'),
+      member: tOrganizations('member'),
+      manage: tOrganizations('manage'),
+    }),
+    [tOrganizations],
+  );
   const tabVisible = allItems.some((item) => isRailItemActive(item, tab));
 
   useEffect(() => {
@@ -279,9 +301,11 @@ export function SettingsPanel({ projectId }: { projectId?: string }) {
         accountId={resolvedAccountId}
         groups={groups}
         allItems={allItems}
+        organizations={memberships.accounts}
+        organizationCopy={organizationCopy}
         chrome={chrome}
         modalTitle={
-          project ? tRail('projectTitle', { projectName: project.name }) : chrome.settings
+          project ? tSettingsRail('projectTitle', { projectName: project.name }) : chrome.settings
         }
       />
     </SettingsNavProvider>
@@ -302,6 +326,15 @@ export interface SettingsPanelViewProps {
   accountId: string | undefined;
   groups: readonly RailGroup[];
   allItems: readonly RailItem[];
+  /**
+   * The organizations the person belongs to, drawn under the Personal group
+   * as links to each one's own settings page (`/accounts/<id>`). Members,
+   * billing, roles and audit live THERE, not in this overlay (Marko,
+   * 2026-09-03) — the overlay is personal, and this list is the way over.
+   * Optional so the shell stays renderable without a query client.
+   */
+  organizations?: readonly AccountMembership[];
+  organizationCopy: AccountMembershipsCopy;
   chrome: SettingsRailChromeCopy;
   modalTitle: string;
 }
@@ -317,6 +350,8 @@ export function SettingsPanelView({
   accountId,
   groups,
   allItems,
+  organizations,
+  organizationCopy,
   chrome,
   modalTitle,
 }: SettingsPanelViewProps) {
@@ -358,6 +393,8 @@ export function SettingsPanelView({
           accountId={accountId}
           groups={groups}
           allItems={allItems}
+          organizations={organizations}
+          organizationCopy={organizationCopy}
           chrome={chrome}
         />
       </ModalContent>
@@ -390,8 +427,10 @@ export function SettingsPanelView({
  */
 export type SettingsPanelShellProps = Omit<
   SettingsPanelViewProps,
-  'open' | 'onOpenChange' | 'project' | 'modalTitle'
->;
+  'open' | 'onOpenChange' | 'project' | 'modalTitle' | 'organizationCopy'
+> & {
+  organizationCopy?: AccountMembershipsCopy;
+};
 
 export function SettingsPanelShell({
   tab,
@@ -401,19 +440,25 @@ export function SettingsPanelShell({
   accountId,
   groups,
   allItems,
+  organizations = [],
+  organizationCopy = DEFAULT_ACCOUNT_MEMBERSHIPS_COPY,
   chrome,
 }: SettingsPanelShellProps) {
   // A heading over a lone group labels nothing — it is the only group, and the
   // dialog's own title already says Settings. It comes back the moment a
-  // second group does, which is the only case where the label does work.
-  const showGroupLabels = groups.length > 1;
+  // second group does — or the Organizations block, which is a second list
+  // under the same rail — which is the only case where the label does work.
+  const showGroupLabels = groups.length > 1 || organizations.length > 0;
   const activeItem = allItems.find((item) => isRailItemActive(item, tab));
 
-  // `activationMode="manual"`: Radix defaults to "automatic", which selects
-  // each tab as arrow keys pass over it. Every pane here fetches on mount.
-  // Arrow moves focus; Enter or Space selects. `settings-panel-a11y.test.ts`
-  // pins this behavior.
   return (
+    /* `activationMode="manual"`: Radix defaults to "automatic", which SELECTS
+       each tab as arrow keys pass over it. Every pane here fetches on mount,
+       so under the default, arrowing down the rail mounts each pane it passes
+       and fires that pane's queries — a cost only keyboard users pay, and one
+       neither tsc nor the suite can see. WAI-ARIA's own guidance is manual
+       activation whenever selecting a tab has a side effect. Arrow moves
+       focus; Enter/Space selects. Pinned by `settings-panel-a11y.test.ts`. */
     <SettingsRailCopyProvider groups={groups} chrome={chrome}>
       <Tabs
         value={tab}
@@ -446,6 +491,20 @@ export function SettingsPanelShell({
                   </TabsTrigger>
                 ))}
               </TabsList>
+              {organizations.length > 0
+                ? organizations.map((account) => (
+                    <ModalClose asChild key={account.account_id}>
+                      <Link
+                        href={`/accounts/${account.account_id}`}
+                        prefetch
+                        className="text-muted-foreground hover:text-foreground flex h-8 w-auto shrink-0 items-center gap-1 px-3 text-sm whitespace-nowrap transition-colors"
+                      >
+                        {account.name?.trim() || organizationCopy.fallbackAccountName}
+                        <ArrowUpRightIcon aria-hidden className="size-3.5 shrink-0 opacity-60" />
+                      </Link>
+                    </ModalClose>
+                  ))
+                : null}
             </FadedScrollArea>
             <div className="flex shrink-0 items-center px-3">
               <ModalClose asChild>
@@ -512,6 +571,50 @@ export function SettingsPanelShell({
                   </TabsList>
                 </div>
               ))}
+
+              {organizations.length > 0 ? (
+                /* The organizations the person belongs to. Each row LEAVES the
+                 overlay for that organization's own settings page — members,
+                 billing, roles, audit all live there — so it is a link that
+                 closes the dialog, not a tab. Same row footprint as the tabs
+                 above so the rail reads as one list with two kinds of row. */
+                <div>
+                  <div className="text-muted-foreground flex h-7 items-center px-2.5 text-xs font-medium">
+                    {organizationCopy.title}
+                  </div>
+                  <ul className="flex flex-col gap-0.5">
+                    {organizations.map((account) => (
+                      <li key={account.account_id}>
+                        <ModalClose asChild>
+                          <Link
+                            href={`/accounts/${account.account_id}`}
+                            prefetch
+                            className={cn(
+                              'group/org flex w-full items-center gap-2 rounded-sm px-2.5 py-1 text-sm',
+                              'text-foreground hover:bg-hover transition-colors',
+                            )}
+                          >
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate">
+                                {account.name?.trim() || organizationCopy.fallbackAccountName}
+                              </span>
+                              {accountRoleLabel(account.account_role, organizationCopy) ? (
+                                <span className="text-muted-foreground block truncate text-xs">
+                                  {accountRoleLabel(account.account_role, organizationCopy)}
+                                </span>
+                              ) : null}
+                            </span>
+                            <ArrowUpRightIcon
+                              aria-hidden
+                              className="text-muted-foreground/60 group-hover/org:text-foreground size-3.5 shrink-0 transition-colors"
+                            />
+                          </Link>
+                        </ModalClose>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </nav>
           </aside>
         )}

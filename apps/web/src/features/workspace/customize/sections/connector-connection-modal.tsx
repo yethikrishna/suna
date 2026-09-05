@@ -1,7 +1,7 @@
 'use client';
 
+import { useTranslations as useI18nTranslations } from '@/i18n/use-translations';
 import type { ConnectorAuthorizationStrategy } from '@kortix/sdk';
-import { useTranslations } from '@/i18n/use-translations';
 import { useEffect, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +34,7 @@ import {
   type EasyConnectConnectionInput,
   isConnectorConnectionSlugAvailable,
   normalizeConnectorConnectionSlug,
+  proposeConnectorConnectionName,
 } from './connector-connection-form';
 import { ConnectorConnectionHeader } from './connector-connection-header';
 
@@ -78,11 +79,11 @@ export function AuthorizationStrategyField({
    */
   hideLabel?: boolean;
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const id = `${idPrefix}-authorization-strategy`;
   /** The name the `<FieldLabel>` would have carried, moved onto the control
    *  itself whenever that label is suppressed. */
-  const suppressedLabel = hideLabel ? tI18nComplete.raw('textca6f5e1c98a8') : undefined;
+  const suppressedLabel = hideLabel ? 'Authorization owner' : undefined;
 
   // Settled connectors get a STATEMENT, not a dead input. A disabled select
   // still looks operable — it keeps the chevron, the focus ring and the hover —
@@ -108,11 +109,7 @@ export function AuthorizationStrategyField({
           </span>
           <div className="min-w-0 flex-1 space-y-0.5">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">
-                {isProject
-                  ? tI18nComplete.raw('text985959785319')
-                  : tI18nComplete.raw('textb512d97e7cbf')}
-              </span>
+              <span className="text-sm font-medium">{isProject ? 'Project' : 'User'}</span>
               <Badge variant="outline" size="xs">
                 {tI18nComplete.raw('text1246fc93bca0')}
               </Badge>
@@ -204,8 +201,11 @@ export function ConnectorConnectionModal({
   onOpenChange: (open: boolean) => void;
   onSubmit: (connection: EasyConnectConnectionInput) => void;
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
-  const [name, setName] = useState(initialName);
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
+  // The proposed name counts the project's existing connections to this app,
+  // so the second Sentry is "Sentry 2" — see `proposeConnectorConnectionName`.
+  const proposedName = proposeConnectorConnectionName(initialName, existingSlugs);
+  const [name, setName] = useState(proposedName);
   const [slug, setSlug] = useState(initialSlug);
   const [slugEdited, setSlugEdited] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -214,12 +214,12 @@ export function ConnectorConnectionModal({
 
   useEffect(() => {
     if (!open) return;
-    setName(initialName);
+    setName(proposedName);
     setSlug(initialSlug);
     setSlugEdited(false);
     setOptionsOpen(false);
     setAuthorizationStrategy('project');
-  }, [initialName, initialSlug, open]);
+  }, [proposedName, initialSlug, open]);
 
   const slugAvailable = isConnectorConnectionSlugAvailable(slug, existingSlugs);
   const slugInvalid = slug.length > 0 && !slugAvailable;
@@ -249,8 +249,8 @@ export function ConnectorConnectionModal({
         >
           <ModalBody className="max-h-[60vh] space-y-4 overflow-y-auto">
             <p className="text-muted-foreground text-sm text-pretty">
-              {tI18nComplete.raw('text17e9f72b9ba8')} {displayName}{' '}
-              {tI18nComplete.raw('texte99baf469ca8')}
+              {tI18nComplete.raw('text17e9f72b9ba8')}
+              {displayName} {tI18nComplete.raw('texte99baf469ca8')}
             </p>
             <Disclosure
               variant="outline"

@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations as useI18nTranslations } from '@/i18n/use-translations';
 /**
  * The project sidebar's one control: which workspace you are in, and everything
  * you can do from here.
@@ -76,13 +77,12 @@ import {
   PlusIcon,
 } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
-import { useTranslations } from '@/i18n/use-translations';
 import Link from 'next/link';
 import * as React from 'react';
 import { useState } from 'react';
 
 export function WorkspaceSwitcher({ projectId }: { projectId: string }) {
-  const t = useTranslations('sidebar');
+  const t = useI18nTranslations('sidebar');
   const sidebar = React.useContext(SidebarContext);
   const [menuOpen, setMenuOpen] = useState(false);
 

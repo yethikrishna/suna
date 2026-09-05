@@ -1,10 +1,15 @@
 'use client';
 
+import { NewEntityMenu } from '@/features/workspace/capabilities/shared/new-entity-menu';
+import {
+  newConfigPrompt,
+  useConfigureThread,
+} from '@/features/workspace/customize/use-configure-thread';
+import { useTranslations as useI18nTranslations } from '@/i18n/use-translations';
 import { getProjectDetail, listConnectors, type AdminConnector } from '@kortix/sdk';
 import { contract, qk, useFeatureFlag, useProjectAccountId } from '@kortix/sdk/react';
-import { MagnifyingGlassIcon, PlugIcon, PlusIcon } from '@phosphor-icons/react';
+import { MagnifyingGlassIcon, PlugIcon } from '@phosphor-icons/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useTranslations } from '@/i18n/use-translations';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -259,12 +264,13 @@ type Panel = 'custom';
  * because the redirect URL is built from the current one.
  */
 export function ConnectorsPage({ projectId }: { projectId: string }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   // `accountId` comes off the detail this page already loads. Without it
   // `useProjectCan` fetches the project a second time under its own key AND
   // holds the IAM probe disabled until that lands — so Add and every write
   // affordance appeared two sequential round-trips after paint.
   const accountId = useProjectAccountId(projectId);
+  const configure = useConfigureThread(projectId);
   const canWrite =
     useProjectCan(projectId, PROJECT_ACTIONS.PROJECT_CONNECTOR_WRITE, { accountId }).allowed ===
     true;
@@ -407,7 +413,7 @@ export function ConnectorsPage({ projectId }: { projectId: string }) {
   const oauth2Error = search?.get('oauth2_error');
   useEffect(() => {
     if (oauth2Result !== 'connected' && oauth2Result !== 'error') return;
-    if (oauth2Result === 'connected') successToast(tI18nComplete.raw('text7f68183cb179'));
+    if (oauth2Result === 'connected') successToast(tI18nComplete.raw('text75586c42e862'));
     else errorToast(oauth2Error || tI18nComplete.raw('texta6fac795d6d6'));
     invalidate();
     replaceParams((params) => {
@@ -610,15 +616,16 @@ export function ConnectorsPage({ projectId }: { projectId: string }) {
            full sentence for screen readers; it opens with the visible "Add",
            so the accessible name still contains the visible label. */
         canWrite && !channelsActive ? (
-          <Button
-            variant="secondary"
-            aria-label={tI18nComplete.raw('text90ccaee30bdc')}
-            onClick={() => setPanel('custom')}
-            className="transition-transform duration-150 ease-out active:scale-[0.96]"
-          >
-            <PlusIcon className="size-4" />
-            {tI18nComplete.raw('text9fd728c66c9a')}
-          </Button>
+          <NewEntityMenu
+            label={tI18nComplete.raw('text18fdd549b2ed')}
+            pending={configure.pending}
+            onChat={() => configure.start(newConfigPrompt('connector'))}
+            manual={{
+              label: tI18nComplete.raw('text90ccaee30bdc'),
+              description: tI18nComplete.raw('textb0fbe9dc1fcc'),
+              onSelect: () => setPanel('custom'),
+            }}
+          />
         ) : undefined
       }
       filters={

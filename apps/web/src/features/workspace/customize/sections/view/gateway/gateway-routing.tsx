@@ -959,7 +959,9 @@ export function GatewayRouting({
                       draft.visionModel
                         ? tI18nComplete.raw('textc916a6a191c1')
                         : routing.data.effective.visionModel
-                          ? `Inherits ${routing.data.effective.visionModel}.`
+                          ? tI18nComplete('text8375520a8316', {
+                              value0: routing.data.effective.visionModel,
+                            })
                           : tI18nComplete.raw('text59e7c0aa6df1')
                     }
                   >

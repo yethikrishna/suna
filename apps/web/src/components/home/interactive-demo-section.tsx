@@ -8,6 +8,7 @@ import { UserAvatar } from '@/components/ui/user-avatar';
 import { Slack } from '@/features/icon/icons/slack';
 import { APP_REGISTRY_TRANSLATION_KEYS } from '@/i18n/app-registry-translation-keys.generated';
 import { localizeUiCatalog } from '@/i18n/localize-ui-catalog';
+import { PROVIDER_HINT_TRANSLATION_KEYS } from '@/i18n/provider-hint-translation-keys.generated';
 import { useTranslations } from '@/i18n/use-translations';
 import { cn } from '@/lib/utils';
 import { safeScrollTo } from '@/lib/utils/safe-scroll-to';
@@ -717,6 +718,8 @@ function ModelsPage({
   connectedDomains?: string[];
 }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
+  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const providers = localizeUiCatalog(PROVIDERS, tI18nComplete, PROVIDER_HINT_TRANSLATION_KEYS);
   const activeName = activeModel?.name ?? 'Claude Opus 4.8';
   return (
     <div>
@@ -734,7 +737,7 @@ function ModelsPage({
       />
 
       <div className="space-y-2">
-        {PROVIDERS.map((p) => {
+        {providers.map((p) => {
           const isActive = !!activeModel && p.domain === activeModel.domain;
           const connected =
             p.state === 'connected' || (!!p.domain && connectedDomains.includes(p.domain));

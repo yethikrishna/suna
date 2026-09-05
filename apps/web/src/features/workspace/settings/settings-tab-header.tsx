@@ -1,8 +1,10 @@
 import { Button } from '@/components/ui/button';
 import { SettingsSectionHeader } from '@/components/ui/settings-section-header';
+import { useTranslations } from '@/i18n/use-translations';
 import { BookOpenIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
 
+import { railItemForTab } from './rail';
 import { useSettingsRailChromeCopy, useSettingsRailItem } from './rail-copy-context';
 import type { SettingsTab } from './settings-tabs';
 
@@ -31,7 +33,10 @@ import type { SettingsTab } from './settings-tabs';
  * pane's id actually resolves.
  */
 export function SettingsTabHeader({ tab, action }: { tab: string; action?: React.ReactNode }) {
-  const item = useSettingsRailItem(tab as SettingsTab);
+  const contextItem = useSettingsRailItem(tab as SettingsTab);
+  const tSettingsRail = useTranslations('settings.rail');
+  const item =
+    contextItem ?? railItemForTab(tab as SettingsTab, (key) => tSettingsRail(key as never));
   const chrome = useSettingsRailChromeCopy();
   if (!item) return null;
 

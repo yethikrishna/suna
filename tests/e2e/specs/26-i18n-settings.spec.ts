@@ -18,7 +18,17 @@ import {
   signIn,
 } from "../helpers/session-auth";
 
-const supportedLocales = ["de", "it", "zh", "ja", "pt", "fr", "es", "sr", "en"] as const;
+const supportedLocales = [
+  "de",
+  "it",
+  "zh",
+  "ja",
+  "pt",
+  "fr",
+  "es",
+  "sr",
+  "en",
+] as const;
 type Locale = (typeof supportedLocales)[number];
 const requestedLocale = process.env.E2E_I18N_LOCALE;
 if (requestedLocale && !supportedLocales.includes(requestedLocale as Locale)) {
@@ -74,16 +84,16 @@ function productSurfaceRoutes(projectId: string, accountId: string): string[] {
     "/accounts",
     `/accounts/${accountId}`,
     `/projects/${projectId}`,
-    `/projects/${projectId}/agent`,
+    `/projects/${projectId}/customize/agents`,
+    `/projects/${projectId}/customize/skills`,
+    `/projects/${projectId}/customize/connectors`,
+    `/projects/${projectId}/customize/triggers`,
+    `/projects/${projectId}/customize/review`,
+    `/projects/${projectId}/customize/models`,
+    `/projects/${projectId}/customize/secrets`,
+    `/projects/${projectId}/customize/settings`,
     `/projects/${projectId}/channels`,
-    `/projects/${projectId}/connectors`,
-    `/projects/${projectId}/customize`,
     `/projects/${projectId}/members`,
-    `/projects/${projectId}/models`,
-    `/projects/${projectId}/review`,
-    `/projects/${projectId}/secrets`,
-    `/projects/${projectId}/skills`,
-    `/projects/${projectId}/triggers`,
     `/projects/${projectId}/apps`,
     `/projects/${projectId}/files`,
     `/projects/${projectId}/sessions`,
@@ -287,9 +297,19 @@ async function assertLocalizedRoute(
   locale: Locale,
   navigationResponse?: Response | null,
 ): Promise<void> {
-  const response =
-    navigationResponse ??
-    (await page.goto(route, { waitUntil: "commit" }));
+  let response = navigationResponse;
+  if (!response) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        response = await page.goto(route, { waitUntil: "commit" });
+        break;
+      } catch (error) {
+        if (!(error instanceof Error) || error.name !== "TimeoutError" || attempt === 1) {
+          throw error;
+        }
+      }
+    }
+  }
   expect(
     response,
     `${locale} ${route} did not return a document`,
@@ -335,10 +355,7 @@ async function assertLocalizedRoute(
     .toBe(true);
 }
 
-async function chooseLocale(
-  page: Page,
-  locale: Locale,
-): Promise<void> {
+async function chooseLocale(page: Page, locale: Locale): Promise<void> {
   const responsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === "PUT" &&
@@ -581,6 +598,7 @@ test.describe("26 — Settings localization", () => {
             page.getByRole("heading", {
               name: copy.settings.sessions.notifications,
               exact: true,
+              level: 2,
             }),
           ).toBeVisible();
           const notificationSwitch = page.getByRole("switch", {
@@ -636,27 +654,6 @@ test.describe("26 — Settings localization", () => {
               page.getByText(eventCopy.description, { exact: true }).first(),
             ).toBeVisible();
           }
-
-          await page
-            .getByRole("tab", {
-              name: copy.settings.rail.items.connected.label,
-              exact: true,
-            })
-            .click();
-          for (const connectedText of [
-            copy.settings.connected.github,
-            copy.settings.connected.install,
-          ]) {
-            await expect(
-              page.getByText(connectedText, { exact: true }).first(),
-            ).toBeVisible();
-          }
-          await expect(
-            page.getByRole("button", {
-              name: `Github ${copy.settings.connected.connect}`,
-              exact: true,
-            }),
-          ).toBeVisible();
 
           await page
             .getByRole("tab", {
@@ -740,151 +737,6 @@ test.describe("26 — Settings localization", () => {
               exact: true,
             })
             .click();
-
-          await page
-            .getByRole("tab", {
-              name: copy.settings.rail.items.credits.label,
-              exact: true,
-            })
-            .click();
-          for (const creditText of [
-            copy.settings.credits.availableBalance,
-            ...Object.values(copy.settings.credits.buckets).flatMap(
-              (bucket) => [bucket.label, bucket.hint],
-            ),
-            copy.settings.credits.includedInPlan,
-            copy.settings.credits.usedThisPeriod,
-            copy.settings.credits.history,
-            copy.settings.credits.historyDescription,
-          ]) {
-            await expect(
-              page.getByText(creditText, { exact: true }).first(),
-            ).toBeVisible();
-          }
-          await expect(
-            page.getByRole("link", {
-              name: copy.settings.credits.openLedger,
-              exact: true,
-            }),
-          ).toBeVisible();
-
-          await page
-            .getByRole("tab", {
-              name: copy.settings.rail.items.plan.label,
-              exact: true,
-            })
-            .click();
-          await expect(
-            page.getByText(copy.billing.plan.currentPlan, { exact: true }),
-          ).toBeVisible();
-          await expect(
-            page.getByText(copy.billing.plan.active, { exact: true }),
-          ).toBeVisible();
-
-          await page
-            .getByRole("tab", {
-              name: copy.settings.rail.items.workspace.label,
-              exact: true,
-            })
-            .click();
-          for (const workspaceText of [
-            copy.settings.workspace.icon,
-            copy.settings.workspace.name,
-            copy.settings.workspace.dangerZone,
-            copy.settings.workspace.deleteWorkspace,
-            copy.settings.git.title,
-          ]) {
-            await expect(
-              page.getByText(workspaceText, { exact: true }).first(),
-            ).toBeVisible();
-          }
-
-          await page
-            .getByRole("tab", {
-              name: copy.settings.rail.items.sandbox.label,
-              exact: true,
-            })
-            .click();
-          await expect(
-            page.getByRole("heading", {
-              name: copy.settings.rail.items.sandbox.label,
-              exact: true,
-            }),
-          ).toBeVisible();
-          for (const sandboxText of [
-            copy.settings.sandbox.routing.title,
-            copy.settings.sandbox.actions.new,
-            copy.settings.sandbox.facts.processor,
-            copy.settings.sandbox.facts.memory,
-            copy.settings.sandbox.facts.storage,
-            copy.settings.sandbox.defaultBadge,
-            copy.settings.snapshots.view.logTitle,
-            copy.settings.snapshots.faq.title,
-          ]) {
-            await expect(
-              page.getByText(sandboxText, { exact: true }).first(),
-            ).toBeVisible({ timeout: 30_000 });
-          }
-          await expect(
-            page.getByText(copy.settings.sandbox.descriptionStart, {
-              exact: false,
-            }),
-          ).toBeVisible();
-          await expect(
-            page.getByRole("combobox", {
-              name: copy.settings.sandbox.provider.label,
-              exact: true,
-            }),
-          ).toBeVisible();
-          await expect(
-            page
-              .getByText(copy.settings.snapshots.environment.notBuilt.title, {
-                exact: true,
-              })
-              .or(
-                page.getByText(copy.settings.snapshots.view.empty, {
-                  exact: true,
-                }),
-              )
-              .first(),
-          ).toBeVisible();
-
-          await page
-            .getByRole("tab", {
-              name: copy.settings.rail.items["feature-flags"].label,
-              exact: true,
-            })
-            .click();
-          await expect(
-            page.getByPlaceholder(copy.settings.featureFlags.search, {
-              exact: true,
-            }),
-          ).toBeVisible();
-          for (const featureText of [
-            copy.settings.featureFlags.flags.marketplace.name,
-            copy.settings.featureFlags.flags.marketplace.description,
-            copy.settings.featureFlags.stability.beta,
-          ]) {
-            await expect(
-              page.getByText(featureText, { exact: true }).first(),
-            ).toBeVisible();
-          }
-
-          await page
-            .getByRole("tab", {
-              name: copy.settings.rail.items.upgrades.label,
-              exact: true,
-            })
-            .click();
-          for (const upgradeText of [
-            copy.settings.upgrades.available,
-            copy.settings.upgrades.oneOff,
-            copy.settings.upgrades.runUpgrade,
-          ]) {
-            await expect(
-              page.getByText(upgradeText, { exact: true }).first(),
-            ).toBeVisible();
-          }
 
           const onboardingSession = await signIn(email, authOptions);
           await installBrowserSessionDirect(

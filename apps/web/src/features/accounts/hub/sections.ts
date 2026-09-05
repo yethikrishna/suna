@@ -1,7 +1,7 @@
 import { ACCOUNT_HUB_TRANSLATION_KEYS } from '@/i18n/account-hub-translation-keys.generated';
 import { localizeUiCatalog } from '@/i18n/localize-ui-catalog';
+import { REMAINING_UI_TRANSLATION_KEYS } from '@/i18n/remaining-ui-translation-keys.generated';
 import type { UiTranslator } from '@/i18n/translator';
-
 /**
  * The account hub's section catalog — the ONE list of what `/accounts/[id]`
  * can show, and what each section is called.
@@ -88,7 +88,10 @@ export const NAV_GROUPS: readonly AccountNavGroup[] = [
       // the other "how is this account configured" items, not under Access.
       { id: 'branding', label: 'Branding', icon: PaintBrushIcon },
       { id: 'git', label: 'Git', icon: GitBranchIcon },
-      { id: 'tokens', label: 'Tokens', icon: KeyIcon },
+      // "API keys" (Marko, 2026-09-03): the account's service-account keys, as
+      // opposed to a person's own keys under Preferences › Personal access
+      // keys. The id stays `tokens` — it is the `?tab=` segment.
+      { id: 'tokens', label: 'API keys', icon: KeyIcon },
     ],
   },
   {
@@ -121,10 +124,10 @@ export const PANE_META: Partial<Record<AccountSection, { title: string; descript
     description: 'Session costs and credit ledger for this account.',
   },
   tokens: {
-    title: 'Tokens',
+    title: 'API keys',
     // Machine identities only. A person's own API keys moved to their own
     // settings on 2026-08-18 (`/settings/tokens`).
-    description: 'Service account tokens for CI and automations, and the rules they follow.',
+    description: 'Service account API keys for CI and automations, and the rules they follow.',
   },
   identity: {
     title: 'Identity',
@@ -145,12 +148,17 @@ export const PANE_META: Partial<Record<AccountSection, { title: string; descript
   },
 };
 
+const ACCOUNT_SECTION_TRANSLATION_KEYS = {
+  ...ACCOUNT_HUB_TRANSLATION_KEYS,
+  ...REMAINING_UI_TRANSLATION_KEYS,
+};
+
 export function localizedAccountNavGroups(tI18nComplete: UiTranslator) {
-  return localizeUiCatalog(NAV_GROUPS, tI18nComplete, ACCOUNT_HUB_TRANSLATION_KEYS);
+  return localizeUiCatalog(NAV_GROUPS, tI18nComplete, ACCOUNT_SECTION_TRANSLATION_KEYS);
 }
 
 export function localizedAccountPaneMeta(tI18nComplete: UiTranslator) {
-  return localizeUiCatalog(PANE_META, tI18nComplete, ACCOUNT_HUB_TRANSLATION_KEYS);
+  return localizeUiCatalog(PANE_META, tI18nComplete, ACCOUNT_SECTION_TRANSLATION_KEYS);
 }
 
 /**
@@ -254,8 +262,8 @@ export function accountHubCrumbs(
       return [
         root,
         account,
-        { label: tI18nComplete.raw('texta039dfb9628b'), href: `${hub}?tab=tokens` },
-        { label: tI18nComplete.raw('textd2089be67295') },
+        { label: tI18nComplete.raw('text98aae8972102'), href: `${hub}?tab=tokens` },
+        { label: tI18nComplete.raw('text99a52df3ff3d') },
       ];
     case 'groups':
       return [root, account, { label: sectionLabel('groups', tI18nComplete) }];

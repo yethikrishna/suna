@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from '@/i18n/use-translations';
+import { useTranslations as useI18nTranslations } from '@/i18n/use-translations';
 /**
  * Creating a trigger — a schedule or a webhook.
  *
@@ -64,13 +64,14 @@ import {
 } from '@phosphor-icons/react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
+import { triggerSessionAccessCopy } from './trigger-session-access-copy';
 
 import {
+  KIND_COPY,
   type SessionMode,
   type TriggerKind,
   describeCadence,
   describeOneOff,
-  localizedKindCopy,
 } from './schedule-copy';
 import {
   type ConditionRow,
@@ -117,21 +118,26 @@ export function ScheduleCreateModal({
   open,
   onOpenChange,
   onCreated,
+  initialAgent = null,
 }: {
   projectId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: (slug: string) => void;
+  /** Pre-selects the agent the trigger starts. An agent's own page opens
+   *  this modal for "its" triggers, so the picker lands on that agent rather
+   *  than asking a question the page already answered. Still changeable. */
+  initialAgent?: string | null;
 }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const [kind, setKind] = useState<TriggerKind | null>(null);
-  const copy = kind ? localizedKindCopy(tI18nComplete)[kind] : null;
+  const copy = kind ? KIND_COPY[kind] : null;
   const isCron = kind === 'cron';
 
   const [step, setStep] = useState<Step>('type');
   const [name, setName] = useState('');
   const [instruction, setInstruction] = useState('');
-  const [agentName, setAgentName] = useState<string | null>(null);
+  const [agentName, setAgentName] = useState<string | null>(initialAgent);
   const [model, setModel] = useState<ModelKey | null>(null);
 
   const [cron, setCron] = useState('0 0 9 * * *');
@@ -171,7 +177,11 @@ export function ScheduleCreateModal({
     setKind(null);
     setName('');
     setInstruction('');
-    setAgentName(null);
+    // Back to the caller's agent, not to nothing: this effect also runs on
+    // the first render (the modal mounts closed), and `null` here threw the
+    // agent page's `initialAgent` away before the modal was ever opened — every
+    // trigger created from an agent page landed on `default`.
+    setAgentName(initialAgent);
     setModel(null);
     setCron('0 0 9 * * *');
     setRunAt(null);
@@ -186,7 +196,7 @@ export function ScheduleCreateModal({
     setStartActive(true);
     setSessionAccess({ mode: 'private', memberIds: [], groupIds: [] });
     setError(null);
-  }, [open]);
+  }, [open, initialAgent]);
 
   /** First-step problems, in the order a person would hit them. */
   function checkWhat(): string | null {
@@ -274,7 +284,7 @@ export function ScheduleCreateModal({
             ? runAt
               ? describeOneOff(runAt)
               : describeCadence(cron.trim())
-            : tI18nComplete.raw('text4aded5c6750d'),
+            : 'Copy its address from the panel to finish setup.',
         },
       );
       if (created) onCreated(created.slug);
@@ -355,7 +365,7 @@ export function ScheduleCreateModal({
             <>
               <Field
                 label={tI18nComplete.raw('textdcd1d5223f73')}
-                hint={`Shown in your list of ${copy.noun}s.`}
+                hint={tI18nComplete('text42bd5f3bc3ca', { value0: copy.noun })}
               >
                 <Input
                   value={name}
@@ -495,21 +505,7 @@ export function ScheduleCreateModal({
                         value={sessionAccess}
                         onChange={setSessionAccess}
                         showHeading={false}
-                        copy={{
-                          heading: tI18nComplete.raw('textefcc5a598260'),
-                          private: {
-                            label: tI18nComplete.raw('text56536365c70b'),
-                            desc: tI18nComplete.raw('textc296b293902b'),
-                          },
-                          members: {
-                            label: tI18nComplete.raw('text1999ea7700a7'),
-                            desc: tI18nComplete.raw('text96f78a1908b4'),
-                          },
-                          project: {
-                            label: tI18nComplete.raw('text28ff734e9722'),
-                            desc: tI18nComplete.raw('text655d15facaf2'),
-                          },
-                        }}
+                        copy={triggerSessionAccessCopy(tI18nComplete)}
                       />
                     </Field>
 
@@ -673,7 +669,7 @@ function TypeCard({
 }
 
 function StepIndicator({ step, labels }: { step: Step; labels: Record<Step, string> }) {
-  const tI18nComplete = useTranslations('hardcodedUi.i18nComplete');
+  const tI18nComplete = useI18nTranslations('hardcodedUi.i18nComplete');
   const order: Step[] = ['type', 'what', 'how'];
   return (
     <div

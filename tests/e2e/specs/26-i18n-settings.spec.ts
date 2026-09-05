@@ -256,9 +256,24 @@ function messages(locale: Locale): LocaleMessages {
   ) as LocaleMessages;
 }
 
+function stripMessageTags(value: string): string {
+  let output = "";
+  let insideTag = false;
+  for (const character of value) {
+    if (character === "<") {
+      insideTag = true;
+    } else if (character === ">" && insideTag) {
+      insideTag = false;
+    } else if (!insideTag) {
+      output += character;
+    }
+  }
+  return output;
+}
+
 function flattenStrings(value: unknown, output: string[] = []): string[] {
   if (typeof value === "string") {
-    const normalized = value.replace(/<\/?[a-z][^>]*>/gi, "").trim();
+    const normalized = stripMessageTags(value).trim();
     if (
       normalized.length >= 5 &&
       !/[{}]/.test(normalized) &&

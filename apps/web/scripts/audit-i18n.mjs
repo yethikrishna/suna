@@ -71,6 +71,9 @@ const localizedPublicMetadataText = generatedTranslationText(
 const localizedDesignSystemText = generatedTranslationText(
   'i18n/design-system-translation-keys.generated.ts',
 );
+const localizedRemainingUiText = generatedTranslationText(
+  'i18n/remaining-ui-translation-keys.generated.ts',
+);
 
 // Machine translation can alter sentinel spelling instead of preserving it.
 // Reject the Latin form and the Cyrillic transliteration observed in production catalogs.
@@ -892,7 +895,8 @@ function scanFile(file) {
           ['DENSITY_OPTIONS', 'DEFAULT_APPEARANCE_TAB_COPY'].includes(catalogRoot)) ||
         (file ===
           path.join(srcDir, 'features/marketing/how-it-work/step/step-source-of-truth.tsx') &&
-          catalogRoot === 'NODES') ||
+          catalogRoot === 'NODES' &&
+          localizedRemainingUiText.has(node.text)) ||
         (file ===
           path.join(srcDir, 'features/workspace/capabilities/index/customize-index-page.tsx') &&
           catalogRoot === 'CARD_COPY') ||
@@ -938,9 +942,11 @@ function scanFile(file) {
         (file === path.join(srcDir, 'features/file-renderers/show-content-renderer.tsx') &&
           catalogRoot === 'SHOW_TYPE_LABELS') ||
         (file === path.join(srcDir, 'features/marketing/faq/content.ts') &&
-          catalogRoot === 'faq') ||
+          catalogRoot === 'faq' &&
+          localizedRemainingUiText.has(node.text)) ||
         (file === path.join(srcDir, 'features/marketing/open-source/content.ts') &&
-          catalogRoot === 'openSource') ||
+          catalogRoot === 'openSource' &&
+          localizedRemainingUiText.has(node.text)) ||
         (file === path.join(srcDir, 'features/marketing/how-it-work/step/step-computer.tsx') &&
           catalogRoot === 'TOOL_PARTS' &&
           node.text === 'Run the billing suite') ||

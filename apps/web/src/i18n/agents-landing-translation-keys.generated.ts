@@ -353,4 +353,8 @@ export const AGENTS_LANDING_TRANSLATION_KEYS: Readonly<Record<string, string>> =
   'Your own, on-prem': 'textb2279807303a',
   'Yours down to the metal': 'text66a87e22056f',
   'Yours, down to the metal': 'text30e23f940700',
+  'Saw you are hiring four platform engineers.': 'text3f66f3329185',
+  'Teams at that stage lose about a week a month to': 'text830ec669b118',
+  'manual reconciliation. We built an agent that closes': 'text3685aac7952f',
+  'that loop and shows its working. Worth twenty minutes?': 'textb38cb5e18525',
 };

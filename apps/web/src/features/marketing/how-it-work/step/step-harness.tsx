@@ -205,7 +205,10 @@ export function StepHarness(): ReactNode {
       <div className="hidden h-full grid-cols-[minmax(0,0.85fr)_minmax(0,1fr)] lg:grid">
         {/* Left: what a model gives you. */}
         <m.div {...band(0)} className="flex min-w-0 flex-col gap-3 px-7 py-7">
-          {eyebrow(tI18nComplete.raw('text7259d430ed27'), 'answers')}
+          {eyebrow(
+            tI18nComplete.raw('text7259d430ed27'),
+            tI18nComplete.raw('text677fe21b65f4'),
+          )}
 
           <p className="text-foreground/80 text-[13.5px] leading-[1.65] text-pretty">
             {/* Word by word rather than character by character. A per-character

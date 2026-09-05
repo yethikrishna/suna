@@ -850,4 +850,37 @@ export const REMAINING_UI_TRANSLATION_KEYS: Readonly<Record<string, string>> = {
   'Pick the group this person joins.': 'text8e4a6d907944',
   'this account': 'text2faca96de47e',
   people: 'textc9022680f888',
+  'What does an agent actually run on?': 'text7b84ea95f8ae',
+  'Its own machine. Every session boots an isolated Linux cloud computer with your repo and your tools already on it, on its own git branch — the session id, the sandbox id and the branch name are one and the same string. The agent can install, run and break anything inside it; only what it commits survives, because the machine is destroyed with everything on it.':
+    'text97bbd1c3b346',
+  'What stops it doing something I did not want?': 'textc145665dd580',
+  'You set allow, ask or block per action, and a rule can match on a glob, a regular expression, or the arguments of the call itself. Be aware that nothing is switched on for you: a project with no policy declared runs every action, so this is a thing you configure rather than a thing you inherit. Session work reaches main through a change request, and merge is default-deny for an agent — an admin has to grant it in kortix.yaml, and that grant is itself an edit somebody else has to merge.':
+    'texta9fe46474f33',
+  'Can I see everything an agent did?': 'text3a8d0e57770e',
+  'It is all recorded, on every plan. Recording is never gated — actions, approvals and the session transcript are captured whatever you pay. Reading, exporting and streaming that audit trail out to your own SIEM is an Enterprise entitlement, so on the lower plans the record exists but the export does not.':
+    'text36814e8d3c88',
+  'Is my company data yours?': 'text618ad8d1c91a',
+  'No. A project is a git repository — clone it and the agents, the skills and everything the company has learned come with you. Self-host and the database, the files, the repos, the secrets and the audit record all sit on disk you control, on one Docker Compose stack built from the same images the managed cloud runs. It is not air-gapped, and we will not pretend otherwise: agent sandboxes run on the compute provider you configure, and your instance has to be reachable so they can call back.':
+    'textda09b5e9847d',
+  'Can I use the models I already pay for?': 'text151863950f0e',
+  'Yes. Bring your own API key for any major provider, or sign in with the ChatGPT subscription you already pay for, or use the managed gateway and bring no key at all. The model is a line of configuration in your repo, so switching provider is a diff rather than a migration.':
+    'text055026a9c10e',
+  'What does it cost?': 'texte8dc9deba44c',
+  'Free is $0 — one project and 200 credits a month of sandbox compute, with your own key for any premium model. Team is $40 per seat per month and pools 2,500 credits a seat. Self-hosting the software costs nothing; you pay your own model bill and your own compute bill instead.':
+    'text8eb8b8551cec',
+  'Why we are building it': 'text7ee5a6d5e8ad',
+  'Read the source': 'text625b22ba31d0',
+  'who does the work': 'textf16b8eb8dbdc',
+  'how your company does a job': 'text134c2e3b3de9',
+  'what it has learned so far': 'texte4a5057c3d4b',
+  'what each agent may touch': 'text17fc14f2752c',
+  'when work starts on its own': 'textafd614a43cdb',
+  'the tools it is wired to': 'texte0dc5fffc316',
+  'the image sessions boot': 'texta3fc3f6cb13b',
+  'Your endpoint': 'textcad6028adc82',
+  'anything OpenAI-compatible': 'text43d5e93e93fb',
+  'per agent': 'text5ddf2ba599b6',
+  'per session': 'textf92898c93eec',
+  'per message': 'text83d0be53d592',
+  answers: 'text677fe21b65f4',
 };

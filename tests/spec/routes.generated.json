@@ -1,6 +1,6 @@
 {
   "generatedAt": "static",
-  "count": 633,
+  "count": 635,
   "routes": [
     {
       "method": "GET",
@@ -2305,6 +2305,14 @@
     {
       "method": "HEAD",
       "path": "/v1/runtime-assets/cli"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/runtime-assets/entrypoint"
+    },
+    {
+      "method": "HEAD",
+      "path": "/v1/runtime-assets/entrypoint"
     },
     {
       "method": "GET",

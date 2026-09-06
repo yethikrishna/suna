@@ -6,6 +6,17 @@ export interface AllowEntry {
 
 export const uncoveredAllow: AllowEntry[] = [
   {
+    method: "GET",
+    path: "/v1/runtime-assets/entrypoint",
+    reason:
+      "DEBT, not a considered exemption, and NOT introduced by this branch. The route exists on the app but is absent from the committed tests/spec/routes.generated.json, so the coverage gate had never seen it; regenerating the manifest for the headless-auth routes surfaced it. It needs a flow from whoever owns runtime-assets. Recorded so a stale manifest cannot re-hide it.",
+  },
+  {
+    method: "HEAD",
+    path: "/v1/runtime-assets/entrypoint",
+    reason: "Same route as the GET above, same reason — surfaced by regenerating a stale manifest, not added here.",
+  },
+  {
     method: "PATCH",
     path: "/v1/auth/user",
     reason:

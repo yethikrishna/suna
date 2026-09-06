@@ -84,7 +84,17 @@ function envSecret(): string | undefined {
 }
 
 export function createKortixAppGuard(options: KortixAppGuardOptions = {}): KortixAppGuard {
-  const secret = options.secret ?? envSecret();
+  /**
+   * Resolved per request, not captured at construction.
+   *
+   * A guard is normally built once and reused, so a secret captured up front
+   * would freeze whatever the environment held at first call. That is invisible
+   * in production (the env does not change) and wrong everywhere else: a test
+   * that unsets KORTIX_APP_VIEWER_SECRET would still verify headers, which is
+   * the difference between "this deployment shares no identity" and "this
+   * deployment trusts a signature it should no longer accept".
+   */
+  const resolveSecret = () => options.secret ?? envSecret();
   const ttl = options.groupCacheTtlMs ?? 60_000;
   const now = options.now ?? (() => Date.now());
   const fetchImpl =
@@ -126,6 +136,7 @@ export function createKortixAppGuard(options: KortixAppGuardOptions = {}): Korti
   async function viewer(request: Request): Promise<KortixGuardedViewer | null> {
     // The gate first: one HMAC, no network, and it already carries groups. It is
     // also the only source that proves the viewer for THIS App specifically.
+    const secret = resolveSecret();
     const gated = await readAppViewer(request, secret ? { secret } : undefined);
     if (gated) {
       return {
@@ -154,7 +165,7 @@ export function createKortixAppGuard(options: KortixAppGuardOptions = {}): Korti
   }
 
   function identityConfigured(): boolean {
-    return Boolean(secret) || Boolean(options.auth);
+    return Boolean(resolveSecret()) || Boolean(options.auth);
   }
 
   /** 404, not 403 — "this exists and is not yours" is itself information. */

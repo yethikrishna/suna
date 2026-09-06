@@ -83,6 +83,11 @@ import {
   type ModelDefaultControls,
 } from '@/features/session/model-selector';
 import { OptimisticTurn } from '@/features/session/optimistic-turn';
+import {
+  resolveFirstPromptHandover,
+  transcriptCarriesFirstPrompt,
+} from '@/features/session/first-prompt-handover';
+import type { AttachmentUploadStatus } from '@/features/session/turn/user-message';
 import { type TurnSpan } from '@/features/session/outcomes/anchor-outcomes';
 import type { Outcome } from '@/features/session/outcomes/outcome-types';
 import { SessionOutcomesProvider } from '@/features/session/outcomes/session-outcomes-provider';
@@ -704,6 +709,11 @@ interface SessionTurnProps {
    * in the bubble's own meta row — the bubble IS the queue entry.
    */
   queueRow?: SessionPrompt | null;
+  /** Files this turn is known to carry that its parts do not show yet — see `UserMessage`. */
+  pendingAttachments?: ReadonlyArray<{ filename: string; mime: string }>;
+  uploadStatus?: AttachmentUploadStatus;
+  /** The prompt's text as the sender knew it — see `UserMessage`. */
+  pendingText?: string;
   queueHeld?: boolean;
   onQueueRemove?: (promptId: string) => void;
   onQueueSendNow?: (promptId: string) => void;
@@ -830,6 +840,9 @@ function SessionTurnImpl({
   suppressBusyIndicator,
   pending,
   queueRow,
+  pendingAttachments,
+  uploadStatus,
+  pendingText,
   queueHeld,
   onQueueRemove,
   onQueueSendNow,
@@ -1636,6 +1649,9 @@ function SessionTurnImpl({
         >
           <UserMessage
             message={turn.userMessage}
+            pendingAttachments={pendingAttachments}
+            uploadStatus={uploadStatus}
+            pendingText={pendingText}
             agentNames={agentNames}
             commandInfo={commandMessages?.get(turn.userMessage.info.id)}
             commands={commands}
@@ -2229,6 +2245,27 @@ export function SessionChat({
   // crash cannot lose it, and the server — not this component — decides whether
   // it runs now or waits for the turn in flight.
   const promptInbox = useSessionPrompts(projectId, projectSessionId);
+  /**
+   * What the first prompt's attachment strip should say while its files are
+   * still travelling to the box.
+   *
+   * The runtime creates the user's message only after every attachment has
+   * landed, so for the whole upload the preview bubble is the only thing on
+   * screen — and it used to show tiles with no word about what was happening.
+   * The undelivered row is the witness: it carries the names, and `last_error`
+   * is the one place a failed upload is ever named.
+   */
+  const firstPromptUploadStatus = useMemo((): AttachmentUploadStatus | undefined => {
+    const row = promptInbox.prompts.find((p) => (p.attachments?.length ?? 0) > 0);
+    if (!row) return undefined;
+    // `state`, never `last_error` alone: the API writes `last_error` on rows
+    // it keeps `queued` and retries, and never clears it on success — read
+    // as a failure it turned every transient retry into "upload failed"
+    // (review finding, 2026-09-05).
+    return row.state === 'failed'
+      ? { state: 'failed', message: row.last_error ?? 'Upload failed' }
+      : { state: 'uploading' };
+  }, [promptInbox.prompts]);
 
   // T10: the most recently issued stop/cancel's `AbortSettlement`
   // promise for this session, so `stopThenSendNow` (used by
@@ -3285,24 +3322,64 @@ export function SessionChat({
   const clearFirstPromptPreview = useFirstPromptPreviewStore(
     (state) => state.clearFirstPromptPreview,
   );
-  // "The transcript has it" means a user message WITH text on screen — the
-  // info frame and the text part arrive separately, and a bubble with no text
-  // renders nothing. Until then the preview stands in.
+  // Two different questions, and they used to be one.
+  //
+  // WHEN DOES THE STAND-IN STEP ASIDE? The frame the transcript shows the
+  // text. Holding it past that stacked a second bubble on top of the real one
+  // for the whole text-first window (review finding, 2026-09-05).
+  //
+  // WHEN IS THE PREVIEW FORGOTTEN? Only once the transcript's message carries
+  // the attachments it promised — the runtime streams the text part first and
+  // the file parts seconds later, and forgetting on text alone was what left
+  // the real bubble with no tiles for those seconds. Until then the preview's
+  // file NAMES are handed to the real turn to draw as pending tiles, so the
+  // strip never blinks out. See `first-prompt-handover.ts`.
   const transcriptShowsFirstPrompt = useMemo(
-    () =>
-      turns.some((turn) =>
-        turn.userMessage.parts.some(
-          (part) =>
-            isTextPart(part) && !!part.text?.trim() && !(part as { synthetic?: boolean }).synthetic,
-        ),
-      ),
+    () => transcriptCarriesFirstPrompt(turns, 0),
     [turns],
   );
-  const showFirstPromptPreview = !!firstPromptPreview && !transcriptShowsFirstPrompt;
+  const previewAttachmentCount = firstPromptPreview?.files.length ?? 0;
+  const transcriptCarriesFirstPromptFiles = useMemo(
+    () => transcriptCarriesFirstPrompt(turns, previewAttachmentCount),
+    [turns, previewAttachmentCount],
+  );
+  // A RELEASE IS A LATCH. The transcript's first message briefly has no parts
+  // while the store swaps the optimistic copy for the runtime's echo (~176 ms
+  // as the file parts land, on video 2026-09-06); a live boolean brought the
+  // stand-in back at full opacity over the dimmed real turn for those frames.
+  // Once released, the real turn owns the prompt — see
+  // `resolveFirstPromptHandover`.
+  const [firstPromptReleased, setFirstPromptReleased] = useState(false);
+  const handover = resolveFirstPromptHandover({
+    hasPreview: !!firstPromptPreview,
+    transcriptShowsText: transcriptShowsFirstPrompt,
+    transcriptCarriesFiles: transcriptCarriesFirstPromptFiles,
+    releasedBefore: firstPromptReleased,
+  });
+  useEffect(() => {
+    if (handover.released && !firstPromptReleased) setFirstPromptReleased(true);
+  }, [handover.released, firstPromptReleased]);
+  const showFirstPromptPreview = handover.showStandIn;
   useEffect(() => {
     if (!projectSessionId || !firstPromptPreview) return;
-    if (transcriptShowsFirstPrompt) clearFirstPromptPreview(projectSessionId);
-  }, [projectSessionId, firstPromptPreview, transcriptShowsFirstPrompt, clearFirstPromptPreview]);
+    if (transcriptCarriesFirstPromptFiles) clearFirstPromptPreview(projectSessionId);
+  }, [projectSessionId, firstPromptPreview, transcriptCarriesFirstPromptFiles, clearFirstPromptPreview]);
+  /** What the real first turn is handed once the stand-in has stepped aside:
+   *  the prompt's text and its files' names, so it keeps drawing the bubble
+   *  and the pending tiles through any frame where its own parts are still
+   *  streaming. Nothing once the transcript carries the files itself. */
+  const firstTurnHandover = useMemo(
+    (): { text: string; attachments: ReadonlyArray<{ filename: string; mime: string }> } | undefined => {
+      if (!firstPromptPreview || !handover.handOverToRealTurn) return undefined;
+      const attachments = firstPromptPreview.files.map((file) =>
+        file.kind === 'local'
+          ? { filename: file.file.name, mime: file.file.type || 'application/octet-stream' }
+          : { filename: file.filename, mime: file.mime },
+      );
+      return { text: firstPromptPreview.text, attachments };
+    },
+    [firstPromptPreview, handover.handOverToRealTurn],
+  );
 
   /**
    * Which turn, if any, draws the plan.
@@ -5279,6 +5356,12 @@ export function SessionChat({
                                 firstPromptPreview.text,
                                 firstPromptPreview.files,
                               )}
+                              // The bytes are still being written to the box
+                              // chunk by chunk; without this the strip's
+                              // "Uploading N files…" line vanished the instant
+                              // the boot shell handed over to this component,
+                              // mid-upload.
+                              uploadStatus={firstPromptUploadStatus}
                               agentNames={agentNames}
                               onFileClick={openFileInComputer}
                               sessionId={sessionId}
@@ -5363,6 +5446,19 @@ export function SessionChat({
                                   questions={pendingQuestions}
                                   agentNames={agentNames}
                                   isFirstTurn={turnIndex === 0}
+                                  // Handed over only once the stand-in has stepped
+                                  // aside — while it is up it draws these itself.
+                                  pendingText={turnIndex === 0 ? firstTurnHandover?.text : undefined}
+                                  pendingAttachments={
+                                    turnIndex === 0 && firstTurnHandover?.attachments.length
+                                      ? firstTurnHandover.attachments
+                                      : undefined
+                                  }
+                                  uploadStatus={
+                                    turnIndex === 0 && firstTurnHandover?.attachments.length
+                                      ? (firstPromptUploadStatus ?? { state: 'uploading' })
+                                      : undefined
+                                  }
                                   sessionWorking={lastTurnWorking}
                                   isWorkingTurn={
                                     turn.userMessage.info.id === workingTurn.workingTurnId

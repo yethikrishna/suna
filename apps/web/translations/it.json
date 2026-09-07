@@ -9319,6 +9319,7 @@
     "autoLibErrorHandlerJsxTextTopUp3587309b": "Ricaricare",
     "autoLibErrorHandlerJsxTextManagePlan6ec7a5f9": "Gestisci il piano",
     "i18nComplete": {
+      "connectorSearchMinimum": "Digita almeno {count} caratteri per cercare.",
       "text0005b85debac": "Pacchetto audio riprodotto per gli eventi della sessione.",
       "text000c02c11c7a": "Istruzioni riutilizzabili che i tuoi agenti caricano quando necessario.",
       "text0017bda47853": "URL copiato",

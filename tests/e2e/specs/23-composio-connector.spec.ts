@@ -71,6 +71,102 @@ test.describe("23 — Composio managed connector", () => {
     if (user?.id) await deleteAuthUser(user.id, authOptions);
   });
 
+  test("short searches show guidance without sending invalid catalogue requests", async ({
+    page,
+  }) => {
+    const status = await api<ConnectStatus>(
+      session.access_token,
+      "GET",
+      "/connectors/connect-status",
+    );
+    const providers =
+      status.providers ?? (status.provider ? [status.provider] : []);
+    if (!providers.includes("composio")) {
+      expect(
+        process.env.E2E_REQUIRE_COMPOSIO,
+        "this run requires Composio",
+      ).not.toBe("1");
+      return;
+    }
+
+    const invalidRequests: string[] = [];
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      const query = url.searchParams.get("q")?.trim() ?? "";
+      if (
+        url.pathname.endsWith("/connect/toolkits") &&
+        query.length > 0 &&
+        query.length < 3
+      ) {
+        invalidRequests.push(request.url());
+      }
+    });
+    await installBrowserSessionDirect(
+      page,
+      session,
+      `/projects/${project.id}/customize/connectors`,
+      authOptions,
+    );
+    await selectAccountForUi(page, accountId);
+    await page.goto(`/projects/${project.id}/customize/connectors`, {
+      waitUntil: "domcontentloaded",
+    });
+    await dismissOnboarding(page);
+
+    const search = page.getByPlaceholder("Search all connectors");
+    const hint = page.getByText("Type at least 3 characters to search.", {
+      exact: true,
+    });
+    for (const scope of ["Discovery", "All"]) {
+      await page.getByRole("tab", { name: scope, exact: true }).click();
+      for (const query of ["s", "sl", " g "]) {
+        await search.fill(query);
+        await expect(hint).toBeVisible();
+        // Wait past the 300 ms debounce to observe requests caused by this input.
+        await page.waitForTimeout(700);
+        expect(invalidRequests).toEqual([]);
+      }
+
+      const validQuery = scope === "Discovery" ? "gma" : "gmai";
+      const response = page.waitForResponse((value) => {
+        const url = new URL(value.url());
+        return (
+          url.pathname.endsWith("/connect/toolkits") &&
+          url.searchParams.get("q") === validQuery
+        );
+      });
+      await search.fill(validQuery);
+      const result = await response;
+      expect(result.status()).toBe(200);
+      expect((await result.json()).items).toContainEqual(
+        expect.objectContaining({ slug: "gmail" }),
+      );
+      await expect(
+        page.getByRole("button", { name: /^Gmail\b/ }).first(),
+      ).toBeVisible();
+      await expect(hint).toHaveCount(0);
+
+      await search.fill("gm");
+      await expect(hint).toBeVisible();
+      await page.waitForTimeout(700);
+      expect(invalidRequests).toEqual([]);
+      await page.screenshot({
+        path: test.info().outputPath(`${scope}-short-query.png`),
+      });
+      await search.fill("");
+      await expect(hint).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: /^Computer Tunnels\b/ }).first(),
+      ).toBeVisible();
+    }
+    expect(pageErrors).toEqual([]);
+    await expect(
+      page.getByText("Internal server error", { exact: true }),
+    ).toHaveCount(0);
+  });
+
   test("discovers, creates, and connects a real no-auth toolkit through the UI", async ({
     page,
   }) => {

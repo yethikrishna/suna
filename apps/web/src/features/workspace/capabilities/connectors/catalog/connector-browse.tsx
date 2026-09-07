@@ -400,6 +400,14 @@ export function ConnectorBrowse({
 
   const isEmpty = showSections ? sections.length === 0 : entries.length === 0;
 
+  if (state.searchHint) {
+    return (
+      <div role="status">
+        <EmptyState size="sm" title={state.searchHint} />
+      </div>
+    );
+  }
+
   // Loading, error and "nothing to show" are `CatalogGrid`'s contract in its
   // documented order; only the *content* branch differs between the sectioned
   // and flat shapes, so those three states are delegated here and the grid

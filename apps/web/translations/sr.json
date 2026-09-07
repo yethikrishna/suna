@@ -9322,6 +9322,7 @@
     "autoLibErrorHandlerJsxTextTopUp3587309b": "Допуните",
     "autoLibErrorHandlerJsxTextManagePlan6ec7a5f9": "Управљајте планом",
     "i18nComplete": {
+      "connectorSearchMinimum": "Unesite najmanje {count} znaka za pretragu.",
       "text0005b85debac": "Пакет звука који се репродукује за догађаје сесије.",
       "text000c02c11c7a": "Поновно употребљива упутства која ваши агенти учитавају на захтев.",
       "text0017bda47853": "URL је копиран",

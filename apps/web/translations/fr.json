@@ -9322,6 +9322,7 @@
     "autoLibErrorHandlerJsxTextTopUp3587309b": "Recharger",
     "autoLibErrorHandlerJsxTextManagePlan6ec7a5f9": "Gérer le forfait",
     "i18nComplete": {
+      "connectorSearchMinimum": "Saisissez au moins {count} caractères pour rechercher.",
       "text0005b85debac": "Pack de sons joué pour les événements de session.",
       "text000c02c11c7a": "Instructions réutilisables que vos agents chargent à la demande.",
       "text0017bda47853": "URL copiée",

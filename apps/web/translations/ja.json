@@ -9319,6 +9319,7 @@
     "autoLibErrorHandlerJsxTextTopUp3587309b": "補充する",
     "autoLibErrorHandlerJsxTextManagePlan6ec7a5f9": "計画を管理する",
     "i18nComplete": {
+      "connectorSearchMinimum": "検索するには{count}文字以上入力してください。",
       "text0005b85debac": "セッションイベントで再生されるサウンドパック。",
       "text000c02c11c7a": "エージェントが必要に応じて読み込める、再利用可能な指示。",
       "text0017bda47853": "URLをコピーしました",

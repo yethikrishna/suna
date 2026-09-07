@@ -9319,6 +9319,7 @@
     "autoLibErrorHandlerJsxTextTopUp3587309b": "Auffüllen",
     "autoLibErrorHandlerJsxTextManagePlan6ec7a5f9": "Plan verwalten",
     "i18nComplete": {
+      "connectorSearchMinimum": "Gib mindestens {count} Zeichen für die Suche ein.",
       "text0005b85debac": "Soundpaket, das für Session-Events gespielt wird.",
       "text000c02c11c7a": "Wiederverwendbare Anweisungen, die deine Agenten bei Bedarf laden.",
       "text0017bda47853": "URL kopiert",

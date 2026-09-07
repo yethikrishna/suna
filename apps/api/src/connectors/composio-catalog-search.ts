@@ -52,12 +52,13 @@ async function loadCatalog(client: ComposioCatalogClient): Promise<CatalogToolki
 async function catalogSnapshot(client: ComposioCatalogClient): Promise<CatalogToolkit[]> {
   const cached = cache.get(client);
   if (cached && Date.now() - cached.at < CATALOG_TTL_MS) return cached.snapshot;
-  const snapshot = loadCatalog(client);
-  cache.set(client, { at: Date.now(), snapshot });
+  const entry = { at: Date.now(), snapshot: loadCatalog(client) };
+  cache.set(client, entry);
   try {
-    return await snapshot;
+    return await entry.snapshot;
   } catch (error) {
-    if (cache.get(client)?.snapshot === snapshot) cache.delete(client);
+    // An expired request can fail after a newer load replaces its cache entry.
+    if (cache.get(client) === entry) cache.delete(client);
     throw error;
   }
 }

@@ -164,3 +164,39 @@ test('a catalogue snapshot expires after six hours', async () => {
     Date.now = originalNow;
   }
 });
+
+test('an expired load that fails cannot evict a newer successful catalogue', async () => {
+  type CatalogPage = Awaited<ReturnType<ComposioCatalogClient['toolkits']['list']>>;
+  let rejectOldLoad!: (reason: Error) => void;
+  const oldLoad = new Promise<CatalogPage>((_resolve, reject) => {
+    rejectOldLoad = reject;
+  });
+  let calls = 0;
+  const catalogClient: ComposioCatalogClient = {
+    toolkits: {
+      async list() {
+        calls++;
+        if (calls === 1) return oldLoad;
+        return { items: [{ slug: 'gmail', name: 'Gmail', meta: {} }] };
+      },
+    },
+  };
+  const originalNow = Date.now;
+  const now = Date.now();
+  try {
+    Date.now = () => now;
+    const pendingSearch = searchComposioCatalog({ q: 'g', catalogClient });
+    Date.now = () => now + 6 * 60 * 60_000;
+    expect(await searchComposioCatalog({ q: 'gm', catalogClient })).toMatchObject({
+      toolkits: [{ slug: 'gmail' }],
+    });
+    rejectOldLoad(new Error('old request failed'));
+    await expect(pendingSearch).rejects.toThrow('old request failed');
+    expect(await searchComposioCatalog({ q: 'g', catalogClient })).toMatchObject({
+      toolkits: [{ slug: 'gmail' }],
+    });
+    expect(calls).toBe(2);
+  } finally {
+    Date.now = originalNow;
+  }
+});

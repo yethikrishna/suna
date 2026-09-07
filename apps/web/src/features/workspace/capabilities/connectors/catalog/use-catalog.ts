@@ -27,7 +27,6 @@ import { CATEGORY_ROW_CAP, localizedSectionTitle } from './connector-categories'
 /** Apps per request. One page fills several rows of the widest grid, so a
  *  scroll-triggered fetch is felt as the grid growing rather than as a jump. */
 const CATALOG_PAGE_SIZE = 48;
-const COMPOSIO_SEARCH_MIN_LENGTH = 3;
 
 /** Cards per section on the browse page, and how many sections it shows.
  *  `CATEGORY_ROW_CAP` is two rows of `xl:grid-cols-3`; 12 sections is a browse
@@ -55,10 +54,8 @@ export interface CatalogState {
   entries: CatalogEntry[];
   /** The catalogue's size for the current query and category. */
   total: number;
-  /** The debounced query, trimmed. Empty when browsing. */
+  /** The debounced query actually in flight, trimmed. Empty when browsing. */
   activeQuery: string;
-  /** Guidance shown instead of results when the provider cannot search this input. */
-  searchHint: string | null;
   /** Which catalogue answered. Decides the add flow a card opens. */
   source: CatalogSource;
   /** Categories the user can filter by, each with its true count. Empty for
@@ -257,12 +254,6 @@ export function useCatalog(
     source === 'easy-connect' &&
     (connectStatus.state === 'configured' || connectStatus.state === 'unknown');
   const easyConnectProvider = connectStatus.provider ?? 'composio';
-  // Composio rejects one- and two-character searches with HTTP 400.
-  const searchTooShort =
-    source === 'easy-connect' &&
-    easyConnectProvider === 'composio' &&
-    searching &&
-    activeQuery.length < COMPOSIO_SEARCH_MIN_LENGTH;
 
   const discoverQuery = useInfiniteQuery({
     queryKey: ['discover-connectors', projectId, activeQuery],
@@ -289,7 +280,7 @@ export function useCatalog(
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => (last.hasMore ? last.nextCursor : undefined),
     staleTime: 60_000,
-    enabled: opts.enabled && easyConnectRunnable && !searchTooShort,
+    enabled: opts.enabled && easyConnectRunnable,
     placeholderData: keepPreviousData,
   });
 
@@ -358,13 +349,11 @@ export function useCatalog(
   // deps, and a new function every render would tear down and rebuild the
   // `IntersectionObserver` on each one.
   const loadMore = useCallback(() => {
-    if (searchTooShort || !hasNextPage || isFetchingNextPage || isPlaceholderData) return;
+    if (!hasNextPage || isFetchingNextPage || isPlaceholderData) return;
     void fetchNextPage();
-  }, [searchTooShort, hasNextPage, isFetchingNextPage, isPlaceholderData, fetchNextPage]);
+  }, [hasNextPage, isFetchingNextPage, isPlaceholderData, fetchNextPage]);
 
-  const refetch = useCallback(() => {
-    if (!searchTooShort) void activeRefetch();
-  }, [searchTooShort, activeRefetch]);
+  const refetch = useCallback(() => void activeRefetch(), [activeRefetch]);
 
   /**
    * The browse sections, normalised across both sources so `ConnectorBrowse`
@@ -439,9 +428,6 @@ export function useCatalog(
     entries,
     total,
     activeQuery,
-    searchHint: searchTooShort
-      ? tI18nComplete('connectorSearchMinimum', { count: COMPOSIO_SEARCH_MIN_LENGTH })
-      : null,
     source,
     categories,
     excludedNoActions,
@@ -462,7 +448,7 @@ export function useCatalog(
     isRefreshing: opts.enabled && isPlaceholderData,
     isError: active.isError,
     error: active.error,
-    hasMore: opts.enabled && !searchTooShort && hasNextPage && !isPlaceholderData,
+    hasMore: opts.enabled && hasNextPage && !isPlaceholderData,
     isLoadingMore: isFetchingNextPage,
     loadMore,
     refetch,

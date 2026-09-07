@@ -71,7 +71,7 @@ test.describe("23 — Composio managed connector", () => {
     if (user?.id) await deleteAuthUser(user.id, authOptions);
   });
 
-  test("short searches show guidance without sending invalid catalogue requests", async ({
+  test("short searches return matching connectors in Discovery and All", async ({
     page,
   }) => {
     const status = await api<ConnectStatus>(
@@ -88,19 +88,15 @@ test.describe("23 — Composio managed connector", () => {
       ).not.toBe("1");
       return;
     }
-
-    const invalidRequests: string[] = [];
     const pageErrors: string[] = [];
+    const failedRequests: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
-    page.on("request", (request) => {
-      const url = new URL(request.url());
-      const query = url.searchParams.get("q")?.trim() ?? "";
+    page.on("response", (response) => {
       if (
-        url.pathname.endsWith("/connect/toolkits") &&
-        query.length > 0 &&
-        query.length < 3
+        response.url().includes("/connect/toolkits") &&
+        response.status() >= 400
       ) {
-        invalidRequests.push(request.url());
+        failedRequests.push(`${response.status()} ${response.url()}`);
       }
     });
     await installBrowserSessionDirect(
@@ -110,61 +106,101 @@ test.describe("23 — Composio managed connector", () => {
       authOptions,
     );
     await selectAccountForUi(page, accountId);
-    await page.goto(`/projects/${project.id}/customize/connectors`, {
-      waitUntil: "domcontentloaded",
-    });
-    await dismissOnboarding(page);
-
-    const search = page.getByPlaceholder("Search all connectors");
-    const hint = page.getByText("Type at least 3 characters to search.", {
-      exact: true,
-    });
     for (const scope of ["Discovery", "All"]) {
+      await page.goto(`/projects/${project.id}/customize/connectors`, {
+        waitUntil: "domcontentloaded",
+      });
+      await dismissOnboarding(page);
       await page.getByRole("tab", { name: scope, exact: true }).click();
-      for (const query of ["s", "sl", " g "]) {
+      const search = page.getByPlaceholder("Search all connectors");
+      for (const query of ["a", "sl", " G ", "gm", "gmail"]) {
+        const response = page.waitForResponse((value) => {
+          const url = new URL(value.url());
+          return (
+            url.pathname.endsWith("/connect/toolkits") &&
+            url.searchParams.get("q") === query.trim()
+          );
+        });
         await search.fill(query);
-        await expect(hint).toBeVisible();
-        // Wait past the 300 ms debounce to observe requests caused by this input.
-        await page.waitForTimeout(700);
-        expect(invalidRequests).toEqual([]);
+        const result = await response;
+        expect(new URL(result.url()).origin).toBe(new URL(apiBase).origin);
+        expect(result.status()).toBe(200);
+        const body = await result.json();
+        const items = body.toolkits ?? body.items;
+        expect(items.length).toBeGreaterThan(0);
+        const name = query.trim() === "sl" ? "Slack" : "Gmail";
+        expect(items).toContainEqual(
+          expect.objectContaining({ slug: name.toLowerCase() }),
+        );
+        for (const item of query.trim().length < 3 ? items : []) {
+          expect(
+            `${item.name} ${item.slug} ${item.description ?? ""}`.toLowerCase(),
+          ).toContain(query.trim().toLowerCase());
+        }
+        await expect(
+          page.getByRole("button", { name: new RegExp(`^${name}\\b`) }).first(),
+        ).toBeVisible();
+        await expect(
+          page.getByText("Internal server error", { exact: true }),
+        ).toHaveCount(0);
+        if (query.trim().length < 3) {
+          await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
+        }
+        if (query === "sl") {
+          await expect(
+            page.getByRole("button", { name: /^Gmail\b/ }),
+          ).toHaveCount(0);
+        }
+        if (query === "gm") {
+          await expect(
+            page.getByRole("button", { name: /^Slack\b/ }),
+          ).toHaveCount(0);
+        }
+        if (query === "a") {
+          await page.screenshot({
+            path: test.info().outputPath(`${scope}-single-letter.png`),
+          });
+        }
       }
-
-      const validQuery = scope === "Discovery" ? "gma" : "gmai";
-      const response = page.waitForResponse((value) => {
+      // Backspacing restores the broader one-letter result set.
+      const backspaceResponse = page.waitForResponse((value) => {
         const url = new URL(value.url());
         return (
           url.pathname.endsWith("/connect/toolkits") &&
-          url.searchParams.get("q") === validQuery
+          url.searchParams.get("q") === "g"
         );
       });
-      await search.fill(validQuery);
-      const result = await response;
-      expect(result.status()).toBe(200);
-      expect((await result.json()).items).toContainEqual(
-        expect.objectContaining({ slug: "gmail" }),
-      );
+      await search.fill("g");
+      expect((await backspaceResponse).status()).toBe(200);
       await expect(
-        page.getByRole("button", { name: /^Gmail\b/ }).first(),
+        page.getByRole("button", { name: /^GitHub\b/ }).first(),
       ).toBeVisible();
-      await expect(hint).toHaveCount(0);
-
-      await search.fill("gm");
-      await expect(hint).toBeVisible();
-      await page.waitForTimeout(700);
-      expect(invalidRequests).toEqual([]);
-      await page.screenshot({
-        path: test.info().outputPath(`${scope}-short-query.png`),
+      const emptyResponse = page.waitForResponse((value) => {
+        const url = new URL(value.url());
+        return (
+          url.pathname.endsWith("/connect/toolkits") &&
+          url.searchParams.get("q") === "☃"
+        );
       });
+      await search.fill("☃");
+      const emptyResult = await emptyResponse;
+      expect(emptyResult.status()).toBe(200);
+      expect(await emptyResult.json()).toMatchObject({
+        total: 0,
+        toolkits: [],
+        hasMore: false,
+      });
+      await expect(page.getByRole("button", { name: /^Gmail\b/ })).toHaveCount(
+        0,
+      );
+      await expect(page.locator('[data-testid="catalog-add"]')).toHaveCount(0);
       await search.fill("");
-      await expect(hint).toHaveCount(0);
       await expect(
         page.getByRole("button", { name: /^Computer Tunnels\b/ }).first(),
       ).toBeVisible();
     }
     expect(pageErrors).toEqual([]);
-    await expect(
-      page.getByText("Internal server error", { exact: true }),
-    ).toHaveCount(0);
+    expect(failedRequests).toEqual([]);
   });
 
   test("discovers, creates, and connects a real no-auth toolkit through the UI", async ({

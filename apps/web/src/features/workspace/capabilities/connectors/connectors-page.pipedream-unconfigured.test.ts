@@ -41,7 +41,7 @@ describe('connectors page without a Connect provider', () => {
     // deployments that answer 501.
     expect(catalog).toContain('const connectStatus = useConnectProviderStatus(');
     expect(catalog).toContain('const easyConnectRunnable =');
-    expect(catalog).toContain('enabled: opts.enabled && easyConnectRunnable && !searchTooShort,');
+    expect(catalog).toContain('enabled: opts.enabled && easyConnectRunnable,');
     expect(catalog).toContain("easyConnectProvider === 'pipedream'");
     expect(catalog).not.toContain("enabled: opts.enabled && source === 'easy-connect'");
   });

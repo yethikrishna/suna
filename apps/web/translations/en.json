@@ -9322,7 +9322,6 @@
     "autoLibErrorHandlerJsxTextTopUp3587309b": "Top up",
     "autoLibErrorHandlerJsxTextManagePlan6ec7a5f9": "Manage plan",
     "i18nComplete": {
-      "connectorSearchMinimum": "Type at least {count} characters to search.",
       "text0005b85debac": "Sound pack played for session events.",
       "text000c02c11c7a": "Reusable instructions your agents load on demand.",
       "text0017bda47853": "URL copied",

@@ -109,10 +109,10 @@ describe('catalogue search keeps its results', () => {
     // automatic chain that also called it is gone, so this used to assert the
     // guard at two entry points and now asserts it at the only one.
     expect(code.match(/fetchNextPage\(\)/g)).toHaveLength(1);
-    expect(code).toContain('if (!hasNextPage || isFetchingNextPage || isPlaceholderData) return;');
+    expect(code).toContain('if (searchTooShort || !hasNextPage || isFetchingNextPage || isPlaceholderData) return;');
     // `hasMore` is what the sentinel and the button both read, so withholding
     // it during the placeholder window disarms both at once.
-    expect(code).toContain('hasMore: opts.enabled && hasNextPage && !isPlaceholderData');
+    expect(code).toContain('hasMore: opts.enabled && !searchTooShort && hasNextPage && !isPlaceholderData');
   });
 
   test('the browse grid dims instead of blanking', () => {

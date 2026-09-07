@@ -55,7 +55,7 @@ export interface CatalogState {
   entries: CatalogEntry[];
   /** The catalogue's size for the current query and category. */
   total: number;
-  /** The debounced query actually in flight, trimmed. Empty when browsing. */
+  /** The debounced query, trimmed. Empty when browsing. */
   activeQuery: string;
   /** Guidance shown instead of results when the provider cannot search this input. */
   searchHint: string | null;

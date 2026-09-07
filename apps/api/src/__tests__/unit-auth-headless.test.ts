@@ -185,4 +185,4 @@ describe('POST /v1/auth/sign-in/sso', () => {
     expect(response.status).toBe(404);
     expect((await response.json()).error).toBe('sso_provider_not_found');
   });
-})
+});

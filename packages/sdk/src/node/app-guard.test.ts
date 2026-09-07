@@ -109,6 +109,46 @@ describe('the OAuth path', () => {
     expect(viewer?.userId).toBe('u1');
     expect(viewer?.groupIds).toEqual([]);
   });
+
+  // REGRESSION (CodeQL js/polynomial-redos, HIGH). `fetchGroups` normalised its
+  // base with `replace(/\/+$/, '')`. That pattern is UNANCHORED at the left, so
+  // on a long run of slashes NOT at the end the engine retries from every
+  // offset — O(n^2). The SDK already standardises on `stripTrailingSlashes`
+  // (platform/strings.ts) for exactly this; this call site was the one that
+  // missed it.
+  //
+  // `backendUrl` is configuration rather than end-user input, so the practical
+  // risk is lower than the files-client case — but this is a PUBLISHED package
+  // and the host chooses that string, so "our own config is trusted" is not a
+  // property the SDK gets to assume.
+  test('a backendUrl with a pathological slash run normalises in linear time', async () => {
+    const calls: string[] = [];
+    const guard = createKortixAppGuard({
+      secret: SECRET,
+      // The hostile shape: a long run of '/' with a NON-slash after it, so the
+      // old pattern backtracked over the whole run at every offset.
+      backendUrl: `https://api.example/v1${'/'.repeat(200_000)}x`,
+      auth: authStub('at1'),
+      fetch: async (input) => {
+        calls.push(String(input));
+        return Response.json({ groups: [{ group_id: 'g-ops' }] });
+      },
+    });
+
+    const started = performance.now();
+    const viewer = await guard.viewer(new Request('https://app.example/'));
+    const elapsed = performance.now() - started;
+
+    // Behaviour first: only TRAILING slashes go, and this url ends in 'x', so
+    // nothing is stripped and the run is preserved verbatim.
+    expect(viewer?.groupIds).toEqual(['g-ops']);
+    expect(calls[0]).toContain(`${'/'.repeat(200_000)}x/accounts/acc-1/`);
+
+    // Then the property the regex broke. 200k chars finished in ~1s even when
+    // quadratic, so the bound is tight enough that a quadratic implementation
+    // cannot pass.
+    expect(elapsed).toBeLessThan(1_000);
+  });
 });
 
 describe('the guards fail closed', () => {

@@ -26,6 +26,7 @@
  * dashboard in a `public` App world-readable.
  */
 
+import { stripTrailingSlashes } from '../platform/strings';
 import { readAppViewer } from './app-viewer';
 import type { KortixAuth } from './auth';
 
@@ -116,7 +117,7 @@ export function createKortixAppGuard(options: KortixAppGuardOptions = {}): Korti
     if (!options.backendUrl) return [];
 
     try {
-      const base = options.backendUrl.replace(/\/+$/, '');
+      const base = stripTrailingSlashes(options.backendUrl);
       const res = await fetchImpl(
         `${base}/accounts/${encodeURIComponent(accountId)}/iam/members/${encodeURIComponent(userId)}/groups`,
         { headers: { accept: 'application/json', authorization: `Bearer ${token}` } },
